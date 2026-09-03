@@ -1,16 +1,16 @@
 // 上传计划的单测 + publish:r2 脚本的端到端。
 //
 // 计划是纯函数：key / Content-Type / Cache-Control / 顺序 / 图片取舍 / 各种对不上，直接比对。
-// 脚本那部分对着本地假 S3（只答 PUT 与 HEAD，HEAD 可切成一律回 500）跑真 SDK，验的是真上传时带的头、
+// 脚本那部分对着本地假 S3（只答 PUT、HEAD 与 GET，后两者可切成一律回 500）跑真 SDK，验的是真上传时带的头、
 // 已存在的图片被跳过、缺图或存储报错时 manifest 不换指针、manifest 永远最后一个传、经符号链接挂进
-// IMAGES_DIR 的图片也会传。dist 归档要 tar --zstd：这台机器未必有 zstd，
+// IMAGES_DIR 的图片也会传、线上旧 manifest 在任何上传之前被原样存下。dist 归档要 tar --zstd：这台机器未必有 zstd，
 // 所以在 PATH 前面放一个直通的 zstd 替身（exec cat），tar 真被起、真打包、真上传；再用一个只有
 // tar 的 PATH 验「zstd 不可用就报错且一个字节都不传」。不连任何外部服务，不碰仓库根的 dist/ out/。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -224,13 +224,13 @@ async function workspace(t) {
 }
 
 /**
- * 本地假 S3：只答 PUT（存起来，连头一起）与 HEAD（有 → 200，没有 → 404）。
- * 把 headStatus 设成 500 之类，HEAD 就一律回那个状态——模拟「存储报错而不是不存在」。
+ * 本地假 S3：只答 PUT（存起来，连头一起）、HEAD 与 GET（有 → 200，没有 → 404）。
+ * 把 headStatus / getStatus 设成 500 之类，HEAD / GET 就一律回那个状态——模拟「存储报错而不是不存在」。
  */
 async function fakeS3(seed = {}) {
   const objects = new Map(Object.entries(seed).map(([k, v]) => [k, { body: Buffer.from(v), contentType: null, cacheControl: null }]));
   const requests = [];
-  const s3 = { objects, requests, headStatus: null };
+  const s3 = { objects, requests, headStatus: null, getStatus: null };
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const m = url.pathname.match(new RegExp(`^/${CREDS.R2_BUCKET}/(.+)$`));
@@ -264,6 +264,22 @@ async function fakeS3(seed = {}) {
         }
         res.writeHead(200, { 'content-length': o.body.length, etag: '"e"' });
         res.end();
+        return;
+      }
+      if (req.method === 'GET') {
+        if (s3.getStatus) {
+          res.writeHead(s3.getStatus);
+          res.end();
+          return;
+        }
+        const o = objects.get(key);
+        if (!o) {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+        res.writeHead(200, { 'content-length': o.body.length, 'content-type': o.contentType ?? 'application/octet-stream', etag: '"e"' });
+        res.end(o.body);
         return;
       }
       res.writeHead(405);
@@ -456,4 +472,62 @@ test('publish:r2：zstd 不可用 → 报错退 1，不换 gzip，一个对象�
   assert.equal(dry.status, 1, dry.out);
   assert.match(dry.out, /zstd 不可用/);
   assert.doesNotMatch(dry.out, /PUBLISH_DRY_RUN=1：只打印计划/);
+});
+
+test('publish:r2：线上旧 manifest 原样存为 out/manifest-previous.json；没有 → 首次发布不写；读失败 → 退 1 且一个对象都不传', { timeout: 30_000 }, async (t) => {
+  const ws = await workspace(t);
+  const previousFile = join(ws.OUT, 'manifest-previous.json');
+  // 三张图都已在存储里：不给 IMAGES_DIR 也能核对通过、走到换指针
+  const s3 = await fakeS3({ [KEYS.avif]: 'a', [KEYS.webp]: 'b', [KEYS.avif2]: 'c' });
+  t.after(s3.close);
+  // 故意带多字节字符、尾部空白与非 2 空格缩进：验的是逐字节原样，不是「解析后再序列化」
+  const OLD = '{\n    "version": "2026-08-01.3",\n  "site": {"domain": "旧域名.example.org"},\n  "db": {"key": "db/gallery-2026-08-01.3.sqlite"}\n}\n  \n';
+
+  await t.test('dry-run 不读存储', async () => {
+    const r = await run({ ...ws.env, ...s3.env, PUBLISH_DRY_RUN: '1' });
+    assert.equal(r.status, 0, r.out);
+    assert.equal(s3.requests.length, 0);
+    assert.ok(!existsSync(previousFile));
+  });
+
+  await t.test('没有旧 manifest：提示首次发布，文件不存在，脚本仍成功；GET 在任何 PUT 之前', async () => {
+    // 上次跑剩下的旧文件要被清掉，不能留给 push:search 当基线
+    await writeFile(previousFile, '{"version":"stale"}');
+    const r = await run({ ...ws.env, ...s3.env });
+    assert.equal(r.status, 0, r.out);
+    assert.match(r.out, /首次发布，不写 .*manifest-previous\.json/);
+    assert.ok(!existsSync(previousFile), '首次发布不该留下 manifest-previous.json');
+    assert.equal(s3.requests[0], 'GET db/manifest.json', '第一个请求就是读旧 manifest');
+    assert.equal(s3.requests.filter((x) => x === 'GET db/manifest.json').length, 1);
+    assert.equal(s3.requests.at(-1), 'PUT db/manifest.json', '指针照常换');
+    assert.ok(s3.objects.has('db/manifest.json'));
+  });
+
+  await t.test('有旧 manifest：内容逐字节一致，日志带旧版本号；之后指针才换成新的', async () => {
+    s3.objects.set('db/manifest.json', { body: Buffer.from(OLD), contentType: CONTENT_TYPE_MANIFEST, cacheControl: CACHE_MANIFEST });
+    s3.requests.length = 0;
+    const r = await run({ ...ws.env, ...s3.env });
+    assert.equal(r.status, 0, r.out);
+    assert.match(r.out, /线上旧 manifest（版本 2026-08-01\.3）已存为 .*manifest-previous\.json/);
+    assert.deepEqual(await readFile(previousFile), Buffer.from(OLD), '逐字节原样');
+    assert.equal(s3.requests[0], 'GET db/manifest.json');
+    assert.equal(s3.requests.at(-1), 'PUT db/manifest.json');
+    assert.equal(JSON.parse(s3.objects.get('db/manifest.json').body.toString()).version, VERSION, '线上已是新 manifest');
+  });
+
+  await t.test('GET 回 500（不是 404）：退 1、日志带状态码与原因，一个对象都没传、指针没换', async () => {
+    s3.objects.set('db/manifest.json', { body: Buffer.from(OLD), contentType: CONTENT_TYPE_MANIFEST, cacheControl: CACHE_MANIFEST });
+    s3.getStatus = 500;
+    s3.requests.length = 0;
+    await rm(ws.archive, { force: true }); // 上面两次成功的运行留下的归档
+    const r = await run({ ...ws.env, ...s3.env });
+    s3.getStatus = null;
+    assert.equal(r.status, 1, r.out);
+    assert.match(r.out, /对象存储回 HTTP 500/);
+    assert.match(r.out, /读线上旧 db\/manifest\.json 失败，不知道线上是哪一版就不能换指针/);
+    assert.match(r.out, /manifest\.json 未更新，线上仍指向上一版/);
+    assert.equal(s3.requests.filter((x) => x.startsWith('PUT ')).length, 0, '读旧 manifest 失败时一个字节都不传');
+    assert.equal(s3.objects.get('db/manifest.json').body.toString(), OLD, '线上指针未动');
+    assert.ok(!existsSync(ws.archive), '连归档都没开始');
+  });
 });
