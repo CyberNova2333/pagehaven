@@ -27,7 +27,7 @@ await rm(DIST_DIR, { recursive: true, force: true });
 const require = createRequire(import.meta.url);
 const astroPkgPath = require.resolve('astro/package.json');
 const astro = join(dirname(astroPkgPath), require(astroPkgPath).bin.astro);
-const r = spawnSync(process.execPath, [astro, 'build'], {
+const r = spawnSync(process.execPath, [astro, 'build', '--outDir', DIST_DIR], {
   cwd: SITE_DIR,
   stdio: 'inherit',
   env: { ...process.env, DATA_DIR },
