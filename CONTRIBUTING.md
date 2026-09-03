@@ -30,7 +30,7 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
    |---|---|
    | 文档、`data/`、`site.config.yaml` | `npm run check` |
    | `packages/core` `packages/site` `packages/search` | + `npm test` + `npm run build` 全量 |
-   | `packages/platform/`、`scripts/deploy-*`、workflow | + 以 `target=<平台>` 向 preview 真实部署一次 |
+   | `packages/platform/`、`scripts/deploy.mjs` `scripts/publish-r2.mjs` `scripts/lib/deploy-plan.mjs`、workflow | + 以 `target=<平台>`、`deploy_env=preview` 真实部署一次 |
    | 数据 schema、DB 结构 | + 重建 DB 并在检索页上用真实数据查一次 |
 
    `checks.yml` 会按 diff 路径在运行摘要里标出级别。最后两级 CI 替代不了，
@@ -65,6 +65,8 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
 - 稳定运行一个发布周期以上才允许删除旧代码路径和 flag；
 - flag 只能让站点退回更保守的形态（例如关掉函数加速、关掉某平台适配），
   **不能关掉 `npm run check` 里的任何一条守卫**。
+  例：`text_layer` 关掉后阅读器不输出文字层、期页不标「有台词」，索引分片里的 `hasText`
+  仍是原始数据。
 
 ## 四、CI 流水线
 
