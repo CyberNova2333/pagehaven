@@ -270,4 +270,10 @@ check → publish:r2 → deploy → 写 `STATUS.md` 并提交。`checks.yml`：p
   `site-config.json` 不入库，构建时重生成。产物目录：`dist/` 只放静态站，`out/` 放
   manifest、DB 与归档。`edgeone.json` 按 EdgeOne Pages 文档的 `headers[{source,headers[{key,value}]}]`
   / `redirects[{source,destination,statusCode}]` 形状生成——**首次真实部署时验证**，不对再改生成器。
+- 2026-09-03 sqlite 的 wasm 实现定为官方 `@sqlite.org/sqlite-wasm`：实测 sql.js 1.14 的
+  官方发行版**没有编入 FTS5**（`no such module: fts5`），trigram 台词库建不出来；
+  官方 wasm 3.53 在 Node 与浏览器里都能跑，FTS5 trigram、`PRAGMA page_size` 与
+  `sqlite3_js_db_export` 均已验证。铁律 1 的措辞随之从「一律 sql.js」改为「一律 wasm 版」，
+  约束的实质（不引原生绑定）不变。浏览器端 VFS 的选择（官方 wasm 自定义 VFS，或
+  sql.js-httpvfs 自带的含 FTS5 构建）留给检索落地时按可行性定。
 
