@@ -1,0 +1,15 @@
+# 第二个作品：sort 更小但标题靠后，用来验证首页按 sort 排、索引按作品分片
+id: zeta
+title: 终章短篇
+sort: 0
+issues:
+  - id: v1
+    number: 1
+    title: 单行本
+    chapters:
+      - id: ch1
+        number: 1
+        title: 短篇
+        pages:
+          - { n: 1, img: 6789abcdef01, w: 1000, h: 1500 }
+          - { n: 2, img: 789abcdef012, w: 1000, h: 1500 }

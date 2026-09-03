@@ -1,0 +1,33 @@
+# 测试样本：两卷三话，第二卷那话没有台词稿。字段含义见 data/meta/README.md。
+id: sample
+title: 示例作品
+sort: 1
+issues:
+  - id: vol01
+    number: 1
+    title: 第一卷
+    published: 2026-01-01
+    chapters:
+      - id: c001
+        number: 1
+        title: 第一话 开端
+        pages:
+          - { n: 1, img: 0123456789ab, w: 1200, h: 1700 }
+          - { n: 2, img: 123456789abc, w: 1200, h: 1700 }
+          - { n: 3, img: 23456789abcd, w: 2400, h: 1700 }
+      - id: c002
+        number: 2
+        title: 第二话 回响
+        pages:
+          - { n: 1, img: 3456789abcde, w: 1200, h: 1700 }
+          - { n: 2, img: 456789abcdef, w: 1200, h: 1700 }
+  - id: vol02
+    number: 2
+    title: 第二卷
+    published: "2026-06-01"
+    chapters:
+      - id: c003
+        number: 3
+        title: 第三话 余烬
+        pages:
+          - { n: 1, img: 56789abcdef0, w: 1200, h: 1700 }

@@ -8,9 +8,10 @@
 //   3. packages/{core,site,search} 只用 Web 标准 API：无 node: 导入、无 Node 内置模块、
 //      无原生依赖、不出现对象存储直连域名（铁律 1、7）
 //   4. workflow：没有 schedule:，release 只 workflow_dispatch，只有 checks.yml 可以 push 触发（铁律 6）
-//   5. dist：文件数 ≤ 18 000、单文件 ≤ 20 MB、没有图片和 DB、每话恰好一个 HTML（铁律 4）
-//   6. out/db 里的 sqlite：文件头里的 page_size 与配置一致；chunks.json 的块大小一致
-//   7. lint
+//   5. data/ 合法：meta 与 text 过 schema、互相对得上（铁律 8：数据唯一来源是 R2 + data/）
+//   6. dist：文件数 ≤ 18 000、单文件 ≤ 20 MB、没有图片和 DB、每话恰好一个 HTML（铁律 4）
+//   7. out/db 里的 sqlite：文件头里的 page_size 与配置一致；chunks.json 的块大小一致
+//   8. lint
 //
 // 输出给手机上看 Actions 日志的人：每节一个 ✔/✘，问题逐条列出，最后一行给结论。
 // 任何一节失败退出码都是 1，但所有节都会跑完——一次看全，不用来回改。
@@ -22,8 +23,8 @@ import { spawnSync } from 'node:child_process';
 import yaml from 'js-yaml';
 import { generateAll } from '@gallery/platform';
 import { loadSiteConfig } from './lib/config.mjs';
-import { listChapters } from './lib/meta.mjs';
-import { ROOT, META_DIR, DIST_DIR, OUT_DB_DIR, PLATFORM_GENERATED_DIR, WORKFLOWS_DIR } from './lib/paths.mjs';
+import { loadGallery } from './lib/data.mjs';
+import { ROOT, DATA_DIR, DIST_DIR, OUT_DB_DIR, PLATFORM_GENERATED_DIR, WORKFLOWS_DIR } from './lib/paths.mjs';
 import { step, ok, fail, note, warn } from './lib/log.mjs';
 
 const WEB_ONLY_PACKAGES = ['core', 'site', 'search'];
@@ -62,6 +63,7 @@ async function walk(dir, out = []) {
 }
 
 let config = null;
+let gallery = null;
 
 // ── 1. 配置 ────────────────────────────────────────────────────────
 await section('site.config.yaml', async () => {
@@ -156,9 +158,23 @@ await section('workflow：无 schedule，release 只手动，只有 checks.yml �
   return problems;
 });
 
-// ── 5. dist 预算 ─────────────────────────────────────────────────────
+// ── 5. data/ ─────────────────────────────────────────────────────────
+await section('data/：meta 与 text 过 schema 且互相对得上', async () => {
+  if (!config) return ['配置不合法，跳过'];
+  try {
+    gallery = await loadGallery({ dataDir: DATA_DIR, imagePrefix: config.images.prefix });
+  } catch (e) {
+    return e.issues ?? [e.message];
+  }
+  const t = gallery.totals;
+  note(`${rel(DATA_DIR)}：${t.series} 个作品、${t.issues} 期、${t.chapters} 话、${t.pages} 页、${t.boxes} 个台词框`);
+  return [];
+});
+
+// ── 6. dist 预算 ─────────────────────────────────────────────────────
 await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰好一个 HTML', async () => {
   if (!config) return ['配置不合法，跳过'];
+  if (!gallery) return ['data/ 不合法，跳过'];
   if (!existsSync(DIST_DIR)) {
     warn('dist/ 不存在（尚未 npm run build），产物守卫跳过——CI 会在 build 之后再跑一遍');
     return [];
@@ -178,10 +194,8 @@ await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰�
   }
   note(`最大单文件 ${biggest} 字节 / ${config.budgets.max_file_bytes}`);
 
-  const chapters = await listChapters(META_DIR);
-  note(`data/meta 里共 ${chapters.length} 话`);
-  for (const c of chapters) {
-    const dir = join(DIST_DIR, c.series, c.issue, c.chapter);
+  for (const c of gallery.chapters) {
+    const dir = join(DIST_DIR, c.seriesId, c.issueId, c.id);
     if (!existsSync(join(dir, 'index.html'))) {
       problems.push(`${c.key} 没有生成 ${rel(join(dir, 'index.html'))}`);
       continue;
@@ -194,7 +208,7 @@ await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰�
   return problems;
 });
 
-// ── 6. 检索库 page_size ─────────────────────────────────────────────
+// ── 7. 检索库 page_size ─────────────────────────────────────────────
 await section('out/db：sqlite page_size 与分块大小同配置', async () => {
   if (!config) return ['配置不合法，跳过'];
   if (!existsSync(OUT_DB_DIR)) {
@@ -228,7 +242,7 @@ await section('out/db：sqlite page_size 与分块大小同配置', async () => 
   return problems;
 });
 
-// ── 7. lint ─────────────────────────────────────────────────────────
+// ── 8. lint ─────────────────────────────────────────────────────────
 await section('lint', async () => {
   const eslint = join(ROOT, 'node_modules', 'eslint', 'bin', 'eslint.js');
   if (!existsSync(eslint)) return ['eslint 没装——先 npm ci'];
