@@ -75,7 +75,7 @@ deploy:
     # Pages 项目名（不是账号 ID；账号 ID 与 token 在 secrets）
     project: comics-gallery
   edgeone:
-    # 项目 ID 在 secrets（EDGEONE_PROJECT_ID）；这里只放部署形态
+    # 项目名在 secrets（EDGEONE_PROJECT_ID，值是 Makers 项目名）；这里只放部署形态
     functions_dir: edge-functions
   github:
     # 写 CNAME 文件（内容 = site.domain）与 .nojekyll
