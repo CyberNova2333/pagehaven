@@ -58,6 +58,15 @@ jobs:
       - name: 产物再过一遍守卫
         run: npm run check
 
+      # 仓库 data/ 可能是空的（0 话时上面两步守不到「每话恰好一个 HTML」这类条目），
+      # 所以再拿测试样本跑一遍整条流水线：manifest → db → 站点 → 索引 → sitemap → check。
+      - name: 用测试样本全量空跑
+        env:
+          DATA_DIR: packages/core/test/fixtures/data
+          DIST_DIR: ${{ runner.temp }}/fixture-dist
+          OUT_DIR: ${{ runner.temp }}/fixture-out
+        run: npm run build && npm run check
+
       # CI 能替代的只有前两级；platform / workflow / schema 的改动要人真跑过（CONTRIBUTING §二.3）
       - name: 分层验证提示
         if: always()
