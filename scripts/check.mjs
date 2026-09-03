@@ -1,0 +1,245 @@
+#!/usr/bin/env node
+// `npm run check` —— 提交前必过的守卫（CLAUDE.md 铁律 4）。
+//
+// 守的每一条都对应一条铁律或一个平台上限，数字的来历见 docs/ARCHITECTURE.md §2「预算」：
+//
+//   1. site.config.yaml 合法，且 DB 的 page_size == 检索端 requestChunkSize（铁律 4）
+//   2. _headers / _redirects / edgeone.json 与 site.config.yaml 同步（铁律 5）
+//   3. packages/{core,site,search} 只用 Web 标准 API：无 node: 导入、无 Node 内置模块、
+//      无原生依赖、不出现对象存储直连域名（铁律 1、7）
+//   4. workflow：没有 schedule:，release 只 workflow_dispatch，只有 checks.yml 可以 push 触发（铁律 6）
+//   5. dist：文件数 ≤ 18 000、单文件 ≤ 20 MB、没有图片和 DB、每话恰好一个 HTML（铁律 4）
+//   6. out/db 里的 sqlite：文件头里的 page_size 与配置一致；chunks.json 的块大小一致
+//   7. lint
+//
+// 输出给手机上看 Actions 日志的人：每节一个 ✔/✘，问题逐条列出，最后一行给结论。
+// 任何一节失败退出码都是 1，但所有节都会跑完——一次看全，不用来回改。
+import { readdir, readFile, stat, open } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join, relative, extname, sep } from 'node:path';
+import { builtinModules } from 'node:module';
+import { spawnSync } from 'node:child_process';
+import yaml from 'js-yaml';
+import { generateAll } from '@gallery/platform';
+import { loadSiteConfig } from './lib/config.mjs';
+import { listChapters } from './lib/meta.mjs';
+import { ROOT, META_DIR, DIST_DIR, OUT_DB_DIR, PLATFORM_GENERATED_DIR, WORKFLOWS_DIR } from './lib/paths.mjs';
+import { step, ok, fail, note, warn } from './lib/log.mjs';
+
+const WEB_ONLY_PACKAGES = ['core', 'site', 'search'];
+const IMAGE_OR_DB_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif', '.bmp', '.tif', '.tiff', '.sqlite', '.sqlite3', '.db', '.zst']);
+const NATIVE_DEP_BLOCKLIST = new Set(['better-sqlite3', 'sqlite3', 'sharp', 'canvas', 'node-gyp', 'bufferutil', 'utf-8-validate', 'fsevents', 'node-addon-api']);
+// 对象存储的直连端点。铁律 7：读一律走 CDN 域名，站点与浏览器不该知道存储的存在。
+// 只钉「端点后缀」这种平台形态，不钉任何账号、桶名（CONTRIBUTING §二之二）。
+const STORAGE_DIRECT_HOST = /r2\.cloudflarestorage\.com/;
+
+let failures = 0;
+const rel = (p) => relative(ROOT, p).split(sep).join('/');
+
+async function section(title, fn) {
+  step(title);
+  let problems;
+  try {
+    problems = (await fn()) ?? [];
+  } catch (e) {
+    problems = [`守卫自身出错：${e.message}`];
+  }
+  if (problems.length === 0) {
+    ok('通过');
+  } else {
+    failures += 1;
+    for (const p of problems) fail(p);
+  }
+}
+
+async function walk(dir, out = []) {
+  for (const ent of await readdir(dir, { withFileTypes: true })) {
+    const p = join(dir, ent.name);
+    if (ent.isDirectory()) await walk(p, out);
+    else if (ent.isFile()) out.push(p);
+  }
+  return out;
+}
+
+let config = null;
+
+// ── 1. 配置 ────────────────────────────────────────────────────────
+await section('site.config.yaml', async () => {
+  try {
+    config = await loadSiteConfig();
+  } catch (e) {
+    return [e.message];
+  }
+  note(`page_size=${config.db.page_size} requestChunkSize=${config.search.request_chunk_size} chunk_size=${config.db.chunk_size}`);
+  return [];
+});
+
+// ── 2. 配置生成物同步 ───────────────────────────────────────────────
+await section('配置生成物与 site.config.yaml 同步', async () => {
+  if (!config) return ['配置不合法，跳过'];
+  const problems = [];
+  const expected = await generateAll(config);
+  for (const [name, content] of Object.entries(expected)) {
+    const p = join(PLATFORM_GENERATED_DIR, name);
+    if (!existsSync(p)) {
+      problems.push(`${rel(p)} 不存在——跑 npm run build:config`);
+      continue;
+    }
+    const actual = await readFile(p, 'utf8');
+    if (actual !== content) problems.push(`${rel(p)} 与 site.config.yaml 不同步——不要手改它，改 site.config.yaml 后跑 npm run build:config`);
+  }
+  return problems;
+});
+
+// ── 3. 平台无关代码只用 Web 标准 API ────────────────────────────────
+await section('packages/{core,site,search} 无 Node 内置模块 / 原生依赖', async () => {
+  const problems = [];
+  const builtins = new Set(builtinModules);
+  const specRe = /(?:^|[^\w$.])(?:import\s*(?:[\w${},*\s]+from\s*)?|export\s*[\w${},*\s]+from\s*|require\s*\(\s*|import\s*\(\s*)['"]([^'"]+)['"]/g;
+  for (const pkg of WEB_ONLY_PACKAGES) {
+    const dir = join(ROOT, 'packages', pkg);
+    const src = join(dir, 'src');
+    if (existsSync(src)) {
+      for (const file of await walk(src)) {
+        if (!['.js', '.mjs', '.ts', '.astro'].includes(extname(file))) continue;
+        if (rel(file).startsWith('packages/site/src/generated/')) continue;
+        const text = await readFile(file, 'utf8');
+        for (const m of text.matchAll(specRe)) {
+          const spec = m[1];
+          if (spec.startsWith('node:') || builtins.has(spec)) {
+            problems.push(`${rel(file)} 导入了 Node 内置模块 '${spec}'（铁律 1：平台无关代码只用 Web 标准 API；Node 只许出现在 scripts/）`);
+          }
+        }
+        if (STORAGE_DIRECT_HOST.test(text)) {
+          problems.push(`${rel(file)} 出现了对象存储直连端点（铁律 7：读一律走 CDN 域名）`);
+        }
+      }
+    }
+    const pkgJson = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'));
+    for (const dep of Object.keys(pkgJson.dependencies ?? {})) {
+      if (NATIVE_DEP_BLOCKLIST.has(dep)) {
+        problems.push(`packages/${pkg} 依赖了原生模块 ${dep}（铁律 1：sqlite 一律 sql.js，不引原生依赖）`);
+        continue;
+      }
+      const depDir = join(ROOT, 'node_modules', dep);
+      if (!existsSync(depDir)) continue; // 没装（npm ci 之前）就不查；CI 一定装了
+      let depPkg = {};
+      try {
+        depPkg = JSON.parse(await readFile(join(depDir, 'package.json'), 'utf8'));
+      } catch {
+        /* 没有 package.json 的目录不是包 */
+      }
+      if (depPkg.gypfile || existsSync(join(depDir, 'binding.gyp'))) {
+        problems.push(`packages/${pkg} 的依赖 ${dep} 带原生构建（binding.gyp）（铁律 1）`);
+      }
+    }
+  }
+  return problems;
+});
+
+// ── 4. workflow 触发方式 ─────────────────────────────────────────────
+await section('workflow：无 schedule，release 只手动，只有 checks.yml 可 push 触发', async () => {
+  const problems = [];
+  if (!existsSync(WORKFLOWS_DIR)) return problems;
+  for (const f of (await readdir(WORKFLOWS_DIR)).filter((f) => /\.ya?ml$/.test(f)).sort()) {
+    const doc = yaml.load(await readFile(join(WORKFLOWS_DIR, f), 'utf8'));
+    const on = doc?.on ?? doc?.true; // 保险：YAML 1.1 解析器会把 on 读成 true
+    const triggers = typeof on === 'string' ? [on] : Array.isArray(on) ? on : Object.keys(on ?? {});
+    if (triggers.includes('schedule')) problems.push(`${f} 用了 schedule:（铁律 6：仓库 60 天无活动 GitHub 会停用 cron，弃维护场景等于埋雷）`);
+    if (f === 'release.yml' && (triggers.length !== 1 || triggers[0] !== 'workflow_dispatch')) {
+      problems.push(`release.yml 只允许 workflow_dispatch，现在是 ${triggers.join(', ')}（铁律 6）`);
+    }
+    if (f !== 'checks.yml' && (triggers.includes('push') || triggers.includes('pull_request'))) {
+      problems.push(`${f} 由 push/pull_request 触发——只有检查类 workflow（checks.yml）可以（铁律 6、AGENTS.md §2）`);
+    }
+  }
+  return problems;
+});
+
+// ── 5. dist 预算 ─────────────────────────────────────────────────────
+await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰好一个 HTML', async () => {
+  if (!config) return ['配置不合法，跳过'];
+  if (!existsSync(DIST_DIR)) {
+    warn('dist/ 不存在（尚未 npm run build），产物守卫跳过——CI 会在 build 之后再跑一遍');
+    return [];
+  }
+  const problems = [];
+  const files = await walk(DIST_DIR);
+  note(`dist 文件数 ${files.length} / ${config.budgets.max_files}`);
+  if (files.length > config.budgets.max_files) {
+    problems.push(`dist 文件数 ${files.length} 超过 ${config.budgets.max_files}（三平台 20 000 上限留余量；是不是每页一个 HTML 了？）`);
+  }
+  let biggest = 0;
+  for (const f of files) {
+    const s = await stat(f);
+    biggest = Math.max(biggest, s.size);
+    if (s.size > config.budgets.max_file_bytes) problems.push(`${rel(f)} 有 ${s.size} 字节，超过 ${config.budgets.max_file_bytes}`);
+    if (IMAGE_OR_DB_EXT.has(extname(f).toLowerCase())) problems.push(`${rel(f)}：图片与 DB 不进 dist（它们在对象存储，经 CDN 读）`);
+  }
+  note(`最大单文件 ${biggest} 字节 / ${config.budgets.max_file_bytes}`);
+
+  const chapters = await listChapters(META_DIR);
+  note(`data/meta 里共 ${chapters.length} 话`);
+  for (const c of chapters) {
+    const dir = join(DIST_DIR, c.series, c.issue, c.chapter);
+    if (!existsSync(join(dir, 'index.html'))) {
+      problems.push(`${c.key} 没有生成 ${rel(join(dir, 'index.html'))}`);
+      continue;
+    }
+    const htmls = (await walk(dir)).filter((f) => extname(f) === '.html');
+    if (htmls.length !== 1) {
+      problems.push(`${c.key} 下有 ${htmls.length} 个 HTML，应恰好一个（阅读器内翻页，#p12 深链，不做每页一 HTML）：${htmls.map(rel).join(', ')}`);
+    }
+  }
+  return problems;
+});
+
+// ── 6. 检索库 page_size ─────────────────────────────────────────────
+await section('out/db：sqlite page_size 与分块大小同配置', async () => {
+  if (!config) return ['配置不合法，跳过'];
+  if (!existsSync(OUT_DB_DIR)) {
+    note('out/db/ 不存在（尚未 build:db），跳过');
+    return [];
+  }
+  const problems = [];
+  for (const f of (await readdir(OUT_DB_DIR)).filter((f) => f.endsWith('.sqlite'))) {
+    const p = join(OUT_DB_DIR, f);
+    const fh = await open(p, 'r');
+    const head = Buffer.alloc(100);
+    await fh.read(head, 0, 100, 0);
+    await fh.close();
+    if (head.toString('latin1', 0, 16) !== 'SQLite format 3\0') {
+      problems.push(`${rel(p)} 不是 sqlite 文件`);
+      continue;
+    }
+    const raw = head.readUInt16BE(16);
+    const pageSize = raw === 1 ? 65536 : raw;
+    if (pageSize !== config.db.page_size) problems.push(`${rel(p)} 的 page_size 是 ${pageSize}，配置是 ${config.db.page_size}（检索端按 requestChunkSize 取块，两者必须一致）`);
+    const chunksPath = `${p}.chunks.json`;
+    if (!existsSync(chunksPath)) {
+      problems.push(`${rel(p)} 缺同名 .chunks.json（ARCHITECTURE §6：逐块摘要与 DB 同版本产出）`);
+      continue;
+    }
+    const chunks = JSON.parse(await readFile(chunksPath, 'utf8'));
+    if (chunks.chunkSize !== config.db.chunk_size) problems.push(`${rel(chunksPath)} 的 chunkSize 是 ${chunks.chunkSize}，配置是 ${config.db.chunk_size}`);
+    const size = (await stat(p)).size;
+    if (chunks.totalBytes !== size) problems.push(`${rel(chunksPath)} 记录总长 ${chunks.totalBytes}，文件实际 ${size}`);
+  }
+  return problems;
+});
+
+// ── 7. lint ─────────────────────────────────────────────────────────
+await section('lint', async () => {
+  const eslint = join(ROOT, 'node_modules', 'eslint', 'bin', 'eslint.js');
+  if (!existsSync(eslint)) return ['eslint 没装——先 npm ci'];
+  const r = spawnSync(process.execPath, [eslint, '.'], { cwd: ROOT, encoding: 'utf8' });
+  if (r.status === 0) return [];
+  return [(r.stdout || '') + (r.stderr || '')];
+});
+
+console.log('');
+if (failures) {
+  fail(`check：${failures} 节未通过（规则出处见 CLAUDE.md 铁律与 docs/ARCHITECTURE.md §2）`);
+  process.exit(1);
+}
+ok('check：全部通过');

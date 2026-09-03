@@ -1,0 +1,82 @@
+# site.config.yaml —— 唯一配置源（CLAUDE.md 铁律 5）
+#
+# 域名、缓存、响应头、重定向、功能开关只在这里改。
+# _headers / _redirects / edgeone.json 由 `npm run build:config` 生成到
+# packages/platform/generated/，不手改；`npm run check` 会比对生成物与本文件是否同步。
+# 字段的含义与取值约束见 packages/platform/src/site-config.js（zod schema）。
+
+site:
+  title: 漫画画廊
+  # 站点域名（不含协议）。切换托管平台只改 DNS 的 CNAME，不改这里。
+  domain: gallery.example.org
+  lang: zh-CN
+
+images:
+  # 图片域名：经 CDN 读对象存储，浏览器永远不直连存储（铁律 7）。
+  # 可以有两个（两家 CDN 互为备份），取块层与阅读器按实测吞吐选源（ARCHITECTURE §6）。
+  hosts:
+    - img.example.org
+  # 对象存储内图片 key 的前缀
+  prefix: img/
+
+db:
+  # 检索库 sqlite 的 page_size；必须与 search.request_chunk_size 相等（check 守卫）
+  page_size: 4096
+  # 取块层对齐块大小 = page_size × 16；逐块 sha256 也按它切（ARCHITECTURE §6）
+  chunk_size: 65536
+  # 对象存储内 DB 的 key 前缀；带日期的版本化 key 见 ARCHITECTURE §4
+  prefix: db/
+  # 总长不超过这个值且网络快时，整份下载而不是分块（§6 退化路径）
+  whole_download_max_bytes: 31457280
+
+search:
+  # 浏览器端 VFS 每次 Range 请求的块大小；必须等于 db.page_size
+  request_chunk_size: 4096
+  # trigram：≥ 3 字走 MATCH；恰好 2 字走 LIKE；1 字拒绝
+  min_match_length: 3
+  # 函数版检索（可选加速）的探测路径；探测不到就回退浏览器端（铁律 3）
+  api_path: /api/search
+
+features:
+  # 牵一发动全身的功能默认关；打开动作本身是一个独立 commit（CONTRIBUTING §三）。
+  # flag 只能让站点退回更保守的形态，不能关掉 npm run check 里的任何守卫。
+  search_function: false   # 部署 Hono 函数加速检索
+  platform_config: true    # 把 _headers/_redirects/edgeone.json 放进 dist（关掉 = 纯静态基线）
+  text_layer: true         # 阅读器叠可选中的文字层
+
+budgets:
+  # 数字的来历见 docs/ARCHITECTURE.md §2「预算」
+  max_files: 18000
+  max_file_bytes: 20971520
+
+# 托管平台响应头（Cloudflare _headers / EdgeOne edgeone.json）。
+# GitHub Pages 没有响应头（铁律 2），所以这里每一条都只能是锦上添花，不能是必需。
+headers:
+  - path: /*
+    headers:
+      X-Content-Type-Options: nosniff
+      Referrer-Policy: strict-origin-when-cross-origin
+  - path: /index/*
+    headers:
+      Cache-Control: public, max-age=300
+  - path: /sitemap.xml
+    headers:
+      Content-Type: application/xml; charset=utf-8
+
+# 重定向：Cloudflare _redirects / EdgeOne redirects；GitHub Pages 用
+# <meta http-equiv="refresh"> 页面兜底（build:site 生成）。
+# - from: /old/path
+#   to: /new/path
+#   status: 301
+redirects: []
+
+deploy:
+  cloudflare:
+    # Pages 项目名（不是账号 ID；账号 ID 与 token 在 secrets）
+    project: comics-gallery
+  edgeone:
+    # 项目 ID 在 secrets（EDGEONE_PROJECT_ID）；这里只放部署形态
+    functions_dir: edge-functions
+  github:
+    # 写 CNAME 文件（内容 = site.domain）与 .nojekyll
+    cname: true

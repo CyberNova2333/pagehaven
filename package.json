@@ -1,0 +1,37 @@
+{
+  "name": "comics-gallery",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "ingest:labelplus": "node scripts/ingest-labelplus.mjs",
+    "ingest:ocr": "python3 scripts/ingest-ocr.py",
+    "build:config": "node scripts/build-config.mjs",
+    "build:manifest": "node scripts/build-manifest.mjs",
+    "build:db": "node scripts/build-db.mjs",
+    "build:site": "node scripts/build-site.mjs",
+    "build:index": "node scripts/build-index.mjs",
+    "build:sitemap": "node scripts/build-sitemap.mjs",
+    "build": "npm run build:config && npm run build:manifest && npm run build:db && npm run build:site && npm run build:index && npm run build:sitemap",
+    "check": "node scripts/check.mjs",
+    "lint": "eslint .",
+    "test": "node --test",
+    "publish:r2": "node scripts/publish-r2.mjs",
+    "deploy:cloudflare": "node scripts/deploy.mjs cloudflare",
+    "deploy:edgeone": "node scripts/deploy.mjs edgeone",
+    "deploy:github": "node scripts/deploy.mjs github",
+    "purge": "node scripts/purge.mjs",
+    "status": "node scripts/write-status.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "eslint": "^10.0.0",
+    "globals": "^17.0.0",
+    "js-yaml": "^4.1.0"
+  }
+}

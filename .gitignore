@@ -1,0 +1,14 @@
+# 依赖与产物（产物只进对象存储与 Actions artifact，不进仓库；STATUS.md 例外）
+node_modules/
+dist/
+out/
+.astro/
+# 由 build:config 从 site.config.yaml 生成，站点构建时读；不入库
+packages/site/src/generated/
+# 本地环境
+.env
+.env.*
+*.log
+.DS_Store
+# 钩子跑 Python 时留下的
+__pycache__/
