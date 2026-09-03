@@ -6,4 +6,3 @@
 
 | 日期 | 谁 | 在搞什么 | 预计动哪片 |
 |---|---|---|---|
-| 2026-09-03 | Claude | 仓库骨架与空跑（ARCHITECTURE §10 第 1 步起） | packages/ scripts/ workflows |

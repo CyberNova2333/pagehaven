@@ -13,11 +13,14 @@
 2. **填 secrets**（Settings → Secrets and variables → Actions）：
    `R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET`——对象存储的**写**凭据；
    要发 Cloudflare Pages 再加 `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID`；
-   要发 EdgeOne 再加 `EDGEONE_API_TOKEN` `EDGEONE_PROJECT_ID`；GitHub Pages 不需要额外 secrets。
+   要发 EdgeOne 再加 `EDGEONE_API_TOKEN` `EDGEONE_PROJECT_ID`（值填 Makers 的**项目名**，首次
+   先选 `deploy_env=preview` 核对）；GitHub Pages 不需要额外 secrets。救火用的 `purge` 另需
+   `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`，可以先不填。
 3. 改 [`site.config.yaml`](site.config.yaml) 里的 `site.domain` 与 `images.hosts`（图片经 CDN
    读对象存储；把 img 域名切到任何支持 S3 私有回源的 CDN 都行）。
-4. **Actions → 发布 → Run workflow**，选 `target`。整条流水线 = `package.json` 的 scripts，
-   任何 CI 都能跑。
+4. **Actions → 发布 → Run workflow**，选 `target`（首次可选 `deploy_env=preview`）。整条流水线 =
+   `package.json` 的 scripts，任何 CI 都能跑。图片与台词稿怎么进来：图片经 `IMAGES_DIR` 由
+   `publish:r2` 上传（或已在对象存储里），台词稿放 `data/raw/labelplus/`，发布时填 `chapters`。
 5. 把站点域名的 **CNAME** 指到新目标（TTL 300）。
 
 当前状态（版本、部署目标、对象清单）在 [`STATUS.md`](STATUS.md)，由发布流程自动写。
@@ -34,7 +37,8 @@ npm run build     # 全量静态构建（dry-run，不发布）
 ```
 
 `npm run build` = `build:config → build:manifest → build:db → build:site → build:index → build:sitemap`。
-发布（`publish:r2`、`deploy:*`、`status`）只由 `release.yml` 手动触发。
+发布（`verify:manifest`、`publish:r2`、`deploy:*`、`status`）只由 `release.yml` 手动触发；
+`ingest:labelplus` 把 `data/raw/labelplus/` 下的 LabelPlus 稿转成 `data/text/`。
 
 ## 目录
 
@@ -42,6 +46,7 @@ npm run build     # 全量静态构建（dry-run，不发布）
 site.config.yaml        唯一配置源：域名、缓存、响应头、重定向、功能开关（铁律 5）
 data/meta/<series>.yaml 作品 / 期 / 话 / 页 元数据（人工维护）
 data/text/<series>/…    台词层，每话一文件（ingest 生成）
+data/raw/labelplus/     LabelPlus 原始稿（手机在 GitHub 网页上传），ingest 的输入
 packages/core           schema、LabelPlus 解析、归一化、DB 构建、取块层 —— 只用 Web 标准 API
 packages/site           Astro：每话一个 HTML，阅读器，sitemap
 packages/search         浏览器端检索（sqlite-wasm + Range）；可选 Hono 函数壳
