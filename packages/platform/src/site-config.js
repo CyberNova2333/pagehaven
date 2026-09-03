@@ -62,6 +62,14 @@ export const SiteConfigSchema = z
         }),
       )
       .default([]),
+    seo: z
+      .strictObject({
+        // IndexNow（Bing / Yandex / Naver / Seznam 等共用）的 key。协议要求它公开放在站点根
+        // （https://<domain>/<key>.txt）供搜索引擎核对，所以它不是凭据、可以进配置（铁律 7 管的是
+        // 账号与 token）。留空 = 不推 IndexNow。格式按协议：8–128 位字母数字与连字符。
+        indexnow_key: z.union([z.literal(''), z.string().regex(/^[A-Za-z0-9-]{8,128}$/, 'IndexNow key 是 8–128 位字母、数字与连字符')]).default(''),
+      })
+      .default({ indexnow_key: '' }),
     deploy: z.strictObject({
       cloudflare: z.strictObject({ project: z.string().min(1) }),
       edgeone: z.strictObject({ functions_dir: z.string().min(1).default('edge-functions') }),

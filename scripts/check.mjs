@@ -9,7 +9,9 @@
 //      无原生依赖、不出现对象存储直连域名（铁律 1、7）
 //   4. workflow：没有 schedule:，release 只 workflow_dispatch，只有 checks.yml 可以 push 触发（铁律 6）
 //   5. data/ 合法：meta 与 text 过 schema、互相对得上（铁律 8：数据唯一来源是 R2 + data/）
-//   6. dist：文件数 ≤ 18 000、单文件 ≤ 20 MB、没有图片和 DB、每话恰好一个 HTML（铁律 4）
+//   6. dist：文件数 ≤ 18 000、单文件 ≤ 20 MB、没有图片和 DB、每话恰好一个 HTML（铁律 4）；
+//      sitemap 覆盖每一话（sitemap.xml 是 index 就跟进它指向的各分片，每片 ≤ 协议上限 50 000 条）；
+//      seo.indexnow_key 非空时 dist/<key>.txt 存在且内容逐字节等于 key（IndexNow 协议按字节比对）
 //   7. out/db 里的 sqlite：文件头里的 page_size 与配置一致；chunks.json 的块大小一致
 //   8. lint
 //
@@ -25,6 +27,7 @@ import { generateAll } from '@gallery/platform';
 import { loadSiteConfig } from './lib/config.mjs';
 import { loadGallery } from './lib/data.mjs';
 import { ROOT, DATA_DIR, DIST_DIR, OUT_DB_DIR, PLATFORM_GENERATED_DIR, WORKFLOWS_DIR } from './lib/paths.mjs';
+import { parseSitemap, indexNowKeyFile, SITEMAP_FILE, SITEMAP_PROTOCOL_MAX_URLS } from './lib/sitemap.mjs';
 import { step, ok, fail, note, warn } from './lib/log.mjs';
 
 const WEB_ONLY_PACKAGES = ['core', 'site', 'search'];
@@ -172,7 +175,7 @@ await section('data/：meta 与 text 过 schema 且互相对得上', async () =>
 });
 
 // ── 6. dist 预算 ─────────────────────────────────────────────────────
-await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰好一个 HTML', async () => {
+await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰好一个 HTML / sitemap 覆盖每话 / IndexNow key 文件', async () => {
   if (!config) return ['配置不合法，跳过'];
   if (!gallery) return ['data/ 不合法，跳过'];
   if (!existsSync(DIST_DIR)) {
@@ -204,6 +207,65 @@ await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰�
     if (htmls.length !== 1) {
       problems.push(`${c.key} 下有 ${htmls.length} 个 HTML，应恰好一个（阅读器内翻页，#p12 深链，不做每页一 HTML）：${htmls.map(rel).join(', ')}`);
     }
+  }
+
+  // sitemap 覆盖每一话：话是站点的主体，漏一话搜索引擎就永远不知道它。sitemap.xml 是 index 时把它指向的
+  // 各分片都读进来；每片顺带核对协议上限。只用正则抓 <loc>（parseSitemap）——文件是自己生成的、形状固定，
+  // 守卫不该为一次核对多拉一个 XML 解析依赖
+  const origin = `https://${config.site.domain}`;
+  const sitemapPath = join(DIST_DIR, SITEMAP_FILE);
+  if (!existsSync(sitemapPath)) {
+    problems.push(`${rel(sitemapPath)} 不存在——跑 npm run build:sitemap`);
+  } else {
+    let top = null;
+    try {
+      top = parseSitemap(await readFile(sitemapPath, 'utf8'));
+    } catch (e) {
+      problems.push(`${rel(sitemapPath)}：${e.message}`);
+    }
+    /** @type {{ path: string, locs: string[] }[]} */
+    const shards = [];
+    if (top && !top.index) shards.push({ path: sitemapPath, locs: top.locs });
+    if (top?.index) {
+      for (const loc of top.locs) {
+        // index 里的分片是绝对 URL，只认本站的，按路径映射回 dist 里的文件
+        const segs = loc.startsWith(`${origin}/`) ? loc.slice(origin.length + 1).split('/') : null;
+        if (!segs || segs.some((s) => s === '' || s === '.' || s === '..')) {
+          problems.push(`${rel(sitemapPath)} 指向站外或形状不对的分片：${loc}`);
+          continue;
+        }
+        const p = join(DIST_DIR, ...segs);
+        if (!existsSync(p)) {
+          problems.push(`${rel(sitemapPath)} 指向的分片 ${loc} 在 dist 里不存在（${rel(p)}）`);
+          continue;
+        }
+        try {
+          const shard = parseSitemap(await readFile(p, 'utf8'));
+          if (shard.index) problems.push(`${rel(p)} 又是一个 sitemap index（协议不允许嵌套）`);
+          else shards.push({ path: p, locs: shard.locs });
+        } catch (e) {
+          problems.push(`${rel(p)}：${e.message}`);
+        }
+      }
+    }
+    const locs = new Set();
+    for (const s of shards) {
+      if (s.locs.length > SITEMAP_PROTOCOL_MAX_URLS) problems.push(`${rel(s.path)} 有 ${s.locs.length} 条 URL，超过协议上限 ${SITEMAP_PROTOCOL_MAX_URLS}`);
+      for (const l of s.locs) locs.add(l);
+    }
+    if (top) {
+      // 顶层都解析不了时不逐话点名：那只会把同一个原因重复几千遍
+      for (const c of gallery.chapters) if (!locs.has(origin + c.url)) problems.push(`sitemap 缺 ${c.key}（${origin + c.url}）`);
+      note(`sitemap：${shards.length} 个文件、${locs.size} 条 URL${top.index ? '（index 形态）' : ''}`);
+    }
+  }
+
+  // IndexNow key 文件：协议按字节比对 https://<domain>/<key>.txt 与 key，连末尾换行都不能有
+  const keyFile = indexNowKeyFile(config);
+  if (keyFile) {
+    const p = join(DIST_DIR, keyFile.name);
+    if (!existsSync(p)) problems.push(`${rel(p)} 不存在（seo.indexnow_key 非空时 build:sitemap 会写它）`);
+    else if ((await readFile(p, 'utf8')) !== keyFile.content) problems.push(`${rel(p)} 的内容与 seo.indexnow_key 不同（协议逐字节比对，末尾不能有换行）`);
   }
   return problems;
 });

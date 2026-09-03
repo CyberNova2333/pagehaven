@@ -32,7 +32,8 @@ sitemap。产物是纯静态文件，托管在 Cloudflare Pages / EdgeOne Makers
 4. **`npm run check` 必须通过才能提交。** 它守的是：dist 文件数 ≤ 18 000、
    单文件 ≤ 20 MB、dist 里没有图片和 DB、每话恰好一个 HTML、DB 的
    `page_size` 与检索端 `requestChunkSize` 一致、配置生成物与
-   `site.config.yaml` 同步。数字的来历见 `docs/ARCHITECTURE.md`「预算」。
+   `site.config.yaml` 同步、sitemap 覆盖每一话。数字的来历见
+   `docs/ARCHITECTURE.md`「预算」。
 
 5. **单一配置源。** 域名、缓存、响应头、重定向只改 `site.config.yaml`；
    `_headers` / `_redirects` / `edgeone.json` 是生成物，不手改。
