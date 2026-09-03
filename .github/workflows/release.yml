@@ -28,6 +28,10 @@ on:
         description: '版本号；留空 = <UTC 日期>.<运行序号>。同一版本号只发布一次（版本化 key 一年不可变）'
         required: false
         default: ''
+      push_all:
+        description: '向搜索引擎推送全部页面而不只是本次新增的（换域名、首次接入某引擎时用）'
+        type: boolean
+        default: false
 
 # 同一时间只跑一个发布，且不取消进行中的：发布做到一半被顶掉比等一会儿糟得多。
 concurrency:
@@ -205,6 +209,17 @@ jobs:
 
       # 这是唯一允许由 CI 身份提交的东西（AGENTS.md §1 三）：ingest 写回的 data/text 与 STATUS.md。
       # 顶格独占一行的 [skip-hooks] 是记录在案的豁免——机器写的信息没有 Co-authored-by 可署。
+      # 页面已经上线（本 job 在两条部署与 GitHub Pages 之后跑），这时才通知搜索引擎：只推本次
+      # 新增的页面（publish:r2 存下的线上旧 manifest 与新 manifest 的差集）。IndexNow 的 key 在
+      # site.config.yaml（协议要求公开），百度的 token 只在 secrets；Google 没有普通页面的推送接口。
+      # 推送失败要看得见，但不该把已经完成的部署判成失败：continue-on-error 让这一步单独红。
+      - name: 推送新页面给搜索引擎
+        if: inputs.target != 'none'
+        continue-on-error: true
+        env:
+          BAIDU_PUSH_TOKEN: ${{ secrets.BAIDU_PUSH_TOKEN }}
+        run: npm run push:search -- ${{ inputs.push_all && '--all' || '' }}
+
       # 上一步列举对象存储失败时也已经把 STATUS.md 写好（那一格记「列出失败」），照样提交：
       # 本次 ingest 写回的 data/text 不能因为一次列举失败就只留在 14 天过期的 artifact 里。
       - name: 提交 data/ 与 STATUS.md
