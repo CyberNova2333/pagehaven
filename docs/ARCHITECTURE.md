@@ -76,7 +76,9 @@ Cloudflare Workers 或 Makers Cloud Functions，且永远可选。
 `EDGEONE_PROJECT_ID`（值是 Makers 的**项目名**：CLI 的 `-n` 语义是「不存在就新建」，
 填错不报错而是静默新建同名项目——首次部署先 `deploy_env=preview` 核对）；可选
 `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`（云 API 密钥对 + 站点 ID，
-只给 `purge` 用，与 Makers 的 token 不是一回事）、`ESA_*`（清缓存，未实现）。CDN 的回源凭据是一对**只读**的
+只给 `purge` 用，与 Makers 的 token 不是一回事）、`BAIDU_PUSH_TOKEN`（百度站长平台该站点的
+链接提交 token，只给 `push:search` 用；IndexNow 的 key 不是凭据，在 `site.config.yaml`）、
+`ESA_*`（清缓存，未实现）。CDN 的回源凭据是一对**只读**的
 R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 
 代码分层：`packages/core`（schema、解析器、归一化、DB 构建）、`packages/site`
@@ -146,15 +148,27 @@ build:manifest     data/meta → out/manifest.json；有存储凭据时核对图
 build:db           → gallery.sqlite
 build:site         astro build（每话一 HTML，文字层内嵌）
 build:index        元数据索引 JSON，按作品分片
-build:sitemap
+build:sitemap      data/meta → dist/sitemap.xml（> 45 000 条时拆成 sitemap index + sitemap-<n>.xml）、
+                   robots.txt；seo.indexnow_key 非空时另写 dist/<key>.txt（IndexNow 协议要求）
 build:config       site.config.yaml → _headers / _redirects / edgeone.json
-check              文件数、单文件、dist 无图片/DB、page_size、配置生成物同步、core 无 node: 导入
-publish:r2         上传 gallery-<v>.sqlite(+chunks.json) / archive/site-<v>.tar.zst / 新图片（IMAGES_DIR）
+check              文件数、单文件、dist 无图片/DB、page_size、配置生成物同步、core 无 node: 导入、
+                   sitemap 覆盖每一话（分片 ≤ 50 000 条）、IndexNow key 文件与配置一致
+publish:r2         先把线上旧 db/manifest.json 原样存成 out/manifest-previous.json（push:search 的基线），
+                   再上传 gallery-<v>.sqlite(+chunks.json) / archive/site-<v>.tar.zst / 新图片（IMAGES_DIR）
                    → 逐 key 核对 → 最后才传 db/manifest.json（当前版本指针；中途失败线上仍指上一版）
 deploy:cloudflare  deploy:edgeone  deploy:github（DEPLOY_ENV=production|preview）
 purge              可选救火：EdgeOne CreatePurgeTask（任一目标被拒即失败）；ESA 未实现
+push:search        部署之后（release.yml 的 status job）主动把本次新增的页面推给搜索引擎：
+                   IndexNow（seo.indexnow_key，Bing / Yandex / Naver / Seznam 共用）与百度链接提交
+                   （BAIDU_PUSH_TOKEN）；Google 没有普通页面的推送接口，靠 robots.txt 的 Sitemap 声明。
+                   新页面 = 新 manifest 与 out/manifest-previous.json 的 URL 差集；--all 推全部
 status             写 STATUS.md（只由 release.yml 调用）
 ```
+
+搜索引擎推送的约定：只推差集不全推（引擎按频率与配额判滥发，上万话的站每次全推很快被拒）；
+推之前先 GET 线上的 `/<key>.txt` 核对（隔 20 秒最多试 6 次，给 CDN 铺开留时间），不对就一条
+都不推——它兼作「站点已上线」的探针；推送失败在 release.yml 里 `continue-on-error`，单独标红、
+不判已完成的部署失败；页面集合与 sitemap 出自同一份 `scripts/lib/sitemap.mjs`。
 
 版本号、上传顺序、缓存头的约定：带版本号的 key（库、分块摘要、归档）一年 immutable，
 `db/manifest.json` 只缓存 5 分钟；`chunks.json` 也按 `application/octet-stream` 上传，
@@ -162,9 +176,9 @@ status             写 STATUS.md（只由 release.yml 调用）
 
 `release.yml`：`workflow_dispatch`，输入 `chapters`（逗号分隔）、`target`
 （none | cloudflare | edgeone | github | all）、`ocr`（bool）、`deploy_env`
-（production | preview）、`version`（留空 = 日期.运行序号）。步骤：ingest → build →
-check → verify:manifest → publish:r2 → deploy → 写 `STATUS.md` 并连同 ingest 写回的
-`data/text` 提交。`checks.yml`：push 触发，跑 check / test / build dry-run，再用测试样本
+（production | preview）、`version`（留空 = 日期.运行序号）、`push_all`（推送全部页面）。步骤：ingest → build →
+check → verify:manifest → publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest
+写回的 `data/text` 提交。`checks.yml`：push 触发，跑 check / test / build dry-run，再用测试样本
 全量空跑一遍并 check，然后移动 `last-green`。
 
 为什么构建在 GitHub Actions 而不是平台构建机：仓库公开时标准 runner 免费无配额，
@@ -339,4 +353,12 @@ check → verify:manifest → publish:r2 → deploy → 写 `STATUS.md` 并连�
   5. 取块层默认 `timeoutMs=15000` / `budgetMs=60000` 在真实 CDN 上是否合适；两家 CDN 对 HEAD 的
      实际行为（是否放行、是否带 `Accept-Ranges`、`Content-Length` 是否为 0）。
   6. 用翻译组一份真实的 LabelPlus 导出跑一次 `ingest:labelplus`，核对分隔符形状与坐标小数位。
+  7. 首次 `push:search`：IndexNow 回 403 说明引擎取不到 `/<key>.txt`（托管平台对 .txt 的
+     Content-Type 或缓存）、422 说明 urlList 的 host 与 `host` 不一致（www 与裸域名）；百度的 `site`
+     参数是 `https://<domain>`，须与站长平台登记的完全一致（协议、www），token 在「普通收录 → API
+     提交」处取，首次全站推送可能超当日配额、超出部分下次再推。
+- 2026-09-03 sitemap 与搜索引擎推送。拆分线 45 000（协议 50 000）留余量，index 的 `<lastmod>` 是生成日；
+  `sitemap.xml` 永远是入口（单文件或 index），分片 `sitemap-<n>.xml`，robots 与外部登记只指入口。
+  IndexNow 的 key 进 `site.config.yaml` 而不是 secrets：协议要求它公开放在站点根，不是凭据。
+  推送脚本不做已下线页面的通知（IndexNow 支持推已删除 URL 让引擎重抓，将来需要再加）。
 

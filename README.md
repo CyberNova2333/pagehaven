@@ -15,7 +15,8 @@
    要发 Cloudflare Pages 再加 `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID`；
    要发 EdgeOne 再加 `EDGEONE_API_TOKEN` `EDGEONE_PROJECT_ID`（值填 Makers 的**项目名**，首次
    先选 `deploy_env=preview` 核对）；GitHub Pages 不需要额外 secrets。救火用的 `purge` 另需
-   `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`，可以先不填。
+   `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`，可以先不填；要主动向百度推送
+   新页面再加 `BAIDU_PUSH_TOKEN`（IndexNow 的 key 填在 `site.config.yaml` 的 `seo.indexnow_key`）。
 3. 改 [`site.config.yaml`](site.config.yaml) 里的 `site.domain` 与 `images.hosts`（图片经 CDN
    读对象存储；把 img 域名切到任何支持 S3 私有回源的 CDN 都行）。
 4. **Actions → 发布 → Run workflow**，选 `target`（首次可选 `deploy_env=preview`）。整条流水线 =
@@ -37,7 +38,7 @@ npm run build     # 全量静态构建（dry-run，不发布）
 ```
 
 `npm run build` = `build:config → build:manifest → build:db → build:site → build:index → build:sitemap`。
-发布（`verify:manifest`、`publish:r2`、`deploy:*`、`status`）只由 `release.yml` 手动触发；
+发布（`verify:manifest`、`publish:r2`、`deploy:*`、`status`、`push:search`）只由 `release.yml` 手动触发；
 `ingest:labelplus` 把 `data/raw/labelplus/` 下的 LabelPlus 稿转成 `data/text/`。
 
 ## 目录

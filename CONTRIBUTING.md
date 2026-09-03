@@ -30,7 +30,7 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
    |---|---|
    | 文档、`data/`、`site.config.yaml` | `npm run check` |
    | `packages/core` `packages/site` `packages/search` | + `npm test` + `npm run build` 全量 |
-   | `packages/platform/`、`scripts/deploy.mjs` `scripts/publish-r2.mjs` `scripts/lib/deploy-plan.mjs`、workflow | + 以 `target=<平台>`、`deploy_env=preview` 真实部署一次 |
+   | `packages/platform/`、`scripts/deploy.mjs` `scripts/publish-r2.mjs` `scripts/seo-push.mjs` `scripts/lib/deploy-plan.mjs`、workflow | + 以 `target=<平台>`、`deploy_env=preview` 真实部署一次 |
    | 数据 schema、DB 结构 | + 重建 DB 并在检索页上用真实数据查一次 |
 
    `checks.yml` 会按 diff 路径在运行摘要里标出级别。最后两级 CI 替代不了，
