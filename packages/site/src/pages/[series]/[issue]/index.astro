@@ -1,0 +1,44 @@
+---
+// 期页：话列表（number、title、页数、有无台词稿）。
+import Base from '../../../layouts/Base.astro';
+import siteConfig from '../../../generated/site-config.json';
+import gallery from '../../../generated/gallery.json';
+
+export function getStaticPaths() {
+  return gallery.series.flatMap((s) =>
+    s.issues.map((iss) => ({ params: { series: s.id, issue: iss.id }, props: { series: s, issue: iss } })),
+  );
+}
+
+const { series, issue } = Astro.props;
+// 「有台词」只在文字层开着时标：features.text_layer 关了阅读器就没有文字层，列表不该还承诺。
+// hasText 本身是数据（索引分片里照写），这里管的只是展示。
+const showText = siteConfig.features.text_layer;
+---
+
+<Base
+  title={`${issue.title} · ${series.title}`}
+  url={issue.url}
+  crumbs={[{ text: series.title, href: series.url }, { text: issue.title }]}
+>
+  <h1>{issue.title}</h1>
+  <p class="muted">
+    {series.title} · {issue.chapters.length} 话{issue.published ? ` · ${issue.published}` : ''}
+  </p>
+  <ul class="list">
+    {
+      issue.chapters.map((c) => (
+        <li>
+          <a href={c.url}>
+            <span class="num">{c.number}</span> {c.title}
+          </a>
+          <small>{c.pages.length} 页{showText && c.hasText ? ' · 有台词' : ''}</small>
+        </li>
+      ))
+    }
+  </ul>
+</Base>
+
+<style>
+  .num { display: inline-block; min-width: 2em; color: var(--muted); }
+</style>

@@ -13,13 +13,19 @@ import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
 import { GENERATED_FILES } from '@gallery/platform';
 import { loadSiteConfig } from './lib/config.mjs';
+import { loadGallery } from './lib/data.mjs';
 import { DATA_DIR, DIST_DIR, PLATFORM_GENERATED_DIR, ROOT, SITE_DIR } from './lib/paths.mjs';
-import { writeSiteConfigJson } from './lib/site-generated.mjs';
+import { writeSiteConfigJson, writeSiteGalleryJson } from './lib/site-generated.mjs';
 import { step, ok, note, warn } from './lib/log.mjs';
 
 step('build:site');
 const config = await loadSiteConfig();
 await writeSiteConfigJson(config);
+// 数据进站点的唯一通道：模型写成 src/generated/ 下的 JSON，页面用 import / import.meta.glob 读。
+// 0 话时也照建——gallery.json 是空树、text/ 是空目录，动态路由生成不出页面，其余页面照常。
+const gallery = await loadGallery({ dataDir: DATA_DIR, imagePrefix: config.images.prefix });
+const generated = await writeSiteGalleryJson(gallery);
+note(`${relative(ROOT, generated.galleryFile)}：${gallery.totals.series} 个作品、${gallery.totals.chapters} 话；台词分片 ${generated.textFiles.length} 份`);
 await rm(DIST_DIR, { recursive: true, force: true });
 
 // 不经 npx，直接用 node 跑 astro 包自己声明的 bin：在 Actions / Codespaces / 任何本地环境

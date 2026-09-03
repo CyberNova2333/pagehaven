@@ -1,0 +1,32 @@
+---
+// 作品页：期列表（number、title、published、话数）。
+import Base from '../../layouts/Base.astro';
+import gallery from '../../generated/gallery.json';
+
+export function getStaticPaths() {
+  return gallery.series.map((s) => ({ params: { series: s.id }, props: { series: s } }));
+}
+
+const { series } = Astro.props;
+---
+
+<Base title={series.title} url={series.url} crumbs={[{ text: series.title }]}>
+  <h1>{series.title}</h1>
+  <p class="muted">{series.issues.length} 期</p>
+  <ul class="list">
+    {
+      series.issues.map((iss) => (
+        <li>
+          <a href={iss.url}>
+            <span class="num">{iss.number}</span> {iss.title}
+          </a>
+          <small>{iss.chapters.length} 话{iss.published ? ` · ${iss.published}` : ''}</small>
+        </li>
+      ))
+    }
+  </ul>
+</Base>
+
+<style>
+  .num { display: inline-block; min-width: 2em; color: var(--muted); }
+</style>

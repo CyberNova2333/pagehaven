@@ -1,0 +1,78 @@
+---
+// 所有页面共用的外壳：lang / title / viewport / canonical / og:title、深色主题、极简内联样式、
+// 页脚一行回首页。不用 UI 框架——站点要在三平台的纯静态基线上跑（铁律 2），每话一个 HTML 又
+// 有 18 000 份的量级（ARCHITECTURE §2），外壳越薄越好；样式随 inlineStylesheets=always 内联，
+// dist 里不多出一个文件。
+//
+// props：
+//   title    页面标题（不含站名；空则只用站名）
+//   url      站内路径（以 / 开头、/ 结尾），拼 canonical 与 og:url 用；域名来自 site.config.yaml
+//   crumbs   面包屑 [{ text, href? }]，首页那一级由外壳自己加
+//   noindex  真则不出 canonical、加 robots noindex（404 页用）
+import siteConfig from '../generated/site-config.json';
+
+const { site } = siteConfig;
+const { title = '', url = '/', crumbs = [], noindex = false, description = '' } = Astro.props;
+const fullTitle = title ? `${title} · ${site.title}` : site.title;
+const canonical = `https://${site.domain}${url}`;
+---
+
+<!doctype html>
+<html lang={site.lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>{fullTitle}</title>
+    {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.title} />
+    {!noindex && <meta property="og:url" content={canonical} />}
+    {description && <meta name="description" content={description} />}
+    <slot name="head" />
+    <style is:global>
+      :root {
+        color-scheme: dark;
+        --bg: #111;
+        --fg: #eee;
+        --muted: #aaa;
+        --link: #9cf;
+        --line: #333;
+        --accent: #ffd166;
+      }
+      html { background: var(--bg); color: var(--fg); }
+      body { margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; line-height: 1.5; }
+      a { color: var(--link); }
+      a:hover { text-decoration: underline; }
+      header, main, footer { max-width: 64rem; margin: 0 auto; padding: 0 1rem; }
+      header { padding-top: 0.75rem; font-size: 0.9rem; color: var(--muted); }
+      header a { color: var(--muted); text-decoration: none; }
+      header a:hover { color: var(--fg); }
+      .crumbs span[aria-hidden] { margin: 0 0.4em; }
+      main { padding-top: 0.5rem; padding-bottom: 2rem; }
+      h1 { font-size: 1.5rem; margin: 0.5rem 0 0.75rem; }
+      .muted { color: var(--muted); }
+      .list { list-style: none; padding: 0; margin: 0; }
+      .list li { padding: 0.55rem 0; border-top: 1px solid var(--line); }
+      .list li:last-child { border-bottom: 1px solid var(--line); }
+      .list small { color: var(--muted); margin-left: 0.5em; }
+      footer { padding: 1rem; border-top: 1px solid var(--line); font-size: 0.9rem; color: var(--muted); text-align: center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="crumbs" aria-label="位置">
+        <a href="/">{site.title}</a>
+        {crumbs.map((c) => (
+          <>
+            <span aria-hidden="true">›</span>
+            {c.href ? <a href={c.href}>{c.text}</a> : <span>{c.text}</span>}
+          </>
+        ))}
+      </nav>
+    </header>
+    <main><slot /></main>
+    <footer><a href="/">回首页</a></footer>
+  </body>
+</html>

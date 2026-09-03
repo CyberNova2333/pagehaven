@@ -1,0 +1,314 @@
+---
+// 阅读器：每话恰好一个 HTML（ARCHITECTURE §2：文件数预算不允许每页一个），全部页的 <picture>
+// 与文字层都在这一份里，翻页在页内完成，#p<n> 深链定位到某一页。
+//
+// 渐进增强：初始 DOM 全部页纵向可见、文字层是普通 DOM 文本——没有 JS 时照样能读、能选、
+// 爬虫能看见台词；页尾的内联脚本一跑才切成单页模式。脚本内联而不是 hoist 成独立文件，是为了
+// 它紧跟在阅读器 DOM 后面同步执行，不会先闪一下全部页再收成单页；代价是每份 HTML 多几 KB。
+//
+// hash 约定（检索结果也按这个链过来）：
+//   #p<n>        打开时显示第 n 页；翻页时用 replaceState 更新，不刷新、不堆历史
+//   #p<n>b<i>    同时高亮第 n 页的第 i 个框；没有 JS 时靠 :target 高亮 + 浏览器原生滚到锚点
+// 键盘：← 上一页、→ 下一页；点击页面左半 / 右半也翻页（正在选文字时不翻）。
+import Base from '../../../../layouts/Base.astro';
+import siteConfig from '../../../../generated/site-config.json';
+import gallery from '../../../../generated/gallery.json';
+import { boxStyle, chaptersByKey, imageUrl, isDot, urlForKey } from '../../../../lib/gallery.js';
+
+export function getStaticPaths() {
+  // 上一话 / 下一话要显示标题，模型里只有 key：查找表在这里建一次就够。getStaticPaths 整个构建只跑
+  // 一次，而下面的 frontmatter 是每话跑一次——把表建在那里就是每话重建一张全站的表，18 000 话下是 O(N²)。
+  const byKey = chaptersByKey(gallery);
+  const link = (key) => {
+    if (!key) return null;
+    const c = byKey.get(key);
+    if (!c) throw new Error(`gallery.json 里 prev/next 指向不存在的话：${key}`);
+    return { key: c.key, title: c.title };
+  };
+  return gallery.series.flatMap((s) =>
+    s.issues.flatMap((iss) =>
+      iss.chapters.map((c) => ({
+        params: { series: s.id, issue: iss.id, chapter: c.id },
+        props: { series: s, issue: iss, chapter: c, prev: link(c.prev), next: link(c.next) },
+      })),
+    ),
+  );
+}
+
+// 台词按话分片在 src/generated/text/ 下，用 glob 按需取自己那一份（Vite 处理，不是 Node）。
+// 模式以 / 开头 = 相对项目根，键就是那个路径，不随本文件的嵌套深度变。
+const textModules = import.meta.glob('/src/generated/text/**/*.json', { import: 'default' });
+
+const { series, issue, chapter, prev, next } = Astro.props;
+const { images, features } = siteConfig;
+// 切源脚本（下面第一段 is:inline）里换域名的那一行与 lib/gallery.js 的 swapHost 是同一条规则；
+// 内联脚本没法 import，只能各留一份——改一处要同步另一处，单测在 swapHost 那边。
+const hosts = images.hosts;
+const wantText = features.text_layer && chapter.hasText;
+const loadText = textModules[`/src/generated/text/${chapter.key}.json`];
+// 数据说有台词、分片却取不到，是构建错误，不是「本来就没台词」：这里若静默退化成无文字层，
+// check 守卫事后抓不到（它只数 HTML），分片路径或 glob 键格式一旦变动，全站会整体丢掉文字层而没有任何报错。
+if (wantText && !loadText) {
+  throw new Error(`${chapter.key} 标记 hasText 但 src/generated/text/ 下没有对应分片——先跑 npm run build:site`);
+}
+const text = wantText ? await loadText() : { pages: [] };
+const boxesByN = new Map(text.pages.map((p) => [p.n, p.boxes]));
+
+const total = chapter.pages.length;
+const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
+---
+
+<Base
+  title={`${chapter.title} · ${issue.title} · ${series.title}`}
+  url={chapter.url}
+  crumbs={[{ text: series.title, href: series.url }, { text: issue.title, href: issue.url }, { text: chapter.title }]}
+>
+  <h1>{chapter.title}</h1>
+  <p class="muted">
+    {series.title} · {issue.title} · 共 {total} 页{boxCount ? ` · ${boxCount} 条台词` : ''}
+  </p>
+
+  <nav class="chapter-nav" aria-label="上一话 / 下一话">
+    {prev ? <a rel="prev" href={urlForKey(prev.key)}>← 上一话：{prev.title}</a> : <span></span>}
+    <a href={issue.url}>目录</a>
+    {next ? <a rel="next" href={urlForKey(next.key)}>下一话：{next.title} →</a> : <span></span>}
+  </nav>
+
+  <!-- 图片加载失败：把这一张的域名换成第二条图片源再试一次。要在任何图片可能出错之前注册，
+       所以放在阅读器 DOM 前面；error 不冒泡，用捕获。 -->
+  <script is:inline data-hosts={JSON.stringify(hosts)}>
+    (function () {
+      var hosts = JSON.parse(document.currentScript.dataset.hosts);
+      if (hosts.length < 2) return;
+      var swapHost = function (u) {
+        return u.replace('//' + hosts[0] + '/', '//' + hosts[1] + '/');
+      };
+      document.addEventListener(
+        'error',
+        function (e) {
+          var img = e.target;
+          if (!img || img.tagName !== 'IMG' || !img.closest('.page') || img.dataset.retried) return;
+          img.dataset.retried = '1';
+          var pic = img.parentNode;
+          if (pic && pic.tagName === 'PICTURE') {
+            Array.prototype.forEach.call(pic.querySelectorAll('source'), function (s) {
+              s.srcset = swapHost(s.srcset);
+            });
+          }
+          img.src = swapHost(img.src);
+        },
+        true,
+      );
+    })();
+  </script>
+
+  <div id="reader" class="reader" data-total={total}>
+    <p class="pager">
+      <a id="page-prev" href="#p1" hidden>← 上一页</a>
+      <span>第 <span id="page-cur">1</span> / {total} 页</span>
+      <a id="page-next" href="#p2" hidden={total <= 1}>下一页 →</a>
+      {boxCount > 0 && (
+        <label class="text-toggle"><input type="checkbox" id="text-toggle" /> 显示文字</label>
+      )}
+    </p>
+    {
+      chapter.pages.map((p) => {
+        const boxes = boxesByN.get(p.n) ?? [];
+        return (
+          <section class="page" id={`p${p.n}`} data-n={p.n}>
+            <p class="page-num muted">第 {p.n} 页</p>
+            <div class="frame" style={`aspect-ratio:${p.w}/${p.h}`}>
+              <picture>
+                <source type="image/avif" srcset={imageUrl(hosts[0], p.keys.avif)} />
+                <img
+                  src={imageUrl(hosts[0], p.keys.webp)}
+                  loading="lazy"
+                  decoding="async"
+                  width={p.w}
+                  height={p.h}
+                  alt={`${chapter.title} 第 ${p.n} 页`}
+                />
+              </picture>
+              {boxes.length > 0 && (
+                <div class="text-layer">
+                  {/* 框内文本与标签写在同一行：.box 是 pre-wrap，换行缩进会变成可见空白把字挤歪 */}
+                  {boxes.map((b) => (
+                    <span class:list={['box', { dot: isDot(b) }]} id={`p${p.n}b${b.i}`} style={boxStyle(b)}>{b.t}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        );
+      })
+    }
+  </div>
+
+  <nav class="chapter-nav" aria-label="上一话 / 下一话">
+    {prev ? <a rel="prev" href={urlForKey(prev.key)}>← 上一话：{prev.title}</a> : <span></span>}
+    <a href={issue.url}>目录</a>
+    {next ? <a rel="next" href={urlForKey(next.key)}>下一话：{next.title} →</a> : <span></span>}
+  </nav>
+
+  <script is:inline>
+    (function () {
+      var reader = document.getElementById('reader');
+      var pages = Array.prototype.slice.call(reader.querySelectorAll('.page'));
+      var total = pages.length;
+      if (!total) return;
+      var curEl = document.getElementById('page-cur');
+      var prevLink = document.getElementById('page-prev');
+      var nextLink = document.getElementById('page-next');
+      var toggle = document.getElementById('text-toggle');
+      var cur = 1;
+      var hl = null;
+
+      function parseHash(h) {
+        var m = /^#p(\d+)(?:b(\d+))?$/.exec(h || '');
+        return m ? { n: +m[1], b: m[2] === undefined ? null : +m[2] } : null;
+      }
+      function clamp(n) {
+        return Math.min(Math.max(n, 1), total);
+      }
+      // 下一页的图先拉起来：display:none 里的 lazy 图不会加载，改成 eager 就会——
+      // 用 <picture> 自己的选源，不用猜浏览器认 avif 还是 webp。
+      function warm(n) {
+        var p = pages[n - 1];
+        var img = p && p.querySelector('img');
+        if (img && img.loading === 'lazy') img.loading = 'eager';
+      }
+      function show(n, opts) {
+        opts = opts || {};
+        n = clamp(n);
+        pages.forEach(function (p, i) {
+          p.classList.toggle('current', i === n - 1);
+        });
+        cur = n;
+        curEl.textContent = String(n);
+        prevLink.hidden = n <= 1;
+        prevLink.href = '#p' + Math.max(n - 1, 1);
+        nextLink.hidden = n >= total;
+        nextLink.href = '#p' + Math.min(n + 1, total);
+        if (!opts.keepHash) history.replaceState(null, '', '#p' + n);
+        warm(n);
+        warm(n + 1);
+        if (opts.scroll) reader.scrollIntoView();
+      }
+      function highlight(n, b) {
+        if (hl) hl.classList.remove('hl');
+        hl = b === null ? null : document.getElementById('p' + n + 'b' + b);
+        if (hl) {
+          hl.classList.add('hl');
+          hl.scrollIntoView({ block: 'center' });
+        }
+      }
+      function applyHash(scroll) {
+        var t = parseHash(location.hash);
+        if (t) {
+          show(t.n, { keepHash: true, scroll: scroll });
+          highlight(t.n, t.b);
+        } else {
+          show(1, { keepHash: true });
+        }
+      }
+      function go(delta) {
+        var n = cur + delta;
+        if (n < 1 || n > total) return;
+        highlight(n, null);
+        show(n);
+      }
+
+      reader.classList.add('js');
+      applyHash(false);
+      window.addEventListener('hashchange', function () {
+        applyHash(true);
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+        var t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        if (e.key === 'ArrowLeft') go(-1);
+        else if (e.key === 'ArrowRight') go(1);
+        else return;
+        e.preventDefault();
+      });
+      [prevLink, nextLink].forEach(function (a, i) {
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          go(i === 0 ? -1 : 1);
+        });
+      });
+      reader.addEventListener('click', function (e) {
+        var frame = e.target.closest('.frame');
+        if (!frame || e.target.closest('.box')) return;
+        var sel = window.getSelection();
+        if (sel && sel.toString()) return;
+        var r = frame.getBoundingClientRect();
+        go(e.clientX - r.left < r.width / 2 ? -1 : 1);
+      });
+      if (toggle) {
+        toggle.addEventListener('change', function () {
+          reader.classList.toggle('show-text', toggle.checked);
+        });
+      }
+    })();
+  </script>
+</Base>
+
+<!-- 样式用 is:global 而不是作用域样式：作用域样式会给每个元素——包括每个台词框——加一个
+     data-astro-cid 属性，18 000 话 × 每页几十个框就是几十 MB 的无用字节。所有选择器都以
+     .reader / .chapter-nav 开头，只作用于这一页的结构。 -->
+<style is:global>
+  .chapter-nav { display: flex; justify-content: space-between; gap: 1rem; margin: 0.75rem 0; font-size: 0.95rem; }
+  .chapter-nav a { text-decoration: none; }
+  .reader { margin: 0.5rem 0 1rem; }
+  .reader .pager { display: none; justify-content: center; align-items: center; gap: 1rem; margin: 0.5rem 0; color: var(--muted); }
+  .reader .pager a { text-decoration: none; }
+  .reader .text-toggle { cursor: pointer; }
+  .reader .page { margin: 0 0 1.5rem; }
+  .reader .page-num { font-size: 0.85rem; margin: 0 0 0.25rem; }
+
+  /* 定位容器：按 w/h 定纵横比，图没到之前也占好位；容器查询单位给文字框定字号 */
+  .reader .frame { position: relative; container-type: inline-size; background: #000; aspect-ratio: 1; }
+  .reader .frame img { display: block; width: 100%; height: auto; }
+  .reader .text-layer { position: absolute; inset: 0; }
+  /* 文字框：透明背景、透明字，只留可选中的字形；字号随容器宽度缩放，不支持 cqw 的浏览器退回 1rem */
+  .reader .box {
+    position: absolute;
+    overflow: hidden;
+    background: transparent;
+    color: transparent;
+    font-size: 1rem;
+    font-size: 3cqw;
+    line-height: 1.25;
+    white-space: pre-wrap;
+    word-break: break-all;
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .reader .box::selection { background: rgba(120, 180, 255, 0.5); }
+  /* 点标签（w=h=0）：画个小圆点，文本从点上溢出、照样可选 */
+  .reader .box.dot { overflow: visible; white-space: nowrap; }
+  .reader .box.dot::before {
+    content: '';
+    position: absolute;
+    left: -0.3em;
+    top: -0.3em;
+    width: 0.6em;
+    height: 0.6em;
+    border-radius: 50%;
+    background: rgba(255, 209, 102, 0.85);
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45);
+  }
+  /* 高亮：JS 模式用 .hl（脚本控制），没有 JS 时靠 :target */
+  .reader .box.hl, .reader:not(.js) .box:target { outline: 2px solid var(--accent); background: rgba(255, 209, 102, 0.18); }
+  .reader.show-text .box { color: #fff; background: rgba(0, 0, 0, 0.6); text-shadow: 0 0 2px #000; }
+
+  /* JS 接管后：单页模式 */
+  .reader.js .pager { display: flex; }
+  .reader.js .page { display: none; }
+  .reader.js .page.current { display: block; }
+  .reader.js .page-num { display: none; }
+  .reader.js .frame { cursor: pointer; }
+</style>
