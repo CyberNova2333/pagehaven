@@ -1,23 +1,28 @@
 ---
+// 首页：作品列表（按模型顺序，即 sort 再 title）与检索入口。
+import Base from '../layouts/Base.astro';
 import siteConfig from '../generated/site-config.json';
+import gallery from '../generated/gallery.json';
+import { chapterCount } from '../lib/gallery.js';
+
 const { site } = siteConfig;
 ---
-<!doctype html>
-<html lang={site.lang}>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{site.title}</title>
-    <style>
-      body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee; }
-      main { max-width: 60rem; margin: 0 auto; padding: 2rem 1rem; }
-      p { color: #aaa; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>{site.title}</h1>
-      <p>骨架阶段：作品 / 期 / 话页面与阅读器在 docs/ARCHITECTURE.md §10 第 3 步接入。</p>
-    </main>
-  </body>
-</html>
+
+<Base url="/">
+  <h1>{site.title}</h1>
+  <p><a href="/search/">搜索台词 →</a></p>
+  {
+    gallery.series.length === 0 ? (
+      <p class="muted">还没有作品。</p>
+    ) : (
+      <ul class="list">
+        {gallery.series.map((s) => (
+          <li>
+            <a href={s.url}>{s.title}</a>
+            <small>{s.issues.length} 期 · {chapterCount(s)} 话</small>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+</Base>

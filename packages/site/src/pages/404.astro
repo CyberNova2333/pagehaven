@@ -1,22 +1,9 @@
 ---
-import siteConfig from '../generated/site-config.json';
-const { site } = siteConfig;
+// 404：GitHub Pages 认 dist/404.html，Cloudflare Pages / EdgeOne 也用它。不出 canonical、标 noindex。
+import Base from '../layouts/Base.astro';
 ---
-<!doctype html>
-<html lang={site.lang}>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>404 · {site.title}</title>
-    <style>
-      body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee; }
-      main { max-width: 60rem; margin: 0 auto; padding: 2rem 1rem; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>404</h1>
-      <p>没有这一页。<a href="/" style="color:#9cf">回首页</a></p>
-    </main>
-  </body>
-</html>
+
+<Base title="404" url="/404/" noindex>
+  <h1>404</h1>
+  <p>没有这一页。<a href="/">回首页</a></p>
+</Base>
