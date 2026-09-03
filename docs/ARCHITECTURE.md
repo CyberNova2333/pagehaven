@@ -262,3 +262,12 @@ check → publish:r2 → deploy → 写 `STATUS.md` 并提交。`checks.yml`：p
   Range、回错字节或截断，都会被探测与逐块校验抓住并切源或退化，不会静默损坏。
 - 待验证：ESA 对 S3 私有回源的 SigV4 支持；两家 CDN 对 `db/*` 的分片缓存是否
   真按 Range 回源（不是每次拉整份）——这只影响回源次数，不影响正确性。
+- 2026-09-03 骨架落地（§10 第 1 步）。约定几处文档没写死的形状：URL 结构为
+  `/<series>/`、`/<series>/<issue>/`、`/<series>/<issue>/<chapter>/`（每话一目录一 `index.html`，
+  阅读器内翻页）；§4 图片 key 里的 `<chapter>` 指「期/话」两段，即
+  `img/<series>/<issue>/<chapter>/<n>-<hash12>.avif`，与 `data/text` 的 `chapter` 字段同形。
+  平台配置生成物入库在 `packages/platform/generated/`，`check` 逐字节比对；站点读的
+  `site-config.json` 不入库，构建时重生成。产物目录：`dist/` 只放静态站，`out/` 放
+  manifest、DB 与归档。`edgeone.json` 按 EdgeOne Pages 文档的 `headers[{source,headers[{key,value}]}]`
+  / `redirects[{source,destination,statusCode}]` 形状生成——**首次真实部署时验证**，不对再改生成器。
+

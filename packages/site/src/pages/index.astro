@@ -1,0 +1,23 @@
+---
+import siteConfig from '../generated/site-config.json';
+const { site } = siteConfig;
+---
+<!doctype html>
+<html lang={site.lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{site.title}</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee; }
+      main { max-width: 60rem; margin: 0 auto; padding: 2rem 1rem; }
+      p { color: #aaa; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>{site.title}</h1>
+      <p>骨架阶段：作品 / 期 / 话页面与阅读器在 docs/ARCHITECTURE.md §10 第 3 步接入。</p>
+    </main>
+  </body>
+</html>
