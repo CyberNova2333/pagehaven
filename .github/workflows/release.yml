@@ -1,0 +1,185 @@
+name: 发布
+
+# 只手动（CLAUDE.md 铁律 6）：没有 push、没有 tag、没有 schedule。
+# 人类在手机上的 GitHub App 或网页里点 Run workflow；每一步都是 package.json 里的 script，
+# 这个文件只是壳（ARCHITECTURE §5）——任何 CI 都能跑同一条流水线。
+on:
+  workflow_dispatch:
+    inputs:
+      chapters:
+        description: '要 ingest 的话，逗号分隔的 <series>/<issue>/<chapter>；留空 = 只重建，不 ingest'
+        required: false
+        default: ''
+      target:
+        description: '部署目标'
+        type: choice
+        options: [none, cloudflare, edgeone, github, all]
+        default: none
+      ocr:
+        description: '缺稿的话跑 OCR（只补没有 LabelPlus 稿的）'
+        type: boolean
+        default: false
+
+# 同一时间只跑一个发布，且不取消进行中的：发布做到一半被顶掉比等一会儿糟得多。
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # 写回 data/ 与 STATUS.md
+  pages: write      # GitHub Pages
+  id-token: write   # actions/deploy-pages 需要
+
+jobs:
+  build:
+    name: ingest → build → check → publish → deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: 版本号（按日期；同一天多次发布带序号由脚本处理）
+        id: version
+        run: echo "version=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: ingest:labelplus
+        if: inputs.chapters != ''
+        env:
+          CHAPTERS: ${{ inputs.chapters }}
+        run: npm run ingest:labelplus
+
+      - uses: actions/setup-python@v5
+        if: inputs.ocr
+        with:
+          python-version: '3.12'
+
+      - name: ingest:ocr（只补缺稿）
+        if: inputs.ocr
+        env:
+          CHAPTERS: ${{ inputs.chapters }}
+        run: npm run ingest:ocr
+
+      - name: build（config → manifest → db → site → index → sitemap）
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: npm run build
+
+      - name: check（预算守卫）
+        run: npm run check
+
+      # 写凭据只在这里出现，且只来自 secrets（铁律 7）。读永远走 CDN 域名。
+      - name: publish:r2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: npm run publish:r2
+
+      - name: deploy:cloudflare
+        if: inputs.target == 'cloudflare' || inputs.target == 'all'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run deploy:cloudflare
+
+      - name: deploy:edgeone
+        if: inputs.target == 'edgeone' || inputs.target == 'all'
+        env:
+          EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+          EDGEONE_PROJECT_ID: ${{ secrets.EDGEONE_PROJECT_ID }}
+        run: npm run deploy:edgeone
+
+      - name: deploy:github（校验基线文件；真正上传在下一个 job）
+        if: inputs.target == 'github' || inputs.target == 'all'
+        run: npm run deploy:github
+
+      - uses: actions/upload-pages-artifact@v3
+        if: inputs.target == 'github' || inputs.target == 'all'
+        with:
+          path: dist
+
+      # 产物只进对象存储与 Artifacts，不进仓库（CONTRIBUTING §四）
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-out
+          path: |
+            out/
+            data/text/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  pages:
+    name: GitHub Pages
+    if: inputs.target == 'github' || inputs.target == 'all'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  status:
+    name: 写 STATUS.md
+    # build 成功就写；pages 被跳过（目标不是 github）不算失败
+    if: always() && needs.build.result == 'success' && needs.pages.result != 'failure'
+    needs: [build, pages]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-out
+          path: .
+
+      - name: 写 STATUS.md
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          DEPLOY_TARGET: ${{ inputs.target }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: npm run status
+
+      # 这是唯一允许由 CI 身份提交的东西（AGENTS.md §1 三）：ingest 写回的 data/text 与 STATUS.md。
+      # 顶格独占一行的 [skip-hooks] 是记录在案的豁免——机器写的信息没有 Co-authored-by 可署。
+      - name: 提交 data/ 与 STATUS.md
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add STATUS.md data/text
+          if git diff --cached --quiet; then
+            echo '没有需要提交的变化'; exit 0
+          fi
+          git commit -F - <<'MSG'
+          chore(status): 发布 ${{ needs.build.outputs.version }}（target=${{ inputs.target }}）后自动更新 STATUS.md
+
+          由 release.yml 自动写入（CLAUDE.md 铁律 10）；同时写回本次 ingest 产出的 data/text。
+
+          [skip-hooks]
+          MSG
+          git pull --rebase origin main
+          git push origin HEAD:main

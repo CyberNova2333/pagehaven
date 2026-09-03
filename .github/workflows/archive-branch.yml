@@ -1,0 +1,50 @@
+name: 🗄️ 归档分支为 tag
+
+# 分支退役不许直接删（AGENTS.md §0）：先打 archive/<原分支名> tag、确认推上远端，然后才删分支。
+# archive/* tag 由远端 ruleset 设为不可变；不存在长期挂着的 archive/* 分支。
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '要归档并删除的分支名（不能是 main）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: 打 tag → 验证 → 删分支
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -eu
+          case "$BRANCH" in
+            main) echo '✘ 不能归档 main'; exit 1;;
+            archive/*) echo '✘ 分支名不该以 archive/ 开头——那是 tag 的命名空间'; exit 1;;
+          esac
+          sha=$(git ls-remote --heads origin "refs/heads/$BRANCH" | cut -f1)
+          if [ -z "$sha" ]; then echo "✘ 远端没有分支 $BRANCH"; exit 1; fi
+          tag="archive/$BRANCH"
+          if git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
+            echo "✘ tag $tag 已存在（archive/* 不可变）；换个分支名或先人工核对"; exit 1
+          fi
+          git push origin "$sha:refs/tags/$tag"
+          remote_tag=$(git ls-remote --tags origin "refs/tags/$tag" | cut -f1)
+          if [ "$remote_tag" != "$sha" ]; then
+            echo "✘ tag 校验失败（远端 $remote_tag ≠ $sha），不删分支"; exit 1
+          fi
+          git push origin --delete "$BRANCH"
+          {
+            echo "## 已归档"
+            echo
+            echo "- 分支 \`$BRANCH\` → tag \`$tag\`（\`$sha\`）"
+            echo "- 分支已从远端删除；要找回：\`git checkout -b $BRANCH $tag\`"
+          } >> "$GITHUB_STEP_SUMMARY"
