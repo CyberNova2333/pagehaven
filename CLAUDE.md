@@ -16,7 +16,8 @@ sitemap。产物是纯静态文件，托管在 Cloudflare Pages / EdgeOne Makers
 1. **平台无关代码只用 Web 标准 API。**
    `packages/core` `packages/site` `packages/search` 里只允许 fetch / Request /
    Response / Web Crypto / Web Streams / WebAssembly。不 import Node 内置模块，
-   不引原生依赖。sqlite 一律 sql.js（wasm）。
+   不引原生依赖。sqlite 一律 wasm 版（官方 `@sqlite.org/sqlite-wasm` 或 sql.js），
+   不引原生绑定。
    Node 内置模块与原生依赖只允许出现在 `scripts/`（构建期），且必须能在
    GitHub Actions 的 ubuntu runner 与 Codespaces 里直接跑。
 

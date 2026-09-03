@@ -9,6 +9,7 @@
   "dependencies": {
     "js-yaml": "^4.1.0",
     "opencc-js": "^1.0.5",
+    "@sqlite.org/sqlite-wasm": "3.53.0-build1",
     "zod": "^4.0.0"
   }
 }
