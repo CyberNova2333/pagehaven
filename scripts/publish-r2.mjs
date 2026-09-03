@@ -9,23 +9,28 @@
 //   1. 读配置、版本、out/manifest.json，列 out/db 与 IMAGES_DIR，算计划并打印；
 //   2. 预检 dist 存在、tar 与 zstd 可用、（非 dry-run）凭据齐全——一次列全，dry-run 也做前两项：
 //      dry-run 是给没凭据的环境看「真跑会不会成」的，对一个必败的环境说 OK 就没意义了；
-//   3. dist 打成 site-<v>.tar.zst（tar --zstd；归档格式是文档约定，tar 或 zstd 不可用就报错，不换 gzip）；
-//   4. 传库与分块摘要、传归档、传新图片（先 head，已存在就跳过——内容哈希 key，字节一定相同）；
-//   5. head 核对 manifest 引用的每个图片 key 都在存储里（并发 8），缺的逐条列出并非零退出；
-//   6. 都在位了才传 manifest.json：它是「当前版本指针」，中途失败时线上仍指向上一版。
+//   3. 先把线上现有的 manifest.json 原样存成 OUT_DIR/manifest-previous.json：push:search 靠它与新 manifest
+//      的差集只推本次新增的页面，而第 7 步会把它覆盖掉，这是唯一还能拿到它的时机。放在任何上传之前，
+//      读到的一定是上一版。不存在 = 首次发布，提示后继续；读不到（非 404）就停——不知道线上是哪一版，
+//      就不该去换指针。dry-run 不读；
+//   4. dist 打成 site-<v>.tar.zst（tar --zstd；归档格式是文档约定，tar 或 zstd 不可用就报错，不换 gzip）；
+//   5. 传库与分块摘要、传归档、传新图片（先 head，已存在就跳过——内容哈希 key，字节一定相同）；
+//   6. head 核对 manifest 引用的每个图片 key 都在存储里（并发 8），缺的逐条列出并非零退出；
+//   7. 都在位了才传 manifest.json：它是「当前版本指针」，中途失败时线上仍指向上一版。
 //
 // IMAGES_DIR：新图片的来源目录，里面按 manifest.imageKeys 去掉 images.prefix 后的相对路径放文件
 // （img/<series>/<issue>/<chapter>/<n>-<hash12>.avif → <IMAGES_DIR>/<series>/<issue>/<chapter>/<n>-<hash12>.avif）。
 // 没给就不传图，只核对——图早已在存储里的日常重建就是这种情况。目录里的符号链接会被解引用：
 // 在 CI / Codespaces 里用 ln -s 把图片目录挂进来很自然，跳过它们只会得到一句误导的「缺 key」。
 import { spawnSync } from 'node:child_process';
-import { readdir, readFile, realpath, stat } from 'node:fs/promises';
+import { readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import { loadSiteConfig } from './lib/config.mjs';
 import { readManifest, resolveVersion, MANIFEST_FILE } from './lib/manifest.mjs';
 import { planUploads, archiveFileName, dbFileNames } from './lib/publish-plan.mjs';
-import { r2ClientFromEnv, R2_ENV_KEYS, headObject, putObject } from './lib/r2.mjs';
+import { MANIFEST_PREVIOUS_FILE } from './lib/seo-push.mjs';
+import { r2ClientFromEnv, R2_ENV_KEYS, getObjectText, headObject, putObject } from './lib/r2.mjs';
 import { DIST_DIR, OUT_DIR, OUT_DB_DIR, ROOT } from './lib/paths.mjs';
 import { step, ok, fail, note, warn } from './lib/log.mjs';
 
@@ -163,22 +168,47 @@ try {
     process.exit(0);
   }
 
+  const { client, bucket } = r2;
+  const manifestUpload = plan.uploads.find((u) => u.kind === 'manifest');
+  const bulk = plan.uploads.filter((u) => u.kind !== 'manifest' && u.kind !== 'image');
+  const imageUploads = plan.uploads.filter((u) => u.kind === 'image');
+
+  // 存线上旧 manifest（文件头第 3 步）：在归档与任何上传之前，读到的一定是上一版；读失败带上下文再抛，
+  // 外层会连 HTTP 状态一起打出来并退 1
+  const previousFile = join(OUT_DIR, MANIFEST_PREVIOUS_FILE);
+  let previousText;
+  try {
+    previousText = await getObjectText(client, bucket, manifestUpload.key);
+  } catch (e) {
+    e.message = `读线上旧 ${manifestUpload.key} 失败，不知道线上是哪一版就不能换指针：${e.message}`;
+    throw e;
+  }
+  if (previousText == null) {
+    // 上次跑剩下的旧文件不能留着：它会让 push:search 拿一份不相干的基线算差集
+    await rm(previousFile, { force: true });
+    note(`存储里没有 ${manifestUpload.key}：首次发布，不写 ${show(previousFile)}（push:search 会推全部页面）`);
+  } else {
+    await writeFile(previousFile, previousText);
+    let previousVersion = '?';
+    try {
+      previousVersion = JSON.parse(previousText).version ?? '?';
+    } catch {
+      warn(`线上旧 ${manifestUpload.key} 不是合法 JSON，仍原样存下（push:search 会报它）`);
+    }
+    ok(`线上旧 manifest（版本 ${previousVersion}）已存为 ${show(previousFile)}（push:search 据此只推新页面）`);
+  }
+
   // 先归档：打包失败时一个字节都还没传，不留下半份发布
   const tArchive = performance.now();
   createArchive(DIST_DIR, archivePath);
   ok(`${show(archivePath)}：${(await stat(archivePath)).size} 字节，${Math.round(performance.now() - tArchive)} ms`);
 
-  const { client, bucket } = r2;
   const put = async (u) => {
     const src = u.kind === 'image' ? join(imagesDir, u.path) : u.path;
     const body = await readFile(src);
     await putObject(client, bucket, u.key, body, { contentType: u.contentType, cacheControl: u.cacheControl });
     return body.length;
   };
-
-  const manifestUpload = plan.uploads.find((u) => u.kind === 'manifest');
-  const bulk = plan.uploads.filter((u) => u.kind !== 'manifest' && u.kind !== 'image');
-  const imageUploads = plan.uploads.filter((u) => u.kind === 'image');
 
   for (const u of bulk) {
     const size = await put(u);

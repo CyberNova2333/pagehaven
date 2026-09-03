@@ -27,6 +27,7 @@
     "deploy:edgeone": "node scripts/deploy.mjs edgeone",
     "deploy:github": "node scripts/deploy.mjs github",
     "purge": "node scripts/purge.mjs",
+    "push:search": "node scripts/seo-push.mjs",
     "status": "node scripts/write-status.mjs"
   },
   "devDependencies": {

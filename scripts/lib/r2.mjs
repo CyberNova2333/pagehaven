@@ -1,4 +1,4 @@
-// 对象存储（S3 兼容 API）的客户端与四个薄封装：列 key、查单个对象、上传。
+// 对象存储（S3 兼容 API）的客户端与几个薄封装：列 key、查单个对象、读文本对象、上传。
 //
 // 这是仓库里唯一碰对象存储写端点的地方：build:manifest 用它核对图片清单，publish:r2 用它上传，
 // status 用它列出对象。凭据只从环境变量来（铁律 7：凭据与账号标识只在 secrets），四个变量
@@ -10,7 +10,7 @@
 // 不必真连外部服务。
 //
 // 存储的直连端点只在这里拼（scripts/ 允许；packages/ 不许出现，check 守卫会拦）。
-import { S3Client, ListObjectsV2Command, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, HeadObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 
 /** 写凭据所需的四个环境变量；与 release.yml 里传给 publish:r2 / status 的一致。 */
 export const R2_ENV_KEYS = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'];
@@ -97,6 +97,41 @@ export async function headObject(client, bucket, key) {
     if (isNotFound(e)) return null;
     throw e;
   }
+}
+
+/**
+ * 响应体转字符串。SDK 的 Body 是带 transformToString 的流；假 client 可能直接给字符串、字节或
+ * 普通可迭代流，都认——封装的约定是「拿到文本」，不是「拿到某种流」。
+ * @param {any} body
+ * @returns {Promise<string>}
+ */
+async function bodyToString(body) {
+  if (body == null) return '';
+  if (typeof body === 'string') return body;
+  if (typeof body.transformToString === 'function') return body.transformToString('utf8');
+  if (body instanceof Uint8Array) return Buffer.from(body).toString('utf8');
+  const chunks = [];
+  for await (const c of body) chunks.push(typeof c === 'string' ? Buffer.from(c) : c);
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/**
+ * 读一个文本对象（manifest.json 这类小文件）。不存在返回 null；鉴权失败、网络错误等照常抛——
+ * publish:r2 用它取线上旧 manifest，「读不到」与「不存在」必须分开：前者不该被当成首次发布。
+ * @param {{ send: (cmd: any) => Promise<any> }} client
+ * @param {string} bucket
+ * @param {string} key
+ * @returns {Promise<string | null>}
+ */
+export async function getObjectText(client, bucket, key) {
+  let res;
+  try {
+    res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  } catch (e) {
+    if (isNotFound(e)) return null;
+    throw e;
+  }
+  return bodyToString(res.Body);
 }
 
 /**
