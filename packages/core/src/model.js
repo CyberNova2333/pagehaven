@@ -10,6 +10,11 @@ export function chapterKey(seriesId, issueId, chapterId) {
   return `${seriesId}/${issueId}/${chapterId}`;
 }
 
+/** 期在检索库里的全局唯一 id：`<series>/<issue>`（chapters 用 chapterKey，两者同形）。 */
+export function issueKey(seriesId, issueId) {
+  return `${seriesId}/${issueId}`;
+}
+
 /** 站点 URL：每级一个目录、以 / 结尾（Astro build.format=directory + trailingSlash=always）。 */
 export function urlFor(...segments) {
   return '/' + segments.join('/') + '/';
