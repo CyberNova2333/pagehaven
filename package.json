@@ -13,6 +13,7 @@
     "ingest:ocr": "python3 scripts/ingest-ocr.py",
     "build:config": "node scripts/build-config.mjs",
     "build:manifest": "node scripts/build-manifest.mjs",
+    "verify:manifest": "node scripts/build-manifest.mjs --verify-only",
     "build:db": "node scripts/build-db.mjs",
     "build:site": "node scripts/build-site.mjs",
     "build:index": "node scripts/build-index.mjs",
