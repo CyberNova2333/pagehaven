@@ -1,0 +1,10 @@
+# 钩子是 POSIX sh，CRLF 会让它 bad interpreter；全仓库钉成 LF
+* text=auto eol=lf
+# Windows 批处理必须是 CRLF，否则部分 cmd.exe 解析出错
+tools/*.cmd text eol=crlf
+# 二进制
+*.png -text
+*.avif -text
+*.webp -text
+*.sqlite -text
+*.zst -text
