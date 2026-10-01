@@ -109,7 +109,7 @@ REDLIGHT_TIMEOUT = 15
 
 
 def sh(*a):
-    return subprocess.run(a, capture_output=True, text=True, timeout=120)
+    return subprocess.run(a, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
 
 
 def allowed(name):
