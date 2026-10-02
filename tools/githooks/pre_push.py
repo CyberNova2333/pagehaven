@@ -43,10 +43,10 @@
 
 ### 三、红灯期间推 main（红灯协议，CONTRIBUTING.md §五）
 
-只在**往 main 推**时查。联网问 GitHub API：main 上最近一次**已跑完**的
-「🟢 全量回归 + last-green」是什么结论。是 failure（红灯）时，本次推送新增的
+只在**往 main 推**时查。用本机 cnb 命令行工具查 CNB：main 上最近一次**已跑完**的
+push 构建（「🟢 全量回归 + last-green」迁到 CNB 后由它产生）是什么结论。是 error（红灯）时，本次推送新增的
 提交**必须全是修复类**（标题以 `fix(` / `fix:` / `revert` 开头），否则拦下。
-查不到（没网、API 限流、返回变了）一律放行并提示——护栏坏了让路，不锁仓库。
+查不到（没装或没登录 cnb、没网、CNB 上还没有对应流水线）一律放行并提示——护栏坏了让路，不锁仓库。
 
 逃生口：`SKIP_REDLIGHT_HOOK=1 git push ...`
 
@@ -103,9 +103,10 @@ RECENT_HOURS = 2.0
 
 # 红灯闸门：标题以这些开头的算「修复类」提交（红灯期间唯一允许推 main 的）
 FIXISH = re.compile(r"^\s*(fix[(：:]|revert)", re.IGNORECASE)
-REDLIGHT_API = ("https://api.github.com/repos/{slug}/actions/workflows/"
-                "checks.yml/runs?branch=main&status=completed&per_page=1")
-REDLIGHT_TIMEOUT = 15
+# 红灯状态来自 CNB：main 上最近一次已跑完的 push 构建。原先查 GitHub 上的 checks.yml 工作流，
+# 迁到 CNB 后由 push 到 main 触发的流水线产生。cnb 命令行工具启动较慢，超时放宽到 30 秒。
+REDLIGHT_EVENT = "push"
+REDLIGHT_TIMEOUT = 30
 
 
 def sh(*a):
@@ -201,35 +202,51 @@ def report_messages(bad):
 
 
 def repo_slug():
-    """从远端 URL 解出 owner/repo。解不出来返回 None（本检查 fail-open）。"""
+    """从远端 URL 解出 CNB 仓库路径（可含子组织）。解不出来返回 None（本检查 fail-open）。"""
     r = sh("git", "remote", "get-url", remote_name())
     if r.returncode != 0:
         return None
-    url = r.stdout.strip()
-    m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$", url)
+    m = re.search(r"cnb\.cool[:/](.+?)(?:\.git)?/?$", r.stdout.strip())
     return m.group(1) if m else None
 
 
 def remote_main_is_red():
-    """main 最近一次已跑完的全量回归是不是红灯。查不到返回 None。"""
+    """main 最近一次已跑完的 push 构建是不是红灯。返回 (结论, 查不到的原因)，结论 None = 查不到。
+
+    用本机 cnb 命令行工具查询，复用它的登录态，钩子里不碰任何令牌。它的输出是
+    YAML 风格的文本，构建按创建时间从新到旧排列，每个构建以「- sn:」开头。"""
     slug = repo_slug()
     if not slug:
-        return None
-    import json
-    import urllib.request
-    req = urllib.request.Request(
-        REDLIGHT_API.format(slug=slug),
-        headers={"Accept": "application/vnd.github+json",
-                 "User-Agent": "repository-pre-push-hook"})
+        return None, "远端不是 CNB 仓库"
+    import shutil
+    cnb = shutil.which("cnb")          # Windows 上是 cnb.cmd，必须先解析出完整路径再调用
+    if not cnb:
+        return None, "本机没有 cnb 命令行工具"
     try:
-        with urllib.request.urlopen(req, timeout=REDLIGHT_TIMEOUT) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        runs = data.get("workflow_runs") or []
-        if not runs:
-            return None
-        return runs[0].get("conclusion") == "failure"
-    except Exception:
-        return None
+        r = subprocess.run([cnb, "build", "get-build-logs", "--repo", slug, "--targetRef", "main",
+                            "--event", REDLIGHT_EVENT, "--page-size", "10"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=REDLIGHT_TIMEOUT)
+    except Exception as e:
+        return None, "调用 cnb 失败（%s）" % type(e).__name__
+    if r.returncode != 0 or not re.search(r"^status:\s*200\b", r.stdout, re.M):
+        return None, "cnb 查询失败（未登录、无权限或网络问题）"
+    builds, cur = [], None
+    for line in r.stdout.splitlines():
+        m = re.match(r"\s*- sn:\s*(\S+)", line)
+        if m:
+            cur = {"sn": m.group(1)}
+            builds.append(cur)
+            continue
+        m = re.match(r"\s+status:\s*(\S+)", line)
+        if m and cur is not None and "status" not in cur:
+            cur["status"] = m.group(1)
+    if not builds:
+        return None, "CNB 上 main 还没有构建记录（全量回归流水线尚未迁到 CNB）"
+    done = [b for b in builds if b.get("status") in ("success", "error", "cancel")]
+    if not done:
+        return None, "main 上最近的构建都还没跑完"
+    return done[0]["status"] == "error", ""
 
 
 def check_redlight(refs):
@@ -238,9 +255,9 @@ def check_redlight(refs):
     main_refs = [(l, b, r) for l, b, r in refs if b == "main"]
     if not main_refs:
         return []
-    red = remote_main_is_red()
+    red, why = remote_main_is_red()
     if red is None:
-        sys.stderr.write("pre-push: 红灯状态查询失败（网络/API），本次跳过红灯闸门\n")
+        sys.stderr.write("pre-push: 红灯状态查不到（%s），本次跳过红灯闸门\n" % why)
         return []
     if not red:
         return []
