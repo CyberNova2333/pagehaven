@@ -1,8 +1,8 @@
 # comics-gallery · 漫画画廊
 
-> **静态漫画阅读、元数据导航与浏览器全文检索。**
+> **静态漫画阅读与元数据导航，配套可复用的数据模型和分块读取组件。**
 
-作品 / 期 / 话 / 页浏览，期数等元数据检索，台词**子串级**全文检索，自动 sitemap。
+已实现作品 / 期 / 话 / 页浏览与站点地图生成。台词全文检索已有数据与分块读取基础，但浏览器检索执行器仍未实现，搜索页面目前是界面壳。
 产物是纯静态文件，托管在 Cloudflare Pages / EdgeOne Makers / GitHub Pages 三者之一，
 随时切换；图片与检索库在对象存储，经 CDN 读取。设计与决策见
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
@@ -10,29 +10,52 @@
 
 **阅读导航**
 
-[🏛️ 架构与职责边界](#section-1) · [🚀 环境与使用入口](#section-2) · [📚 重建与手动发布](#section-3) · [🚀 怎么跑](#section-4) · [🏛️ 目录](#section-5) · [📚 参与开发](#section-6) · [📜 许可](#section-7)
+[🏛️ 分层代码架构](#section-1) · [🚀 环境与使用入口](#section-2) · [📚 重建与手动发布](#section-3) · [🚀 怎么跑](#section-4) · [🏛️ 目录](#section-5) · [📚 参与开发](#section-6) · [📜 许可](#section-7)
 
 ---
 
 <a id="section-1"></a>
 
-## 🏛️ 架构与职责边界
+## 🏛️ 分层代码架构
+
+代码由 Astro 页面、可复用的纯逻辑包和 Node 工具组成。阅读页已有页面内交互；`packages/search` 当前仅导出版本常量，搜索页仍是界面壳，不能把按块检索链路标成已经接通。
+
+图中展示主要代码依赖：实线箭头指向被调用或被依赖的模块，虚线表示实现或生成关系；数据读写另用连线文字标明。
 
 ```mermaid
-flowchart LR
-    Input["data/ · 元数据与台词稿"] --> Build["scripts/ · 静态构建"]
-    Build --> Output["页面、索引、数据库与站点地图"]
-    Output --> UI["packages/ · 阅读器与检索"]
-    Output --> Release["人工检查与手动发布"]
-    Release --> Status["STATUS.md · 发布记录"]
+flowchart TB
+    subgraph L0["页面层"]
+        PAGE["Astro 页面与 Base 布局"]
+        VIEW["gallery.js · 页面辅助"]
+    end
+    subgraph L1["领域与数据访问包"]
+        CORE["core · schema / model / labelplus"]
+        DB["core/db 与 chunkfetch"]
+        SEARCH["search · 待实现"]
+    end
+    subgraph L2["工具适配层"]
+        TOOLS["scripts · 文件系统编排"]
+        PLATFORM["platform · 配置纯函数"]
+        DATA["generated · 页面数据"]
+    end
+    PAGE --> VIEW
+    PAGE --> DATA
+    TOOLS --> CORE
+    TOOLS --> DB
+    TOOLS --> PLATFORM
+    TOOLS -->|写入| DATA
 ```
 
-| 模块 / 入口 | 职责 |
-|---|---|
-| [数据输入](data/) | 作品元数据与按话组织的台词稿 |
-| [构建脚本](scripts/) | 生成页面、索引、数据库和站点地图 |
-| [浏览器模块](packages/) | 阅读器、检索与可替换的平台适配 |
-| [发布状态](STATUS.md) | 由手动发布流程记录交付状态；当前文件仍标记尚未发布 |
+| 层次 | 源码入口 | 职责与边界 |
+|---|---|---|
+| 页面层 | [Astro 页面与 Base 布局](packages/site/src/pages/) | 组织作品、分话、阅读与搜索页面。 |
+| 页面层 | [gallery.js · 页面辅助](packages/site/src/lib/gallery.js) | 处理章节索引、图像地址和标注框样式。 |
+| 领域与数据访问包 | [core · schema / model / labelplus](packages/core/src/index.js) | 验证和规范化作品、章节及台词模型；不依赖 Node IO。 |
+| 领域与数据访问包 | [core/db 与 chunkfetch](packages/core/src/db/index.js) | 提供 SQLite 数据库构造与分块摘要；chunkfetch 提供 Range 获取、选源与缓存。 |
+| 领域与数据访问包 | [search · 待实现](packages/search/src/index.js) | 只有版本常量，未提供可用检索执行器。 |
+| 工具适配层 | [scripts · 文件系统编排](scripts/) | 读取本地输入并调用 core 和 platform；Node IO 留在此层。 |
+| 工具适配层 | [platform · 配置纯函数](packages/platform/src/index.js) | 解析站点配置并生成各平台配置文本，不执行部署命令。 |
+| 工具适配层 | [generated · 页面数据](packages/site/src/generated/) | 页面消费的元数据、配置和台词数据。 |
 
 <a id="section-2"></a>
 
@@ -96,7 +119,7 @@ data/text/<series>/…    台词层，每话一文件（ingest 生成）
 data/raw/labelplus/     LabelPlus 原始稿（手机在 GitHub 网页上传），ingest 的输入
 packages/core           schema、LabelPlus 解析、归一化、DB 构建、取块层 —— 只用 Web 标准 API
 packages/site           Astro：每话一个 HTML，阅读器，sitemap
-packages/search         浏览器端检索（sqlite-wasm + Range）；可选 Hono 函数壳
+packages/search         检索包占位；浏览器检索执行器尚未实现
 packages/platform       三平台配置生成器与函数入口壳；生成物在 generated/
 scripts/                构建期脚本（允许 Node），每个 = package.json 的一条 script
 tools/                  守卫：agent-guard、分支体检、commit-msg / pre-push 钩子
