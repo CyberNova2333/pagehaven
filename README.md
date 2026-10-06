@@ -18,6 +18,15 @@
 
 ## 🏛️ 架构与职责边界
 
+```mermaid
+flowchart LR
+    Input["data/ · 元数据与台词稿"] --> Build["scripts/ · 静态构建"]
+    Build --> Output["页面、索引、数据库与站点地图"]
+    Output --> UI["packages/ · 阅读器与检索"]
+    Output --> Release["人工检查与手动发布"]
+    Release --> Status["STATUS.md · 发布记录"]
+```
+
 | 模块 / 入口 | 职责 |
 |---|---|
 | [数据输入](data/) | 作品元数据与按话组织的台词稿 |
