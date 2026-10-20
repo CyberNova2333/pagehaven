@@ -15,9 +15,12 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { signTc3, utcDate, TC3_CONTENT_TYPE, TC3_SIGNED_HEADERS } from '../lib/tc3-sign.mjs';
+import { loadSiteConfig } from '../lib/config.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const SCRIPT = join(ROOT, 'scripts', 'purge.mjs');
+// 默认目标取 site.config.yaml 的图片域名——换 CDN 域名时测试不用跟着改
+const HOST = (await loadSiteConfig()).images.hosts[0];
 
 const VECTOR_INPUT = {
   secretId: 'AKIDEXAMPLE',
@@ -130,7 +133,7 @@ test('purge：没凭据 → 提示并退出 0；默认目标是 manifest.json �
   const r = await run([], {});
   assert.equal(r.status, 0, r.out);
   assert.match(r.out, /缺 EDGEONE_SECRET_ID \/ EDGEONE_SECRET_KEY \/ EDGEONE_ZONE_ID/);
-  assert.match(r.out, /https:\/\/img\.example\.org\/db\/manifest\.json/);
+  assert.ok(r.out.includes(`https://${HOST}/db/manifest.json`), r.out);
   assert.match(r.out, /ESA.*未实现.*ESA_\*/);
   // 缺一个也算缺
   const r2 = await run([], { EDGEONE_SECRET_ID: 'x', EDGEONE_SECRET_KEY: 'y' });
@@ -166,7 +169,7 @@ test('purge：真发请求——头与签名对得上正文；接口报错退 1�
     assert.equal(req.headers['x-tc-version'], '2022-09-01');
     assert.equal(req.headers['x-tc-region'], undefined);
     assert.equal(req.headers.host, api.host);
-    assert.deepEqual(JSON.parse(req.body), { ZoneId: 'zone-test', Type: 'purge_url', Targets: ['https://img.example.org/db/manifest.json'] });
+    assert.deepEqual(JSON.parse(req.body), { ZoneId: 'zone-test', Type: 'purge_url', Targets: [`https://${HOST}/db/manifest.json`] });
     const m = req.headers.authorization.match(AUTH_RE);
     assert.ok(m, req.headers.authorization);
     assert.equal(m[1], 'AKIDTEST');
