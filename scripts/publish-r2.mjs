@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // publish:r2 —— 把本次发布的产物放进对象存储：检索库与分块摘要、dist 归档、新图片，最后换 manifest 指针。
 //
-// 只在 release.yml 里真跑（铁律 7：写凭据只在 CI 的 secrets 里）。本地与 checks.yml 没有凭据——
+// 只在发布流水线里真跑（铁律 7：写凭据只在 CI 的 secrets 里）。本地与检查流水线没有凭据——
 // 但这里不像 build:manifest 那样「跳过并继续」：publish 的语义就是上传，没凭据就是流水线配错了，
 // 静默成功会让人以为发出去了。想看会传什么而不真传，用 PUBLISH_DRY_RUN=1。
 //

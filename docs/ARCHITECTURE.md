@@ -27,10 +27,10 @@
 
 ```
 本地翻译产物 (LabelPlus txt / PSD 文字层 / OCR JSON)
-        │  ingest（release.yml 里跑；OCR 仅在缺稿时）
+        │  ingest（发布流水线里跑；OCR 仅在缺稿时）
         ▼
 data/meta/*.yaml + data/text/<series>/<chapter>.json        ← 仓库（公开）
-        │  build（GitHub Actions；Makers 构建机仅作纯静态构建备用）
+        │  build（CNB 云原生构建；Makers 构建机仅作纯静态构建备用）
         ▼
 dist/            静态 HTML(每话一文件，内嵌文字层) + 元数据索引 JSON 分片 + sitemap.xml
 gallery.sqlite   FTS5 trigram 台词库；manifest.json；dist 归档
@@ -66,7 +66,7 @@ Cloudflare Workers 或 Makers Cloud Functions，且永远可选。
 
 | | Cloudflare Pages | EdgeOne Makers | GitHub Pages |
 |---|---|---|---|
-| 部署 | `wrangler pages deploy dist` | `edgeone makers deploy`（上传 dist；`edgeone pages` 为兼容命令） | `actions/upload-pages-artifact` + `actions/deploy-pages` |
+| 部署 | `wrangler pages deploy dist` | `edgeone makers deploy`（上传 dist；`edgeone pages` 为兼容命令） | 流水线把 dist 推到 `gh-pages` 分支（`GITHUB_PAGES_REPO` / `GITHUB_PAGES_TOKEN`），Pages 发布源指到该分支 |
 | 配置生成物 | `dist/_headers`、`dist/_redirects` | `edgeone.json`（headers ≤ 30，redirects/rewrites ≤ 100） | 无；`.nojekyll`、`CNAME`、`404.html`，重定向用 `<meta http-equiv="refresh">` |
 | 函数入口 | `functions/`（Workers 运行时，`export default { fetch }`） | `edge-functions/`（isolate，`onRequest`）、`cloud-functions/`（真 Node） | 无 |
 | 切换动作 | 改站点域名 CNAME，TTL 300 | 同左 | 同左 |
@@ -142,9 +142,9 @@ R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 ```
 ingest:labelplus   data/raw/labelplus/<series>/<issue>/<chapter>.txt → data/text（CHAPTERS 限定；
                    CHAPTERS 里没稿但 meta 有的话只提示不报错，给 ocr 留路；LABELPLUS_PAGES 选页码策略）
-ingest:ocr         缺稿卷 OCR → data/text（Python，只在 Actions 跑）
+ingest:ocr         缺稿卷 OCR → data/text（Python，只在发布流水线跑）
 build:manifest     data/meta → out/manifest.json；有存储凭据时核对图片清单（缺 key 全列在
-                   out/missing-images.txt）。release.yml 里凭据只给 verify:manifest 那一步
+                   out/missing-images.txt）。发布流水线里凭据只给 verify:manifest 那一步
 build:db           → gallery.sqlite
 build:site         astro build（每话一 HTML，文字层内嵌）
 build:index        元数据索引 JSON，按作品分片
@@ -158,32 +158,34 @@ publish:r2         先把线上旧 db/manifest.json 原样存成 out/manifest-pr
                    → 逐 key 核对 → 最后才传 db/manifest.json（当前版本指针；中途失败线上仍指上一版）
 deploy:cloudflare  deploy:edgeone  deploy:github（DEPLOY_ENV=production|preview）
 purge              可选救火：EdgeOne CreatePurgeTask（任一目标被拒即失败）；ESA 未实现
-push:search        部署之后（release.yml 的 status job）主动把本次新增的页面推给搜索引擎：
+push:search        部署之后（发布流水线写 STATUS 的那一步之后）主动把本次新增的页面推给搜索引擎：
                    IndexNow（seo.indexnow_key，Bing / Yandex / Naver / Seznam 共用）与百度链接提交
                    （BAIDU_PUSH_TOKEN）；Google 没有普通页面的推送接口，靠 robots.txt 的 Sitemap 声明。
                    新页面 = 新 manifest 与 out/manifest-previous.json 的 URL 差集；--all 推全部
-status             写 STATUS.md（只由 release.yml 调用）
+status             写 STATUS.md（只由发布流水线调用）
 ```
 
 搜索引擎推送的约定：只推差集不全推（引擎按频率与配额判滥发，上万话的站每次全推很快被拒）；
 推之前先 GET 线上的 `/<key>.txt` 核对（隔 20 秒最多试 6 次，给 CDN 铺开留时间），不对就一条
-都不推——它兼作「站点已上线」的探针；推送失败在 release.yml 里 `continue-on-error`，单独标红、
+都不推——它兼作「站点已上线」的探针；推送失败在流水线里 `allowFailure`，单独标红、
 不判已完成的部署失败；页面集合与 sitemap 出自同一份 `scripts/lib/sitemap.mjs`。
 
 版本号、上传顺序、缓存头的约定：带版本号的 key（库、分块摘要、归档）一年 immutable，
 `db/manifest.json` 只缓存 5 分钟；`chunks.json` 也按 `application/octet-stream` 上传，
 免得 CDN 智能压缩把 Range 语义搞坏（§7）；归档格式固定 tar.zst，工具缺失就失败不换 gzip。
 
-`release.yml`：`workflow_dispatch`，输入 `chapters`（逗号分隔）、`target`
-（none | cloudflare | edgeone | github | all）、`ocr`（bool）、`deploy_env`
-（production | preview）、`version`（留空 = 日期.运行序号）、`push_all`（推送全部页面）。步骤：ingest → build →
-check → verify:manifest → publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest
-写回的 `data/text` 提交。`checks.yml`：push 触发，跑 check / test / build dry-run，再用测试样本
-全量空跑一遍并 check，然后移动 `last-green`。
+`.cnb.yml`：main 的 `push` 触发检查，手动按钮触发发布与归档（按钮在
+`.cnb/web_trigger.yml`）。检查步骤：提交信息（本次推送区间）→ check → test → build →
+再 check → 用测试样本全量空跑 → 分层提示 → 移动 `last-green`。发布输入 `chapters`、`target`
+（none | cloudflare | edgeone | github | all）、`ocr`、`deploy_env`（production | preview）、
+`version`（留空 = 日期.构建号）、`push_all`；步骤：ingest → build → check → verify:manifest →
+publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写回的 `data/text` 提交。
+凭据经独立密钥仓库的 `imports` 注入，只有需要的步骤才拿得到；发布与归档只能手动触发，
+`crontab:` 被 `npm run check` 解析 `.cnb.yml` 拦住。
 
-为什么构建在 GitHub Actions 而不是平台构建机：仓库公开时标准 runner 免费无配额，
-产物能同时发往三个目标并归档到 R2；平台构建机只会把 dist 留在那一家。Makers
-构建机（500 次/月、20 分钟、无 Python）留作纯静态构建的备用，OCR 不放那里。
+为什么构建在 CNB 而不是平台构建机：构建机与应用托管解耦，产物能同时发往三个目标并归档到 R2；
+平台构建机只会把 dist 留在那一家。Makers 构建机（500 次/月、20 分钟、无 Python）留作纯静态构建的
+备用，OCR 不放那里。`scripts/` 仍是流水线的全部内容，`.cnb.yml` 只是壳——任何 CI 都能跑同一条流水线。
 
 ## 6. 检索
 
@@ -261,8 +263,8 @@ check → verify:manifest → publish:r2 → deploy → 写 `STATUS.md` → push
 | 托管平台 | 配额调整、产品下线 | 三平台可移植，dist 归档在 R2 |
 | 函数运行时 | Node 版本下线 | 检索默认浏览器端，函数永远可选 |
 
-- 仓库公开，`README.md` 顶部是「十分钟重建」：fork → 填 secrets → 跑
-  `release.yml` → 改 CNAME。任何人不联系原维护者也能复活站点。
+- 仓库公开，`README.md` 顶部是「十分钟重建」：fork → 填密钥仓库 → 点「发布」→
+  改 CNAME。任何人不联系原维护者也能复活站点。
 - 每次发布的 `site-<date>.tar.zst` 与 `gallery-<date>.sqlite` 留在 R2；每卷图片
   另打归档包并公开链接，便于社群做镜像 / 做种 / 推 Internet Archive。
   **站点可以死，数据不能只存在一个账号里。**
@@ -276,9 +278,10 @@ check → verify:manifest → publish:r2 → deploy → 写 `STATUS.md` → push
 - Makers 与 Cloudflare Pages 同为 20 000 文件上限：每页一 HTML 会很快撞线。
 - GitHub Pages 无响应头：CORS / 缓存 / 安全头全部只能在 CDN 侧解决。
 - trigram `MATCH` 少于 3 字无结果；繁简混输靠 `text_norm` 归一。
-- 2026-03 起自托管 runner 计入 Actions 配额（公开库除外）：不要在 Droidspaces
-  里挂 self-hosted runner 省额度。
-- Actions 的 cron 在仓库 60 天无活动后停用，所以 `schedule:` 被铁律禁止。
+- （GitHub Actions 时期）自托管 runner 计入配额（公开库除外）：不要在 Droidspaces
+  里挂 self-hosted runner 省额度；迁到 CNB 后不再适用。
+- 平台的定时任务（GitHub Actions 的 cron、CNB 的 crontab）在仓库长期无活动后会停用，
+  所以定时触发被铁律禁止。
 - Pagefind 1.5 虽已自动分词 CJK，但仍是按词匹配，台词检索不够用。
 
 ## 10. 落地顺序
@@ -286,8 +289,8 @@ check → verify:manifest → publish:r2 → deploy → 写 `STATUS.md` → push
 每步以 `npm run check` 通过为完成：
 
 1. 仓库骨架与空跑：`packages/{core,site,search,platform}`、`data/{meta,text}`、
-   `scripts/`、`site.config.yaml`、全部 scripts 占位、`checks.yml` /
-   `release.yml`、`README.md`（十分钟重建）、`STATUS.md`。
+   `scripts/`、`site.config.yaml`、全部 scripts 占位、`.cnb.yml` /
+   `.cnb/web_trigger.yml`、`README.md`（十分钟重建）、`STATUS.md`。
 2. `core`：schema（zod）、LabelPlus 解析器 + 测试样本、`tn` 归一化、manifest 生成。
 3. `site`：Astro，作品 / 期 / 话页面 + 阅读器（绝对定位透明 div 文字层，
    `#p12` 深链），sitemap，索引分片。
@@ -361,4 +364,13 @@ check → verify:manifest → publish:r2 → deploy → 写 `STATUS.md` → push
   `sitemap.xml` 永远是入口（单文件或 index），分片 `sitemap-<n>.xml`，robots 与外部登记只指入口。
   IndexNow 的 key 进 `site.config.yaml` 而不是 secrets：协议要求它公开放在站点根，不是凭据。
   推送脚本不做已下线页面的通知（IndexNow 支持推已删除 URL 让引擎重抓，将来需要再加）。
+- 2026-10-20 流水线迁到 CNB 云原生构建。`.cnb.yml` 承载三条流水线：main 的 `push` 跑检查并
+  移动 `last-green`、`web_trigger_release` 手动发布、`web_trigger_archive` 手动归档；
+  `.cnb/web_trigger.yml` 放 main 分支详情页的按钮。`.github/workflows` 删除，避免两份真相；
+  `npm run check` 改为解析 `.cnb.yml`，守「只有 main 的 push 跑检查、发布只手动、无 `crontab:`」。
+  凭据从平台 secrets 改为独立密钥仓库的 `imports`（铁律 7 不变）；GitHub Pages 目标改由流水线把
+  dist 推到 `gh-pages` 分支，需要 `GITHUB_PAGES_REPO` / `GITHUB_PAGES_TOKEN`。CNB 没有「在失败
+  提交下留言」的接口，红灯以构建状态为准（pre-push 闸门仍查 CNB 构建状态）。
+  首次真实发布时要验证：密钥仓库引用权限、`git push` last-green 与回写 main 的令牌权限、
+  CNB 仓库是否强制提交签名（CI 提交未签名；强制的话需要给构建令牌登记签名密钥或对 CI 提交放宽）。
 

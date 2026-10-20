@@ -1,0 +1,85 @@
+# .cnb/web_trigger.yml —— main 分支详情页上的手动按钮
+#
+# 只有 web_trigger 事件能配按钮；对应流水线在 .cnb.yml 的 main 下定义。
+# `npm run check` 的第 4 节会核对这里每个按钮的事件都有流水线，防止按钮点了没反应。
+#
+# 发布是日常入口，设为默认按钮；检查与归档放在另外的分组里，避免误点。
+#
+# 本文件不支持 include / imports（平台限制），所以不放任何凭据。
+
+branch:
+  - reg: ^main$
+    buttons:
+      - name: 发布
+        description: ingest → build → 核对 → 发布到对象存储 → 部署 → 写 STATUS.md → 推送搜索引擎
+        event: web_trigger_release
+        groupName: 发布
+        isDefault: true
+        permissions:
+          roles: [owner, master]
+        inputs:
+          chapters:
+            name: 要 ingest 的话
+            description: 逗号分隔的 <series>/<issue>/<chapter>；留空 = 只重建，不 ingest
+            type: input
+            default: ''
+          target:
+            name: 部署目标
+            description: 发布到对象存储总是发生；这里选额外的站点部署目标
+            type: select
+            default: none
+            options:
+              - { name: 不部署（只发布到对象存储）, value: none }
+              - { name: Cloudflare Pages, value: cloudflare }
+              - { name: EdgeOne Makers, value: edgeone }
+              - { name: GitHub Pages（需密钥仓库里的 GITHUB_PAGES_*）, value: github }
+              - { name: 全部, value: all }
+          deploy_env:
+            name: 部署环境
+            description: 平台适配层改动先选 preview 真实发一次（CONTRIBUTING §二.3）
+            type: select
+            default: production
+            options:
+              - { name: production, value: production }
+              - { name: preview, value: preview }
+          ocr:
+            name: 缺稿跑 OCR
+            description: 只补没有 LabelPlus 稿的话；OCR 目前是占位
+            type: select
+            default: 'false'
+            options:
+              - { name: 不跑, value: 'false' }
+              - { name: 跑, value: 'true' }
+          version:
+            name: 版本号
+            description: 留空 = <UTC 日期>.<构建号>；同一版本号只发布一次（版本化 key 一年不可变）
+            type: input
+            default: ''
+          push_all:
+            name: 推送全部页面给搜索引擎
+            description: 换域名、首次接入某引擎时用；平时只推本次新增的页面
+            type: select
+            default: 'false'
+            options:
+              - { name: 只推新增, value: 'false' }
+              - { name: 推全部, value: 'true' }
+
+      - name: 检查
+        description: 跑一遍 check / test / 全量 build 空跑；不发布、不动 last-green
+        event: web_trigger_check
+        groupName: 检查
+        permissions:
+          roles: [owner, master]
+
+      - name: 归档分支
+        description: 先打 archive/<分支> tag 并核对，成功后才删分支（不能删 main）
+        event: web_trigger_archive
+        groupName: 维护
+        permissions:
+          roles: [owner, master]
+        inputs:
+          branch:
+            name: 要归档的分支名
+            description: 分支退役不许直接删（AGENTS.md §0）：先打 archive/<分支> tag，核对后才删
+            type: input
+            required: true

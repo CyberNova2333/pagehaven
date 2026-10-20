@@ -70,19 +70,23 @@ flowchart TB
 
 重建需要仓库数据及有权访问的图片、检索库和部署配置；仅 Fork 源码不会取得原维护者的对象存储。配置齐全后按以下步骤执行：
 
-1. **Fork** 本仓库（公开）。
-2. **填 secrets**（Settings → Secrets and variables → Actions）：
+1. **Fork** 本仓库（公开，CNB 账号或组织下）。
+2. **填凭据**：在 CNB 建一个独立的密钥仓库，把下面这些键写进 `comics-gallery.yml`
+   （仓库路径与文件名按实际改 `.cnb.yml` 里的 `imports`）：
    `R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET`——对象存储的**写**凭据；
    要发 Cloudflare Pages 再加 `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID`；
    要发 EdgeOne 再加 `EDGEONE_API_TOKEN` `EDGEONE_PROJECT_ID`（值填 Makers 的**项目名**，首次
-   先选 `deploy_env=preview` 核对）；GitHub Pages 不需要额外 secrets。救火用的 `purge` 另需
-   `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`，可以先不填；要主动向百度推送
-   新页面再加 `BAIDU_PUSH_TOKEN`（IndexNow 的 key 填在 `site.config.yaml` 的 `seo.indexnow_key`）。
+   先选 `deploy_env=preview` 核对）；GitHub Pages 再加 `GITHUB_PAGES_REPO`（`owner/repo`）与
+   `GITHUB_PAGES_TOKEN`（有 repo 写权限，流水线把 dist 推到该仓库的 `gh-pages` 分支）。救火用的
+   `purge` 另需 `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`，可以先不填；要主动向
+   百度推送新页面再加 `BAIDU_PUSH_TOKEN`（IndexNow 的 key 填在 `site.config.yaml` 的
+   `seo.indexnow_key`）。凭据只进密钥仓库，不进本仓库（CLAUDE.md 铁律 7）。
 3. 改 [`site.config.yaml`](site.config.yaml) 里的 `site.domain` 与 `images.hosts`（图片经 CDN
    读对象存储；把 img 域名切到任何支持 S3 私有回源的 CDN 都行）。
-4. **Actions → 发布 → Run workflow**，选 `target`（首次可选 `deploy_env=preview`）。整条流水线 =
-   `package.json` 的 scripts，任何 CI 都能跑。图片与台词稿怎么进来：图片经 `IMAGES_DIR` 由
-   `publish:r2` 上传（或已在对象存储里），台词稿放 `data/raw/labelplus/`，发布时填 `chapters`。
+4. **在 CNB 的 main 分支详情页点「发布」按钮**（`.cnb/web_trigger.yml`），选 `target`（首次可选
+   `deploy_env=preview`）。整条流水线 = `package.json` 的 scripts，任何 CI 都能跑。图片与台词稿
+   怎么进来：图片经 `IMAGES_DIR` 由 `publish:r2` 上传（或已在对象存储里），台词稿放
+   `data/raw/labelplus/`，发布时填 `chapters`。
 5. 把站点域名的 **CNAME** 指到新目标（TTL 300）。
 
 当前状态（版本、部署目标、对象清单）在 [`STATUS.md`](STATUS.md)，由发布流程自动写。
@@ -93,7 +97,8 @@ flowchart TB
 
 ## 🚀 怎么跑
 
-维护者没有电脑：一切在手机浏览器 + GitHub App / Codespaces 里完成（CLAUDE.md 铁律 9）。
+维护者没有电脑：一切在手机浏览器 + Codespaces 里完成（CNB 的发布按钮与构建页都在
+网页上；CLAUDE.md 铁律 9）。
 
 ```bash
 npm ci
@@ -103,8 +108,8 @@ npm run build     # 全量静态构建（dry-run，不发布）
 ```
 
 `npm run build` = `build:config → build:manifest → build:db → build:site → build:index → build:sitemap`。
-发布（`verify:manifest`、`publish:r2`、`deploy:*`、`status`、`push:search`）只由 `release.yml` 手动触发；
-`ingest:labelplus` 把 `data/raw/labelplus/` 下的 LabelPlus 稿转成 `data/text/`。
+发布（`verify:manifest`、`publish:r2`、`deploy:*`、`status`、`push:search`）只由 `.cnb.yml` 的
+发布流水线手动触发；`ingest:labelplus` 把 `data/raw/labelplus/` 下的 LabelPlus 稿转成 `data/text/`。
 
 <a id="目录"></a>
 
@@ -113,6 +118,8 @@ npm run build     # 全量静态构建（dry-run，不发布）
 ## 🏛️ 目录
 
 ```
+.cnb.yml                流水线：main push 检查（+ last-green）、手动发布、归档分支（铁律 6）
+.cnb/web_trigger.yml    main 分支详情页的按钮（发布 / 检查 / 归档）
 site.config.yaml        唯一配置源：域名、缓存、响应头、重定向、功能开关（铁律 5）
 data/meta/<series>.yaml 作品 / 期 / 话 / 页 元数据（人工维护）
 data/text/<series>/…    台词层，每话一文件（ingest 生成）
@@ -123,7 +130,7 @@ packages/search         检索包占位；浏览器检索执行器尚未实现
 packages/platform       三平台配置生成器与函数入口壳；生成物在 generated/
 scripts/                构建期脚本（允许 Node），每个 = package.json 的一条 script
 tools/                  守卫：agent-guard、分支体检、commit-msg / pre-push 钩子
-.github/workflows       checks.yml（push 复验 + last-green）、release.yml（只手动）、归档分支
+.github/workflows       （已迁走；CNB 流水线见上面的 .cnb.yml）
 dist/  out/             产物（不入库）
 ```
 

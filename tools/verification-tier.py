@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """分层验证提示：按本次推送改动的路径，说明进入 main 的验证级别（CONTRIBUTING.md §二.3）。
 
-checks.yml 把输出写进运行摘要。CI 能替代的只有前两级；后两级（真部署 / 真实数据查一次）
+检查流水线把输出写进构建日志。CI 能替代的只有前两级；后两级（真部署 / 真实数据查一次）
 必须有人真跑过才算完，所以这里的作用是**把这件事说出来**，不是自动完成它。
 
 用法：python3 tools/verification-tier.py <before-sha> <after-sha>

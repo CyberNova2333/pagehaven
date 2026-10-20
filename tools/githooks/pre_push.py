@@ -442,7 +442,7 @@ def main():
             problems.append(
                 "`%s` 的名字像 CI 触发器。\n"
                 "      AGENTS.md §2：**永远不要用分支触发 CI**。\n"
-                "      构建由人类在网页上手动 workflow_dispatch；\n"
+                "      构建由人类在 CNB 网页上点按钮手动触发；\n"
                 "      想验能不能过 CI，按 AGENTS.md §3 在本地跑。" % name)
             continue
         problems.append("`%s` 是一条新的非白名单分支。" % name)

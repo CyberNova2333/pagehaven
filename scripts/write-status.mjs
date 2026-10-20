@@ -1,18 +1,18 @@
 #!/usr/bin/env node
-// status —— 由 release.yml 在发布末尾调用，写 STATUS.md（铁律 10：不手改）。
+// status —— 由发布流水线（.cnb.yml 的 web_trigger_release）在末尾调用，写 STATUS.md（铁律 10：不手改）。
 //
 // 只收集事实，渲染在 scripts/lib/status.mjs（纯函数）。收集的东西：
 //   · out/manifest.json（版本、域名、db 指针）——没有就报错退出：status 只在发布末尾跑，
 //     没有 manifest 说明 build 那一步根本没到，写一份「尚未发布」只会盖掉上次的真实状态；
-//   · 环境：RELEASE_VERSION / DEPLOY_TARGET（release.yml 给），GITHUB_SERVER_URL /
-//     GITHUB_REPOSITORY / GITHUB_RUN_ID（Actions 自带，三者齐全才写运行链接），
+//   · 环境：RELEASE_VERSION / DEPLOY_TARGET（发布流水线给），CNB_BUILD_WEB_URL（构建页链接；
+//     也兼容 GitHub Actions 的 GITHUB_SERVER_URL / GITHUB_REPOSITORY / GITHUB_RUN_ID 三件套），
 //     RELEASE_STARTED_AT（可选，ISO 时间，给了就算耗时）；
-//   · dist 文件数（不存在写「—」——status job 只下载了 out/，dist 不一定在）；
+//   · dist 文件数（不存在写「—」——STATUS 步骤可能拿不到 dist，构建阶段数好后经 DIST_FILES 传）；
 //   · 有对象存储凭据时列出 db 前缀下的对象与图片对象总数（复用 lib/r2.mjs），没有就写「—」。
 //
 // 有凭据但列不出来（鉴权失败、网络）：STATUS.md 照写，那一格记「列出失败」与原因，然后以非零
 // 退出。先写再报错是因为这份文件本身就是给接手的人看的事实记录——「这次列举失败了」也是事实，
-// 比留着上次发布的旧清单诚实；非零退出则让 Actions 把这一步标红，不静默。
+// 比留着上次发布的旧清单诚实；非零退出则让 CI 把这一步标红，不静默。
 //
 // 输出路径默认仓库根 STATUS.md；STATUS_FILE 环境变量可指到别处（测试不碰真文件）。
 import { readdir, mkdir, writeFile } from 'node:fs/promises';
@@ -36,8 +36,9 @@ async function countFiles(dir) {
   return n;
 }
 
-/** Actions 的三件套齐全才拼链接；缺任一个就不写，不拼出一个指向空处的 URL。 */
+/** 运行链接：CNB 的构建页优先；再退回 GitHub Actions 的三件套（本地/其它 CI 不写）。 */
 function runUrl(env) {
+  if (env.CNB_BUILD_WEB_URL) return env.CNB_BUILD_WEB_URL;
   const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repo, GITHUB_RUN_ID: run } = env;
   return server && repo && run ? `${server}/${repo}/actions/runs/${run}` : null;
 }
@@ -73,7 +74,7 @@ try {
   const manifest = await readManifest(OUT_DIR);
   if (!manifest) {
     throw new Error(
-      `${show(join(OUT_DIR, 'manifest.json'))} 不存在：status 只在发布末尾跑，先 npm run build（或下载 release-out 产物）`,
+      `${show(join(OUT_DIR, 'manifest.json'))} 不存在：status 只在发布末尾跑，先 npm run build（或拿到构建阶段的产物）`,
     );
   }
   const config = await loadSiteConfig();
@@ -81,8 +82,8 @@ try {
   const version = process.env.RELEASE_VERSION || manifest.version;
   const target = process.env.DEPLOY_TARGET || '';
 
-  // release.yml 的 status job 不下载 dist（上万个文件传 artifact 太慢），build job 数好后经
-  // DIST_FILES 环境变量传过来；本地或没给时才自己数 DIST_DIR。
+  // 发布流水线的 STATUS 步骤可能不下载 dist（上万个文件不该为写个状态再传一遍），
+  // 构建阶段数好后经 DIST_FILES 环境变量传过来；本地或没给时才自己数 DIST_DIR。
   let distFiles = null;
   if (/^\d+$/.test(process.env.DIST_FILES ?? '')) {
     distFiles = Number(process.env.DIST_FILES);

@@ -19,7 +19,7 @@ sitemap。产物是纯静态文件，托管在 Cloudflare Pages / EdgeOne Makers
    不引原生依赖。sqlite 一律 wasm 版（官方 `@sqlite.org/sqlite-wasm` 或 sql.js），
    不引原生绑定。
    Node 内置模块与原生依赖只允许出现在 `scripts/`（构建期），且必须能在
-   GitHub Actions 的 ubuntu runner 与 Codespaces 里直接跑。
+   CNB 云原生构建的 Linux 构建机与 Codespaces 里直接跑。
 
 2. **平台绑定只允许出现在 `packages/platform/`，且必须有降级。**
    用到 `edgeone.json`、`_headers`、Pages Functions、任何平台 SDK——都要保证
@@ -38,9 +38,9 @@ sitemap。产物是纯静态文件，托管在 Cloudflare Pages / EdgeOne Makers
 5. **单一配置源。** 域名、缓存、响应头、重定向只改 `site.config.yaml`；
    `_headers` / `_redirects` / `edgeone.json` 是生成物，不手改。
 
-6. **不自动部署，不定时。** `release.yml` 只允许 `workflow_dispatch`；
-   检查类 workflow（`checks.yml`）允许 push 触发。**禁止 `schedule:`**——
-   GitHub 在仓库 60 天无活动后会停用 cron，弃维护场景下等于埋雷。
+6. **不自动部署，不定时。** `.cnb.yml` 里只有 `main` 的 `push` 跑检查（唯一的自动
+   触发）；发布与归档只能手动（`web_trigger` 事件 + `.cnb/web_trigger.yml` 的按钮）。
+   **禁止 `crontab:`**——平台在仓库长期无活动后会停用定时任务，弃维护场景等于埋雷。
 
 7. **凭据与账号标识只在 secrets。** R2 账号 ID、桶名、API token、CDN 账号
    不进源码、提交历史、文档。**R2 永远私有读**：任何代码不得假设可以直接
@@ -50,11 +50,11 @@ sitemap。产物是纯静态文件，托管在 Cloudflare Pages / EdgeOne Makers
    不新增任何需要绑卡、月付、平台审批（如 Makers KV）或人工续期的依赖。
 
 9. **维护者没有电脑。** 建议人类执行的任何操作，必须能在手机浏览器 +
-   GitHub App / Codespaces 里完成。验证一律进 `npm run check` / `npm test`，
-   不写「请在本地跑一下」。
+   Codespaces 里完成（CNB 的发布按钮与构建页都在网页上）。验证一律进
+   `npm run check` / `npm test`，不写「请在本地跑一下」。
 
-10. **`STATUS.md` 由 `release.yml` 自动写，不手改。** 它是弃维护后别人接手的
-    入口：版本、当前部署目标、R2 对象清单、DB 大小、dist 文件数。
+10. **`STATUS.md` 由发布流水线（`.cnb.yml` 的 `web_trigger_release`）自动写，不手改。**
+    它是弃维护后别人接手的入口：版本、当前部署目标、R2 对象清单、DB 大小、dist 文件数。
 
 ## 提交约定
 

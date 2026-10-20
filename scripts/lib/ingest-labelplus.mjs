@@ -3,14 +3,14 @@
 // 约定：原始稿放在 DATA_DIR/raw/labelplus/<series>/<issue>/<chapter>.txt——路径本身就是 chapter key，
 // 维护者在手机上用 GitHub 网页把文件传到这个位置就算「交稿」，不需要任何别的登记。
 // 输出 DATA_DIR/text/<series>/<issue>/<chapter>.json，2 空格缩进、键顺序固定（schema 的顺序），
-// 内容没变就不重写——这样 release.yml 写回仓库的 diff 只有真正改过的话。
+// 内容没变就不重写——这样 发布流水线写回仓库的 diff 只有真正改过的话。
 //
 // 核对是这一步唯一的「判断」：稿里的页码超出 meta 的页数是错（页码策略选错、或 meta 没更新），
 // meta 里有页而稿里没有只是提示（那页本来就没台词很常见），meta 里没有这一话是错（先补 meta）。
-// CHAPTERS 里列了、却没有原始稿的话要分两种：meta 里有这一话 → 只提示（release.yml 的 ocr 输入
+// CHAPTERS 里列了、却没有原始稿的话要分两种：meta 里有这一话 → 只提示（发布流水线的 ocr 输入
 // 就是给「没有 LabelPlus 稿的话」用的，ingest:ocr 在本步之后拿同一份 CHAPTERS 跑，这里报错等于把 OCR
 // 那条路整个堵死）；meta 里也没有 → 错（大概率是拼错了）。
-// 所有错误攒到一起再返回，不在第一处停：维护者是在手机上翻 Actions 日志，来回改一条报一条太折磨。
+// 所有错误攒到一起再返回，不在第一处停：维护者是在手机上翻构建日志，来回改一条报一条太折磨。
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
@@ -33,7 +33,7 @@ export function textFileFor(dataDir, key) {
   return join(dataDir, 'text', ...key.split('/')) + '.json';
 }
 
-/** CHAPTERS 环境变量（release.yml 的 chapters 输入）：逗号分隔，容忍空白与空项。 */
+/** CHAPTERS 环境变量（发布流水线的 chapters 输入）：逗号分隔，容忍空白与空项。 */
 export function parseChaptersEnv(value) {
   return (value ?? '')
     .split(',')

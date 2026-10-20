@@ -80,7 +80,7 @@ test('signTc3：缺参数一次列全并抛出', async () => {
 
 // ── purge 脚本 ─────────────────────────────────────────────────────
 
-/** 干净的环境：去掉本机 / Actions 里可能存在的凭据与开关，行为只由测试给的决定。 */
+/** 干净的环境：去掉本机 / CI 里可能存在的凭据与开关，行为只由测试给的决定。 */
 function cleanEnv() {
   const env = { ...process.env };
   for (const k of Object.keys(env)) if (/^(EDGEONE_|ESA_|PURGE_|R2_|RELEASE_)/.test(k)) delete env[k];

@@ -52,7 +52,7 @@ const EXPECTED = [
   { loc: `${ORIGIN}/sample/vol02/c003/`, lastmod: '2026-06-01' },
 ];
 
-/** 干净的环境：去掉本机 / Actions 里可能存在的目录与版本变量，脚本的行为只由测试给的决定。 */
+/** 干净的环境：去掉本机 / CI 里可能存在的目录与版本变量，脚本的行为只由测试给的决定。 */
 function cleanEnv() {
   const env = { ...process.env };
   for (const k of Object.keys(env)) if (/^(RELEASE_|DATA_DIR$|DIST_DIR$|OUT_DIR$)/.test(k)) delete env[k];

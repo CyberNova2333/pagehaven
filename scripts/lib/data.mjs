@@ -1,6 +1,6 @@
 // 读 data/meta + data/text，校验，组装成内存模型。构建期唯一的数据入口。
 //
-// 一次把所有问题列全再抛：维护者在手机上看 Actions 日志，来回改一条报一条太折磨。
+// 一次把所有问题列全再抛：维护者在手机上看构建日志，来回改一条报一条太折磨。
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, extname, basename } from 'node:path';
 import yaml from 'js-yaml';

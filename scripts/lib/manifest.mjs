@@ -18,7 +18,7 @@ export const MANIFEST_FILE = 'manifest.json';
 export const VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**
- * 版本取 RELEASE_VERSION（release.yml 给），没有就用 UTC 日期——与 build:db 同一条规则，
+ * 版本取 RELEASE_VERSION（发布流水线给），没有就用 UTC 日期——与 build:db 同一条规则，
  * 两个脚本必须得到同一个版本号，否则 manifest 与库文件名对不上。
  * @param {Record<string, string|undefined>} [env]
  * @param {Date} [now]

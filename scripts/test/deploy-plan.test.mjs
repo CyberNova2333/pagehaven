@@ -96,7 +96,7 @@ test('planDeployCommand：缺凭据逐个点名；github 不由命令部署；�
 
   const gh = planDeployCommand({ target: 'github', config, env: {}, distDir: DIST });
   assert.equal(gh.ok, false);
-  assert.match(gh.problems[0], /upload-pages-artifact/);
+  assert.match(gh.problems[0], /推 gh-pages/);
 
   const nope = planDeployCommand({ target: 'vercel', config, env: {}, distDir: DIST });
   assert.equal(nope.ok, false);

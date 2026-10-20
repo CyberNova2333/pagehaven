@@ -1,8 +1,9 @@
 // deploy:github 的端到端：临时 dist 目录，真 spawn 脚本，通过与不通过两种。
 //
-// GitHub Pages 是三平台的最小公分母（铁律 2）：没有响应头、没有重定向、没有函数。脚本不上传
-// （release.yml 用 upload-pages-artifact + deploy-pages），只把「dist 拿去就能当一个完整站点」
-// 这件事守住：.nojekyll、404.html、index.html 齐全，CNAME 等于 site.domain。
+// GitHub Pages 是三平台的最小公分母（铁律 2）：没有响应头、没有重定向、没有函数。
+// CNB 流水线把 dist 推到 GITHUB_PAGES_REPO 的 gh-pages 分支；这里用 DEPLOY_DRY_RUN=1
+// 只走基线校验，把「dist 拿去就能当一个完整站点」这件事守住：.nojekyll、404.html、
+// index.html 齐全，CNAME 等于 site.domain。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -34,11 +35,18 @@ async function dist(t, files) {
 
 const GOOD = { '.nojekyll': '', '404.html': '<!doctype html><title>404</title>', 'index.html': '<!doctype html><title>首页</title>', CNAME: `${config.site.domain}\n` };
 
-test('deploy:github：基线文件齐全、CNAME 等于 site.domain → 退 0', async (t) => {
-  const r = run({ DIST_DIR: await dist(t, GOOD) });
+test('deploy:github：基线文件齐全、CNAME 等于 site.domain + DEPLOY_DRY_RUN=1 → 退 0，只校验不上传', async (t) => {
+  const r = run({ DIST_DIR: await dist(t, GOOD), DEPLOY_DRY_RUN: '1' });
   assert.equal(r.status, 0, r.out);
   assert.match(r.out, /基线文件齐全：\.nojekyll、404\.html、index\.html、CNAME=gallery\.example\.org/);
-  assert.match(r.out, /上传由 workflow 的 deploy-pages 完成/);
+  assert.match(r.out, /DEPLOY_DRY_RUN=1：只校验基线，不推 gh-pages/);
+});
+
+test('deploy:github：基线齐全但没给 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN → 退 1 并点名', async (t) => {
+  const r = run({ DIST_DIR: await dist(t, GOOD) });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /缺 GITHUB_PAGES_REPO \/ GITHUB_PAGES_TOKEN/);
+  assert.match(r.out, /只校验基线用 DEPLOY_DRY_RUN=1/);
 });
 
 test('deploy:github：缺 404.html 与 .nojekyll → 退 1，逐条点名，其余照常', async (t) => {
