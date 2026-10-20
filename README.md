@@ -72,7 +72,7 @@ flowchart TB
 
 1. **Fork** 本仓库（公开，CNB 账号或组织下）。
 2. **填凭据**：密钥仓库 `deployment-secrets` 按「目录 = 下游仓库名、文件 = 操作名」组织。
-   本项目对应 `comics-gallery/` 下的四份**脚本任务**凭据——不要写 `allow_images`
+   本项目对应 `comics-gallery/` 下的三份**脚本任务**凭据——不要写 `allow_images`
    （平台规则：声明了它，脚本任务读到的是空变量），用 `allow_slugs` + `allow_branches: main`
    收范围：
    - `publish.yml`：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET`
@@ -83,11 +83,11 @@ flowchart TB
      `china`）。EdgeOne 允许多个同名项目，流水线部署前会按 ID 核对名字与同名唯一性，不一致就拒绝
      部署（`EDGEONE_PROJECT_ID` 填项目名或 ID 填错都不会静默发错）；`GITHUB_PAGES_REPO`（`owner/repo`）与 `GITHUB_PAGES_TOKEN`
      （有 repo 写权限，流水线把 dist 推到该仓库的 `gh-pages` 分支）；
-   - `seo.yml`：`BAIDU_PUSH_TOKEN`（可选；IndexNow 的 key 在 `site.config.yaml` 的
-     `seo.indexnow_key`，不是凭据）；
    - `notify.yml`：`NOTIFY_URL` `NOTIFY_TOKEN` `NOTIFY_TO` `NOTIFY_FROM` `NOTIFY_FROM_NAME`
      ——失败邮件。组织标准：凡是有**线上产物**或**把产物/自身部署到其他平台**的仓库都必须有；
      本仓库两者都占，所以不可省。
+   （SEO 不需要密钥文件：只走 IndexNow，key 在 `site.config.yaml` 的 `seo.indexnow_key`，
+   按协议公开放在站点根，不是凭据；不走百度。）
    救火用的 `purge` 另需 `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`，可以先不填。
    路径是**逐字匹配**的：目录或文件名差一个字，准备阶段就报 `GetFileContent: not found`。
    凭据只进密钥仓库，不进本仓库（CLAUDE.md 铁律 7）。密钥仓库只能在网页上逐文件编辑，

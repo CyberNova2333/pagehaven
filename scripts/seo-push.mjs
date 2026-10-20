@@ -1,24 +1,22 @@
 #!/usr/bin/env node
-// push:search —— 页面上线之后，主动把本次新增的页面告诉搜索引擎。
+// push:search —— 页面上线之后，主动把本次新增的页面告诉搜索引擎（IndexNow）。
 //
-// 在发布流水线写 STATUS 的那一步之后跑（部署都完成之后）：推送只对已经能抓到的
-// 页面有意义，推早了引擎抓到 404 反而扣分。推什么、怎么分批、回应怎么读，全在 scripts/lib/seo-push.mjs；
+// 在发布流水线写 STATUS 的那一步之后跑（部署都完成之后）：推送只对已经能抓到的页面有意义，
+// 推早了引擎抓到 404 反而扣分。推什么、怎么分批、回应怎么读，全在 scripts/lib/seo-push.mjs；
 // 这里只做接线：
 //   1. 读 site.config.yaml、OUT_DIR/manifest.json（缺 → 退 1：没 manifest 就没有页面清单）、
 //      OUT_DIR/manifest-previous.json（publish:r2 存下的线上旧 manifest；缺 → 首次发布，推全部）；
 //   2. 新 URL = 两份 manifest 页面集合的差集；--all 强制推全部；
-//   3. 引擎：IndexNow（config.seo.indexnow_key 非空，或 INDEXNOW_KEY 环境变量覆盖）、
-//      百度（BAIDU_PUSH_TOKEN 非空）；Google 没有普通页面的推送接口（sitemap ping 已下线，Indexing API
-//      只收招聘 / 直播页），只打印一行说明；
+//   3. 引擎：只有 IndexNow（config.seo.indexnow_key 非空，或 INDEXNOW_KEY 环境变量覆盖）。
+//      不走百度；Google 没有普通页面的推送接口（sitemap ping 已下线，Indexing API 只收招聘 /
+//      直播页），只打印一行说明；
 //   4. 推之前先 GET 线上的 key 文件核对：内容不等于 key，说明站点还没部署上去或 CDN 还是旧站——
 //      这时推什么都是空的，一条都不发、退 1；
-//   5. 每家引擎分批发，任一批失败记下、其它引擎照跑，最后统一退 1；都成功退 0。
+//   5. 分批发，任一批失败记下，最后退 1；全成功退 0。
 //
 // 环境变量：
 //   INDEXNOW_KEY            覆盖 config.seo.indexnow_key（测试用；日常只改 site.config.yaml）
 //   INDEXNOW_ENDPOINT       覆盖 IndexNow 接口地址（测试对本地假服务器）
-//   BAIDU_PUSH_TOKEN        百度站长平台该站点的推送 token（凭据，只在 secrets，绝不打印）
-//   BAIDU_PUSH_ENDPOINT     覆盖百度接口地址（测试）
 //   SITE_ORIGIN             覆盖核对 key 文件时访问的站点源（测试）；推送的 URL 永远用 site.domain
 //   SEO_PUSH_SKIP_KEY_CHECK 1 = 跳过 key 文件核对
 //   SEO_PUSH_KEY_RETRIES    key 文件核对最多试几次（默认 6）；SEO_PUSH_KEY_RETRY_MS 每次间隔（默认 20000）——
@@ -32,17 +30,13 @@ import { readManifest, MANIFEST_FILE } from './lib/manifest.mjs';
 import {
   MANIFEST_PREVIOUS_FILE,
   INDEXNOW_DEFAULT_ENDPOINT,
-  BAIDU_DEFAULT_ENDPOINT,
   INDEXNOW_BATCH_MAX,
-  BAIDU_BATCH_MAX,
   INDEXNOW_KEY_RE,
   pageUrls,
   newUrls,
   chunk,
   indexNowRequest,
-  baiduRequest,
   interpretIndexNow,
-  interpretBaidu,
 } from './lib/seo-push.mjs';
 import { indexNowKeyFile } from './lib/sitemap.mjs';
 import { OUT_DIR, ROOT } from './lib/paths.mjs';
@@ -129,7 +123,7 @@ async function pushEngine({ name, batches, send }) {
   return { name, urls: total, batches: batches.length, ok: failed.length === 0, summary };
 }
 
-/** CI 的运行摘要：一张小表，手机上一眼看到每家引擎的结果。 */
+/** CI 的运行摘要：一张小表，手机上一眼看到结果。 */
 async function writeStepSummary(file, { version, pushed, rows }) {
   const lines = [
     `### push:search（版本 ${version}）`,
@@ -173,10 +167,9 @@ try {
     note(`线上旧 manifest 版本 ${previous.version ?? '?'}，本版 ${manifest.version}：共 ${current.length} 条 URL，新增 ${urls.length} 条`);
   }
 
-  // 引擎配置
+  // 引擎配置：只有 IndexNow
   const indexNowKey = process.env.INDEXNOW_KEY || config.seo?.indexnow_key || '';
   if (indexNowKey && !INDEXNOW_KEY_RE.test(indexNowKey)) bail('IndexNow key 必须是 8–128 位字母、数字与连字符（协议要求）');
-  const baiduToken = process.env.BAIDU_PUSH_TOKEN || '';
   const engines = [];
   if (indexNowKey) {
     const endpoint = process.env.INDEXNOW_ENDPOINT || INDEXNOW_DEFAULT_ENDPOINT;
@@ -194,31 +187,10 @@ try {
   } else {
     note('IndexNow：site.config.yaml 的 seo.indexnow_key 为空，不推');
   }
-  if (baiduToken) {
-    const endpoint = process.env.BAIDU_PUSH_ENDPOINT || BAIDU_DEFAULT_ENDPOINT;
-    engines.push({
-      name: '百度',
-      batches: chunk(urls, BAIDU_BATCH_MAX),
-      describe: `site=${origin}（须与站长平台登记的一致）`,
-      send: async (batch) => {
-        // 请求 URL 带 token，不进日志；错误信息也过一遍抹除
-        const { url, init } = baiduRequest({ endpoint, site: origin, token: baiduToken, urls: batch });
-        let res;
-        try {
-          res = await fetchWithTimeout(url, init);
-        } catch (e) {
-          throw new Error(describeFetchError(e).split(baiduToken).join('***'), { cause: e });
-        }
-        return interpretBaidu(res.status, (await res.text()).split(baiduToken).join('***'));
-      },
-    });
-  } else {
-    note('百度：BAIDU_PUSH_TOKEN 未设置，不推');
-  }
   note(`Google：${GOOGLE_NOTE}`);
 
   if (engines.length === 0) {
-    ok('一个引擎都没配置（seo.indexnow_key 为空且没有 BAIDU_PUSH_TOKEN），本步骤无事可做');
+    ok('没配置 IndexNow（seo.indexnow_key 为空），本步骤无事可做');
     process.exit(0);
   }
   if (urls.length === 0) {
@@ -276,10 +248,10 @@ try {
   }
   const failed = rows.filter((r) => !r.ok);
   if (failed.length) {
-    fail(`${failed.map((r) => r.name).join('、')} 推送失败（其它引擎已照常推完）`);
+    fail(`${failed.map((r) => r.name).join('、')} 推送失败`);
     process.exit(1);
   }
-  ok(`push:search 完成：${rows.length - 1} 家引擎各推 ${urls.length} 条`);
+  ok(`push:search 完成：IndexNow 推 ${urls.length} 条`);
 } catch (e) {
   fail(e.message);
   if (!e.issues) console.error(e.stack);
