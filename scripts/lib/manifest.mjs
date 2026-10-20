@@ -72,7 +72,10 @@ const byteOrder = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  * @returns {Manifest}
  */
 export function buildManifest(gallery, config, { version, generatedAt = new Date().toISOString() }) {
-  const imageKeys = gallery.chapters.flatMap((c) => c.pages.map((p) => p.keys.webp)).sort(byteOrder);
+  const imageKeys = [
+    ...gallery.chapters.flatMap((c) => c.pages.map((p) => p.keys.webp)),
+    ...gallery.series.map((s) => s.coverKey).filter(Boolean),
+  ].sort(byteOrder);
   return {
     version,
     generatedAt,
@@ -83,6 +86,14 @@ export function buildManifest(gallery, config, { version, generatedAt = new Date
       id: s.id,
       title: s.title,
       url: s.url,
+      description: s.description,
+      authors: s.authors,
+      artists: s.artists,
+      status: s.status,
+      year: s.year,
+      tags: s.tags,
+      altTitles: s.altTitles,
+      coverKey: s.coverKey,
       issues: s.issues.map((iss) => ({
         id: iss.id,
         number: iss.number,

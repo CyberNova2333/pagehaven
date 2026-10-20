@@ -31,6 +31,14 @@ const summary = gallery.series.map((s) => ({
   url: s.url,
   issues: s.issues.length,
   chapters: s.issues.reduce((n, iss) => n + iss.chapters.length, 0),
+  // 元数据检索（标题 / 作者 / 标签）用；纯前端过滤，不用再取分片
+  authors: s.authors ?? [],
+  artists: s.artists ?? [],
+  status: s.status ?? null,
+  year: s.year ?? null,
+  tags: s.tags ?? [],
+  description: s.description ?? '',
+  coverKey: s.coverKey ?? null,
 }));
 await writeFile(join(dir, 'series.json'), JSON.stringify(summary) + '\n');
 ok(`${relative(ROOT, join(dir, 'series.json'))}（${summary.length} 个作品）`);

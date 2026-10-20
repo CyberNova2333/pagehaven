@@ -90,10 +90,12 @@ R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 ## 4. 数据模型
 
 - **图片 key**：`img/<series>/<issue>/<chapter>/<n>-<sha256 前 12 位>.webp`（只用 webp：
-  avif 编码慢、体积并不更小）。内容哈希 = 不可变；R2 对象元数据 `Cache-Control: public,
+  avif 编码慢、体积并不更小）。作品封面是 `img/<series>/cover-<hash>.webp`，与页图一起进
+  manifest 的 `imageKeys`。内容哈希 = 不可变；R2 对象元数据 `Cache-Control: public,
   max-age=31536000, immutable`。修图 = 新 key + 重建引用页，不依赖清缓存。
-- **`data/meta/<series>.yaml`**：作品、期（`number`、`title`、`published`）、
-  话（`number`、`title`）、页（`n`、`img`、`w`、`h`），人工维护。
+- **`data/meta/<series>.yaml`**：作品（`title`、`sort`，可选 `description`、`authors`、
+  `artists`、`status`、`year`、`tags`、`altTitles`、`cover`）、期（`number`、`title`、
+  `published`）、话（`number`、`title`）、页（`n`、`img`、`w`、`h`），人工维护。
 - **`data/text/<series>/<chapter>.json`**（每话一文件，控制文件数）：
 
   ```json

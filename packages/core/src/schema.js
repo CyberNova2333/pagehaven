@@ -73,6 +73,15 @@ export const SeriesSchema = z
     id,
     title: z.string().min(1),
     sort: z.number().int().default(0),
+    // 作品元数据：都可选，旧 meta 不用补；cover 是封面图内容 sha256 前 12 位
+    description: z.string().optional(),
+    authors: z.array(z.string().min(1)).optional(),
+    artists: z.array(z.string().min(1)).optional(),
+    status: z.enum(['ongoing', 'completed', 'hiatus', 'cancelled']).optional(),
+    year: z.number().int().min(1900).max(2999).optional(),
+    tags: z.array(z.string().min(1)).optional(),
+    altTitles: z.array(z.string().min(1)).optional(),
+    cover: z.string().regex(HASH12_RE, 'cover 是封面图内容 sha256 的前 12 位（key 由它推出）').optional(),
     issues: z.array(IssueSchema).default([]),
   })
   .refine((s) => uniqueBy(s.issues, (i) => i.id).length === 0, {

@@ -1,24 +1,54 @@
 ---
-// 作品页：期列表（number、title、published、话数）。
+// 作品页：封面 / 简介 / 作者 / 状态 / 标签 / 别名 + 继续阅读 + 期列表。
 import Base from '../../layouts/Base.astro';
+import siteConfig from '../../generated/site-config.json';
 import gallery from '../../generated/gallery.json';
-import { chapterCount } from '../../lib/gallery.js';
+import { chapterCount, imageUrl } from '../../lib/gallery.js';
 
 export function getStaticPaths() {
   return gallery.series.map((s) => ({ params: { series: s.id }, props: { series: s } }));
 }
 
 const { series } = Astro.props;
+const { images } = siteConfig;
+const cover = series.coverKey ? imageUrl(images.hosts[0], series.coverKey) : null;
+const firstChapter = series.issues[0]?.chapters[0] ?? null;
+const STATUSB = { ongoing: '连载中', completed: '已完结', hiatus: '休载', cancelled: '已终止' };
 ---
 
 <Base title={series.title} url={series.url} crumbs={[{ text: series.title }]}>
-  <section class="page-head card card-pad">
-    <p class="eyebrow">Series</p>
-    <h1>{series.title}</h1>
-    <p class="muted head-meta">{series.issues.length} 期 · {chapterCount(series)} 话</p>
+  <section class="series-head card card-pad">
+    <div class="series-cover">
+      {cover ? (
+        <img src={cover} alt="" width="600" height="879" loading="eager" />
+      ) : (
+        <span class="cover-fallback">{series.title.slice(0, 2)}</span>
+      )}
+    </div>
+    <div class="series-body">
+      <p class="eyebrow">Series</p>
+      <h1>{series.title}</h1>
+      <p class="meta">
+        {series.authors?.length ? `作者：${series.authors.join(' / ')}` : ''}
+        {series.status ? ` · ${STATUSB[series.status] ?? series.status}` : ''}
+        {series.year ? ` · ${series.year}` : ''}
+        {` · ${series.issues.length} 期 · ${chapterCount(series)} 话`}
+      </p>
+      {series.description && <p class="lede">{series.description}</p>}
+      {series.tags?.length > 0 && (
+        <div class="tag-row">
+          {series.tags.map((t) => <span class="tag">{t}</span>)}
+        </div>
+      )}
+      {series.altTitles?.length > 0 && <p class="alt">别名：{series.altTitles.join(' / ')}</p>}
+      <div class="series-actions">
+        {firstChapter && <a class="btn btn-primary" id="start-reading" href={firstChapter.url}>开始阅读 →</a>}
+        <a class="btn" href={`${series.url}#chapters`}>目录</a>
+      </div>
+    </div>
   </section>
 
-  <h2>期</h2>
+  <h2 id="chapters">期</h2>
   <ul class="list">
     {
       series.issues.map((iss) => (
@@ -32,10 +62,40 @@ const { series } = Astro.props;
       ))
     }
   </ul>
+
+  <script is:inline define:vars={{ seriesUrl: series.url, seriesTitle: series.title }}>
+    (function () {
+      var link = document.getElementById('start-reading');
+      if (!link) return;
+      var best = null;
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || k.indexOf('gallery:progress:') !== 0) continue;
+        try {
+          var v = JSON.parse(localStorage.getItem(k));
+          if (v && v.url && v.url.indexOf(seriesUrl) === 0 && (!best || (v.ts || 0) > (best.ts || 0))) best = v;
+        } catch (e) {
+          /* 坏数据跳过 */
+        }
+      }
+      if (best) {
+        link.href = best.url + (best.n ? '#p' + best.n : '');
+        link.textContent = '继续阅读：' + (best.title || best.url) + ' →';
+      }
+    })();
+  </script>
 </Base>
 
 <style>
-  .page-head { margin-bottom: 1.2rem; }
-  .head-meta { margin: 0; }
+  .series-head { display: grid; grid-template-columns: minmax(10rem, 13rem) 1fr; gap: clamp(1rem, 3vw, 2rem); margin-bottom: 1.2rem; }
+  @media (max-width: 40rem) { .series-head { grid-template-columns: 1fr; } }
+  .series-cover { border-radius: 14px; overflow: hidden; background: linear-gradient(135deg, rgba(255, 143, 171, 0.25), rgba(169, 139, 255, 0.2)); aspect-ratio: 600 / 879; }
+  .series-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cover-fallback { display: grid; place-items: center; width: 100%; height: 100%; color: var(--purple); font-family: var(--font-serif); font-size: 2rem; }
+  .series-body { min-width: 0; }
+  .meta { margin: 0.2rem 0 0.6rem; color: var(--text-dim); font-size: 0.9rem; }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.5rem 0; }
+  .alt { margin: 0.4rem 0; color: var(--text-dim); font-size: 0.82rem; }
+  .series-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.9rem; }
   .row-title { flex: 1; min-width: 0; }
 </style>
