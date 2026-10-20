@@ -1,8 +1,8 @@
 // build:manifest 的端到端测试：DATA_DIR 指到样本、OUT_DIR 指到临时目录，真 spawn 脚本。
 //
-// 对象存储清单核对那条路不 mock SDK：起一个本地 HTTP 假 S3（只会答 ListObjectsV2，且故意把
-// 每页压到 5 个 key 逼出翻页），用 R2_ENDPOINT 把脚本指过去。这样验的是「真 SDK + 真分页 +
-// 真退出码」，而不是某个函数被调用了几次。不连任何外部服务，不碰仓库根的 data/ dist/ out/。
+// 对象存储清单核对那条路不 mock 客户端：起一个本地 HTTP 假 S3（只会答 ListObjectsV2，且故意把
+// 每页压到 5 个 key 逼出翻页），用 R2_ENDPOINT 把脚本指过去。这样验的是「真 HTTP + 真签名 +
+// 真分页 + 真退出码」，而不是某个函数被调用了几次。不连任何外部服务，不碰仓库根的 data/ dist/ out/。
 //
 // 域名与前缀的期望值从仓库的 site.config.yaml 读（脚本经 loadSiteConfig 读的是固定路径，
 // 测试指不到临时配置）：维护者把示例域名换成真域名时，这些与改动无关的断言不该跟着红。

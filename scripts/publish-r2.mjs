@@ -241,8 +241,8 @@ try {
   ok(`publish:r2 完成，共 ${Math.round(performance.now() - t0)} ms`);
 } catch (e) {
   // 计划 / 数据问题的信息本身已逐条列好（e.issues），再打栈只会把手机上的日志推出屏幕。
-  // 存储的错误把 HTTP 状态码带上：SDK 对 HEAD 的非 404 错误只给一个 name，状态码才是定位的线索
-  const status = e?.$metadata?.httpStatusCode;
+  // 存储的错误把 HTTP 状态码带上：HEAD 的失败没有响应体，状态码才是定位的线索
+  const status = e?.status;
   fail(status ? `对象存储回 HTTP ${status}（${e.name}）：${e.message}（manifest.json 未更新，线上仍指向上一版）` : e.message);
   if (!e.issues) console.error(e.stack);
   process.exit(1);

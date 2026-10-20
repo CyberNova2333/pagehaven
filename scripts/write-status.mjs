@@ -50,7 +50,7 @@ function durationMs(env, now) {
 }
 
 /**
- * 列举失败的原因，进 STATUS.md 之前把账号 / 桶名 / 端点主机名抹掉（铁律 7）：SDK 的错误信息里
+ * 列举失败的原因，进 STATUS.md 之前把账号 / 桶名 / 端点主机名抹掉（铁律 7）：错误信息里
  * 常带它们（「Access Denied to <桶>」「connect ECONNREFUSED <主机>:<端口>」）。保留错误名、错误码
  * 与 HTTP 状态——接手的人靠这几样判断是凭据过期还是网络问题。
  * @param {any} e
@@ -60,7 +60,7 @@ function durationMs(env, now) {
 function describeStorageError(e, r2) {
   const head = [e?.name || 'Error'];
   if (e?.code && e.code !== e.name) head.push(e.code);
-  const status = e?.$metadata?.httpStatusCode;
+  const status = typeof e?.status === 'number' && e.status ? e.status : undefined;
   if (status) head.push(`HTTP ${status}`);
   let msg = String(e?.message ?? '');
   // 先抹主机名（它含账号 ID），再抹账号与桶名；host 带端口、hostname 不带，两种写法都可能出现
