@@ -71,16 +71,21 @@ flowchart TB
 重建需要仓库数据及有权访问的图片、检索库和部署配置；仅 Fork 源码不会取得原维护者的对象存储。配置齐全后按以下步骤执行：
 
 1. **Fork** 本仓库（公开，CNB 账号或组织下）。
-2. **填凭据**：把下面这些键写进根组织下密钥仓库 `deployment-secrets` 的 `gallery.yml`
-   （`.cnb.yml` 的 `imports` 已指向该文件；换仓库或换文件名时两处一起改）：
-   `R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET`——对象存储的**写**凭据；
-   要发 Cloudflare Pages 再加 `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID`；
-   要发 EdgeOne 再加 `EDGEONE_API_TOKEN` `EDGEONE_PROJECT_ID`（值填 Makers 的**项目名**，首次
-   先选 `deploy_env=preview` 核对）；GitHub Pages 再加 `GITHUB_PAGES_REPO`（`owner/repo`）与
-   `GITHUB_PAGES_TOKEN`（有 repo 写权限，流水线把 dist 推到该仓库的 `gh-pages` 分支）。救火用的
-   `purge` 另需 `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`，可以先不填；要主动向
-   百度推送新页面再加 `BAIDU_PUSH_TOKEN`（IndexNow 的 key 填在 `site.config.yaml` 的
-   `seo.indexnow_key`）。凭据只进密钥仓库，不进本仓库（CLAUDE.md 铁律 7）。
+2. **填凭据**：密钥仓库 `deployment-secrets` 按「目录 = 下游仓库名、文件 = 操作名」组织。
+   本项目对应 `comics-gallery/` 下的三份**脚本任务**凭据——不要写 `allow_images`
+   （平台规则：声明了它，脚本任务读到的是空变量），用 `allow_slugs` + `allow_branches: main`
+   收范围：
+   - `publish.yml`：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET`
+     ——对象存储的**写**凭据（`verify:manifest` / `publish:r2` / `status` 用）；
+   - `deploy.yml`：按目标填 `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID`（Cloudflare Pages）、
+     `EDGEONE_API_TOKEN` `EDGEONE_PROJECT_ID`（EdgeOne Makers，值填**项目名**，首次先选
+     `deploy_env=preview` 核对）、`GITHUB_PAGES_REPO`（`owner/repo`）与 `GITHUB_PAGES_TOKEN`
+     （有 repo 写权限，流水线把 dist 推到该仓库的 `gh-pages` 分支）；
+   - `seo.yml`：`BAIDU_PUSH_TOKEN`（可选；IndexNow 的 key 在 `site.config.yaml` 的
+     `seo.indexnow_key`，不是凭据）。
+   救火用的 `purge` 另需 `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`，可以先不填。
+   路径是**逐字匹配**的：目录或文件名差一个字，准备阶段就报 `GetFileContent: not found`。
+   凭据只进密钥仓库，不进本仓库（CLAUDE.md 铁律 7）。
 3. 改 [`site.config.yaml`](site.config.yaml) 里的 `site.domain` 与 `images.hosts`（图片经 CDN
    读对象存储；把 img 域名切到任何支持 S3 私有回源的 CDN 都行）。
 4. **在 CNB 的 main 分支详情页点「发布」按钮**（`.cnb/web_trigger.yml`），选 `target`（首次可选
