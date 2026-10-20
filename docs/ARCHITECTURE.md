@@ -295,8 +295,9 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
 2. `core`：schema（zod）、LabelPlus 解析器 + 测试样本、`tn` 归一化、manifest 生成。
 3. `site`：Astro，作品 / 期 / 话页面 + 阅读器（绝对定位透明 div 文字层，
    `#p12` 深链），sitemap，索引分片。
-4. `build:db` + 浏览器端检索页（httpvfs）；在 CDN 私有回源 + Range + CORS 下
-   验证可用，结果记入决策记录。
+4. `build:db` + 浏览器端检索页：整份下载 + sha256 校验 + sqlite-wasm（FTS5 trigram）查询
+   已落地；按 Range 分块的取块层与函数版加速仍待做，在 CDN 私有回源 + CORS 下
+   验证可用后把结果记入决策记录。
 5. `platform`：`build:config` 生成器、三套 deploy 脚本、Hono 函数壳（可选）。
 6. `publish:r2`、`check`、`STATUS.md` 自动更新；跑通 `target=all` 一次。
 7. 端到端验证：三平台各部署一次，切 CNAME 各验一次；记录耗时到 STATUS.md。
@@ -383,4 +384,9 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
 - 2026-10-20 SEO 只走 IndexNow，移除百度链接提交。百度要站点级 token、长期不推会被降权，
   且与 IndexNow 的公开 key 验证是两套模型。`push:search` 去掉百度分支与 `BAIDU_PUSH_TOKEN`，
   密钥仓库不再需要 `seo.yml`（IndexNow key 按协议公开在 `site.config.yaml`，不是凭据）。
+- 2026-10-20 浏览器端检索执行器落地（整份下载路径）。`packages/search` 实现 `queryLines` /
+  `loadGalleryDb` / `mountSearch`：搜索页懒加载 `db/manifest.json` → 整份下载检索库 → 按 manifest
+  的 size / sha256 校验 → `openGalleryDb`（sqlite-wasm，FTS5 trigram）→ ≥ 3 字 MATCH、恰好 2 字
+  LIKE、1 字拒绝，结果链到 `#p<n>b<i>`。这是 §6 的退化路径；按 Range 分块（自定义同步 VFS）
+  与函数版加速尚未实现，接口不变。搜索页提示、README 与 §10 落地顺序同步更新。
 
