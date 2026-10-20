@@ -264,7 +264,7 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
 | 托管平台 | 配额调整、产品下线 | 三平台可移植，dist 归档在 R2 |
 | 函数运行时 | Node 版本下线 | 检索默认浏览器端，函数永远可选 |
 
-- 仓库公开，`README.md` 顶部是「十分钟重建」：fork → 填密钥仓库 → 点「发布」→
+- 仓库公开，`README.md` 的「怎么跑」给出构建与发布入口：fork → 填密钥仓库 → 点「发布」→
   改 CNAME。任何人不联系原维护者也能复活站点。
 - 每次发布的 `site-<date>.tar.zst` 与 `gallery-<date>.sqlite` 留在 R2；每卷图片
   另打归档包并公开链接，便于社群做镜像 / 做种 / 推 Internet Archive。
@@ -291,7 +291,7 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
 
 1. 仓库骨架与空跑：`packages/{core,site,search,platform}`、`data/{meta,text}`、
    `scripts/`、`site.config.yaml`、全部 scripts 占位、`.cnb.yml` /
-   `.cnb/web_trigger.yml`、`README.md`（十分钟重建）、`STATUS.md`。
+   `.cnb/web_trigger.yml`、`README.md`、`STATUS.md`。
 2. `core`：schema（zod）、LabelPlus 解析器 + 测试样本、`tn` 归一化、manifest 生成。
 3. `site`：Astro，作品 / 期 / 话页面 + 阅读器（绝对定位透明 div 文字层，
    `#p12` 深链），sitemap，索引分片。

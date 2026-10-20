@@ -98,6 +98,6 @@ export function renderStatus(data) {
     }
     lines.push('');
   }
-  lines.push('重建步骤见 [README.md](README.md)「十分钟重建」。', '');
+  lines.push('构建与发布入口见 [README.md](README.md)「怎么跑」。', '');
   return lines.join('\n');
 }
