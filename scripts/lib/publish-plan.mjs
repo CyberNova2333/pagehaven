@@ -24,8 +24,8 @@ export const CONTENT_TYPE_ARCHIVE = 'application/zstd';
 /** dist 归档在存储里的前缀（ARCHITECTURE §5：site-<date>.tar.zst）。 */
 export const ARCHIVE_PREFIX = 'archive/';
 export const MANIFEST_KEY_NAME = 'manifest.json';
-/** 图片按扩展名定 Content-Type；只有这两种（§7：avif/webp 用不同文件名 + <picture>）。 */
-export const IMAGE_CONTENT_TYPES = { avif: 'image/avif', webp: 'image/webp' };
+/** 图片按扩展名定 Content-Type；只用 webp（avif 编码慢、体积并不更小，已弃用）。 */
+export const IMAGE_CONTENT_TYPES = { webp: 'image/webp' };
 
 /** 与 build:db 同一条命名规则：out/db 里只该有这一对文件。 */
 export function dbFileNames(version) {

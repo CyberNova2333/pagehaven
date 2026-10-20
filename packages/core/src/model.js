@@ -34,7 +34,7 @@ export function imageKey(prefix, key, n, hash, ext) {
  * @property {string} img  内容哈希前 12 位
  * @property {number} w
  * @property {number} h
- * @property {{avif: string, webp: string}} keys  对象存储 key（不含域名）
+ * @property {{webp: string}} keys  对象存储 key（不含域名）
  * @property {import('./schema.js').ChapterText['pages'][number]['boxes']} boxes  文字层，没有台词稿则为空数组
  */
 /**
@@ -133,7 +133,6 @@ export function buildGallery(seriesList, textsByKey = new Map(), { imagePrefix =
               w: p.w,
               h: p.h,
               keys: {
-                avif: imageKey(imagePrefix, key, p.n, p.img, 'avif'),
                 webp: imageKey(imagePrefix, key, p.n, p.img, 'webp'),
               },
               boxes: (boxesByN.get(p.n) ?? []).slice().sort((a, b) => a.i - b.i),

@@ -46,8 +46,8 @@ Astro 会静默让静态路由赢；`scripts/lib/site-generated.mjs` 在构建�
 
 ## 阅读器
 
-- **每话恰好一个 HTML**：全部页的 `<picture>`（`<source type="image/avif">` + `<img src=webp
-  loading="lazy" width height alt>`）都在这一份里，URL = `https://<images.hosts[0]>/<key>`。
+- **每话恰好一个 HTML**：全部页的 `<img src=webp loading="lazy" width height alt>` 都在这一份里，
+  URL = `https://<images.hosts[0]>/<key>`。
 - **文字层**（`features.text_layer` 为真时输出）：每页一个按 w/h 设 `aspect-ratio` 的定位容器，
   每个框一个绝对定位、透明背景、透明字色、可选中的 `<span class="box" id="p<n>b<i>">`，
   left/top/width/height 用百分比；w=h=0 的点标签画成一个小圆点（`.box.dot`），文本仍可选中。

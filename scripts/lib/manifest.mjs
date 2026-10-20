@@ -39,7 +39,7 @@ export function resolveVersion(env = process.env, now = new Date()) {
  * @property {{ hosts: string[], prefix: string }} images
  * @property {{ series: number, issues: number, chapters: number, pages: number, boxes: number }} totals
  * @property {ManifestSeries[]} series
- * @property {string[]} imageKeys  全部 avif 与 webp 的对象 key，按字节序排序
+ * @property {string[]} imageKeys  全部 webp 的对象 key，按字节序排序
  * @property {ManifestDb|null} db  build:manifest 恒写 null，build:db 之后填
  */
 /**
@@ -72,7 +72,7 @@ const byteOrder = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  * @returns {Manifest}
  */
 export function buildManifest(gallery, config, { version, generatedAt = new Date().toISOString() }) {
-  const imageKeys = gallery.chapters.flatMap((c) => c.pages.flatMap((p) => [p.keys.avif, p.keys.webp])).sort(byteOrder);
+  const imageKeys = gallery.chapters.flatMap((c) => c.pages.map((p) => p.keys.webp)).sort(byteOrder);
   return {
     version,
     generatedAt,
