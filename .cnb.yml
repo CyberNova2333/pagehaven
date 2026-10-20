@@ -9,9 +9,14 @@
 # 发布与部署只能手动（web_trigger），不许 push 触发，不许 crontab。
 # `npm run check` 的第 4 节会解析本文件，把这两条变成硬拦截（铁律 6）。
 #
-# 凭据只从密钥仓库来（铁律 7）：下面的 imports 指向一个独立密钥仓库里的 YAML 文件，
-# 内容是一行一个的 R2_* / CLOUDFLARE_* / EDGEONE_* / BAIDU_PUSH_TOKEN / GITHUB_PAGES_*。
-# 该文件不入本仓库；路径按实际密钥仓库调整，键名清单见 CONTRIBUTING.md §四。
+# 凭据只从密钥仓库来（铁律 7）。按密钥仓库的目录规范（目录名 = 下游仓库名逐字，
+# 文件名 = 操作名），本项目对应 comics-gallery/ 下的三份文件：
+#   publish.yml —— 对象存储写凭据（verify:manifest / publish:r2 / status）
+#   deploy.yml  —— 站点部署凭据（cloudflare / edgeone / github）
+#   seo.yml     —— 搜索引擎推送 token（push:search）
+# 三份都由**脚本任务**读取，所以文件里不能写 allow_images（平台规则：写了就只能被
+# 插件任务引用，脚本任务读到的是空变量）。收紧改用 allow_slugs + allow_branches。
+# 引用是逐字匹配的：路径差一个字，准备阶段就报 GetFileContent: not found。
 
 main:
   # ── 检查：main 推送时自动跑（唯一允许 push 触发的流水线）────────────────────
@@ -206,17 +211,17 @@ main:
         # 图片清单核对单独一步：只有这一步拿得到存储凭据，astro build 等整条 build 都看不见 secret。
         # 缺图在这里就拦住，manifest.json 的当前版本指针不会指向引用了不存在图片的站点。
         - name: 核对对象存储里的图片清单
-          imports: &secrets https://cnb.cool/example/deployment-secrets/-/blob/main/gallery.yml
+          imports: &publish_secrets ${publish_secrets_url}
           script: npm run verify:manifest
 
         # 写凭据只在这里出现，且只来自密钥仓库（铁律 7）。读永远走 CDN 域名。
         - name: publish:r2
-          imports: *secrets
+          imports: *publish_secrets
           script: npm run publish:r2
 
         - name: deploy:cloudflare
           if: '[ "$target" = "cloudflare" ] || [ "$target" = "all" ]'
-          imports: *secrets
+          imports: &deploy_secrets ${deploy_secrets_url}
           env:
             DEPLOY_ENV: $deploy_env
           script: npm run deploy:cloudflare
@@ -225,7 +230,7 @@ main:
         # 首次部署先选 deploy_env=preview，核对 CLI 输出的项目名与 URL，再切 production。
         - name: deploy:edgeone
           if: '[ "$target" = "edgeone" ] || [ "$target" = "all" ]'
-          imports: *secrets
+          imports: *deploy_secrets
           env:
             DEPLOY_ENV: $deploy_env
           script: npm run deploy:edgeone
@@ -235,11 +240,11 @@ main:
         # 把 dist 推到该仓库的 gh-pages 分支；两者没配就是配置错误（见 scripts/deploy.mjs）。
         - name: deploy:github（校验基线 → 推 gh-pages）
           if: '[ "$target" = "github" ] || [ "$target" = "all" ]'
-          imports: *secrets
+          imports: *deploy_secrets
           script: npm run deploy:github
 
         - name: 写 STATUS.md
-          imports: *secrets
+          imports: *publish_secrets
           env:
             RELEASE_VERSION: $RELEASE_VERSION
             RELEASE_STARTED_AT: $RELEASE_STARTED_AT
@@ -254,7 +259,7 @@ main:
         - name: 推送新页面给搜索引擎
           if: '[ "$target" != "none" ]'
           allowFailure: true
-          imports: *secrets
+          imports: &seo_secrets https://cnb.cool/example/deployment-secrets/-/blob/main/comics-gallery/seo.yml
           script: |
             if [ "${push_all:-false}" = "true" ]; then
               npm run push:search -- --all
