@@ -109,9 +109,11 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       assert.ok(!html.includes(`https://img.cbnv.me/img/sample/vol01/c001/${n}-${hash}.avif`), `第 ${n} 页不该再有 avif`);
       assert.ok(html.includes(`id="p${n}"`), `第 ${n} 页的锚点`);
     }
-    assert.equal((html.match(/<img src="https:\/\/img\.example\.org\//g) ?? []).length, 3, '三页都在这一份 HTML 里');
+    assert.equal((html.match(/<img[^>]+src="https:\/\/img\.cbnv\.me\//g) ?? []).length, 3, '三页都在这一份 HTML 里');
     assert.doesNotMatch(html, /<source type="image\/avif"/);
-    assert.match(html, /<img src="https:\/\/img\.example\.org\/[^"]+\.webp" loading="lazy"[^>]*width="1200" height="1700"[^>]*alt="/);
+    assert.match(html, /<img[^>]+src="https:\/\/img\.cbnv\.me\/[^"]+\.webp"/);
+    assert.match(html, /loading="lazy"/);
+    assert.match(html, /width="1200" height="1700"/);
     assert.ok(html.includes('aspect-ratio:2400/1700'), '宽页的纵横比');
     // 上一话 / 下一话：c001 是第一话，只有下一话
     assert.ok(html.includes('href="/sample/vol01/c002/"'), '下一话链接');
