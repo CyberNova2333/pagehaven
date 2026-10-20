@@ -206,7 +206,7 @@ main:
         # 图片清单核对单独一步：只有这一步拿得到存储凭据，astro build 等整条 build 都看不见 secret。
         # 缺图在这里就拦住，manifest.json 的当前版本指针不会指向引用了不存在图片的站点。
         - name: 核对对象存储里的图片清单
-          imports: &secrets https://cnb.cool/example/secrets/-/blob/main/comics-gallery.yml
+          imports: &secrets https://cnb.cool/example/deployment-secrets/-/blob/main/gallery.yml
           script: npm run verify:manifest
 
         # 写凭据只在这里出现，且只来自密钥仓库（铁律 7）。读永远走 CDN 域名。
