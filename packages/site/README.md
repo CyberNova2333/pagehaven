@@ -1,7 +1,7 @@
 # @gallery/site
 
 Astro 静态站：作品 / 期 / 话页面、阅读器（每话一个 HTML，`#p12` 深链，文字层内嵌）、
-搜索页壳。产物在仓库根 `dist/`（`DIST_DIR` 环境变量可覆盖）。
+搜索页（接线在 `@gallery/search`）。产物在仓库根 `dist/`（`DIST_DIR` 环境变量可覆盖）。
 
 只用 Web 标准 API（CLAUDE.md 铁律 1）：不 import Node 内置模块，Astro 页面的 frontmatter 也算。
 数据与配置由构建脚本（`scripts/lib/site-generated.mjs`，Node）在 `astro build` 前写到

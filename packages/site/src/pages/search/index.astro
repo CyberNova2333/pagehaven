@@ -33,10 +33,17 @@ const searchConfig = {
     <p class="muted">台词检索在浏览器里完成，需要 JavaScript。作品与话页面不受影响。</p>
   </noscript>
   <p class="muted note">
-    至少输入 {search.min_match_length} 个字。检索库经 CDN 按需分块读取，首次加载需要几秒；
-    长时间停在「加载中」说明检索库暂不可用，作品与话页面不受影响。
+    至少输入 {search.min_match_length} 个字。检索库经 CDN 整份下载并在浏览器里校验，
+    首次加载需要几秒；长时间停在「加载中」或提示不可用，说明检索库暂不可用，
+    作品与话页面不受影响。
   </p>
   <script type="application/json" id="search-config" set:html={jsonForScript(searchConfig)} />
+  <script>
+    import { mountSearch } from '@gallery/search';
+
+    // 懒加载：进页面只接线，不下载检索库；第一次搜索才加载（30 MB 以内整份下载 + sha256 校验）。
+    mountSearch();
+  </script>
 </Base>
 
 <style>

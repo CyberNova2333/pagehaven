@@ -7,6 +7,12 @@ export default defineConfig({
   output: 'static',
   // dist 在仓库根：check 守卫、三套 deploy 都只认这一个目录
   outDir: '../../dist',
+  vite: {
+    optimizeDeps: {
+      // sqlite-wasm 自带 wasm 资源、用 import.meta.url 定位；Vite 预构建会把这段 URL 改坏
+      exclude: ['@sqlite.org/sqlite-wasm'],
+    },
+  },
   build: {
     // 每个页面一个目录 + index.html：/a/b/ 在三平台上行为一致（GitHub Pages 不做 .html 重写）
     format: 'directory',
