@@ -277,12 +277,12 @@ main:
 
         - name: 写 STATUS.md
           imports: *publish_secrets
-          env:
-            RELEASE_VERSION: $RELEASE_VERSION
-            RELEASE_STARTED_AT: $RELEASE_STARTED_AT
-            DIST_FILES: $DIST_FILES
-            DEPLOY_TARGET: $target
-          script: npm run status
+          # 不要在 env: 里写 $RELEASE_VERSION 之类的变量：CNB 不对该字段做变量替换，会把字面量
+          # 传进来（STATUS 里因此出现过 "$RELEASE_VERSION"）。exports 注入的三个变量在 script
+          # 环境里已经是正确值；DEPLOY_TARGET 用 web_trigger 的 target 输入。
+          script: |
+            export DEPLOY_TARGET="${target:-}"
+            npm run status
 
         # 页面已经上线（部署步骤全部在前）才通知搜索引擎：只推本次新增的页面
         # （publish:r2 存下的线上旧 manifest 与新 manifest 的差集）。只走 IndexNow：
