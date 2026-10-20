@@ -13,8 +13,9 @@
 //   · edgeone：CLI 的 CI 用法是 `makers deploy <目录> -n <项目名> -e production`；token 不走命令行参数
 //     （进程参数对同机进程可见），而是经 CLI 认的 EDGEONE_PAGES_API_TOKEN 环境变量给——这是从 CLI 包里
 //     查到的回退路径（`-t` 缺省时读该变量），README 没写，首次真实部署时验证；
-//   · github：不由脚本上传（workflow 用 upload-pages-artifact + deploy-pages），脚本只校验 dist
-//     里的基线文件——GitHub Pages 没有响应头、没有重定向，缺了这几个文件站点就不完整（铁律 2）。
+//   · github：脚本先校验 dist 里的基线文件，再由 deploy.mjs 把 dist 推到 GITHUB_PAGES_REPO 的
+//     gh-pages 分支（GitHub Pages 的发布源）——GitHub Pages 没有响应头、没有重定向，缺了这几个
+//     文件站点就不完整（铁律 2）。
 //
 // EdgeOne 的 `-n` 是「项目名，不存在就新建」（CLI 自述：creates new or updates existing project），
 // 不是「找不到就报错」：secret EDGEONE_PROJECT_ID 里若放的是项目 ID 或任何别的串，CLI 不会失败，而是
@@ -66,7 +67,7 @@ export function requiredEnv(target) {
  */
 export function planDeployCommand({ target, config, env, distDir }) {
   if (target === 'github') {
-    return { ok: false, problems: ['github 目标不由脚本上传（release.yml 用 upload-pages-artifact + deploy-pages），用 checkGithubBaseline 校验 dist'] };
+    return { ok: false, problems: ['github 目标由 deploy.mjs 直接校验基线并推 gh-pages，不走这里拼 CLI 命令'] };
   }
   if (!REQUIRED_ENV[target]) {
     return { ok: false, problems: [`未知的部署目标 ${JSON.stringify(target)}，只认 ${TARGETS.join(' | ')}`] };

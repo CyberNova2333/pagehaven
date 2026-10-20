@@ -71,7 +71,7 @@ headers:
 redirects: []
 
 seo:
-  # 主动向搜索引擎推送新页面（npm run push:search，release.yml 部署之后跑）。
+  # 主动向搜索引擎推送新页面（npm run push:search，发布流水线部署之后跑）。
   # IndexNow key：协议要求公开放在 https://<domain>/<key>.txt（build:sitemap 自动生成），
   # 所以它不是凭据、可以写在这里；留空 = 不推 IndexNow。百度链接提交的 token 是凭据，
   # 只在 secrets（BAIDU_PUSH_TOKEN）；Google 没有普通页面的推送接口，靠 robots.txt 的 Sitemap。

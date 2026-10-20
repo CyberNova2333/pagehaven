@@ -18,7 +18,7 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
 - `surgery/*` 开工前在 [ACTIVE.md](ACTIVE.md) 登记，完工立即合入删除；
 - 超期（hotfix 24 小时、surgery 3 天）会被 `tools/check-branch-hygiene.py` 点名；
 - **分支退役不许直接删**：先打 `archive/<原分支名>` tag 存档再删，走
-  Actions →「🗄️ 归档分支为 tag」。
+  CNB 分支详情页 →「归档分支」按钮。
 
 ## 二、提交规则
 
@@ -30,10 +30,10 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
    |---|---|
    | 文档、`data/`、`site.config.yaml` | `npm run check` |
    | `packages/core` `packages/site` `packages/search` | + `npm test` + `npm run build` 全量 |
-   | `packages/platform/`、`scripts/deploy.mjs` `scripts/publish-r2.mjs` `scripts/seo-push.mjs` `scripts/lib/deploy-plan.mjs`、workflow | + 以 `target=<平台>`、`deploy_env=preview` 真实部署一次 |
+   | `packages/platform/`、`scripts/deploy.mjs` `scripts/publish-r2.mjs` `scripts/seo-push.mjs` `scripts/lib/deploy-plan.mjs`、流水线（`.cnb.yml`） | + 以 `target=<平台>`、`deploy_env=preview` 真实部署一次 |
    | 数据 schema、DB 结构 | + 重建 DB 并在检索页上用真实数据查一次 |
 
-   `checks.yml` 会按 diff 路径在运行摘要里标出级别。最后两级 CI 替代不了，
+   CNB 的检查流水线会按 diff 路径在日志里标出级别。最后两级 CI 替代不了，
    必须有人真跑过才算完。
 4. `git config pull.rebase true` + `rebase.autoStash true` + `rerere.enabled true`，
    开工第一件事是 rebase 到最新 main；
@@ -72,33 +72,36 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
 
 ```
 push 到 main
- └── checks.yml
+ └── .cnb.yml 的 push 流水线（唯一的自动触发）
       ├── npm run check（预算守卫、配置同步、lint）
       ├── npm test + npm run build（dry-run，不发布）
       ├── 分层提示：按 diff 路径给出验证级别
       ├── 通过 → 自动移动 tag `last-green` 到本次提交
       └── 失败 → 🔴 红灯流程（§五）
 
-人类 workflow_dispatch
- ├── release.yml（chapters / target / ocr）
- │    ingest → build → check → publish:r2 → deploy:<target> → 写 STATUS.md
- └── 🗄️ 归档分支为 tag
+人类在 main 分支详情页点按钮（.cnb/web_trigger.yml）
+ ├── 发布（web_trigger_release）
+ │    输入 chapters / target / deploy_env / ocr / version / push_all
+ │    ingest → build → check → verify:manifest → publish:r2 → deploy:<target>
+ │    → STATUS.md → push:search
+ └── 归档分支（web_trigger_archive）：archive/<分支> tag → 核对 → 删分支
 ```
 
 - `last-green` 是稳定锚点：`git checkout last-green` 立刻回到最近一次全绿；
-- 构建 / 发布 / 部署**只手动**；`schedule:` 一律禁止（CLAUDE.md 铁律 6）；
-- 产物只进 R2 与 Artifacts，不进仓库（`STATUS.md` 例外，它就是给人看的）。
+- 构建 / 发布 / 部署**只手动**；`crontab:` 一律禁止（CLAUDE.md 铁律 6）；
+- 产物只进 R2 与构建工作区，不进仓库（`STATUS.md` 例外，它就是给人看的）。
 
 ## 五、红灯协议（main 挂了的处理 SOP）
 
-1. `checks.yml` 失败 → CI 在失败提交下留言标记 🔴；
+1. CNB 的检查流水线失败 → 构建页标红（流水线末尾打印红灯说明；CNB 没有 GitHub
+   那种「在失败提交下留言」的接口，判断红灯以构建状态为准）；
 2. 红灯期间只允许修复主线的提交推 main（pre-push 红灯闸门执行：新增提交不全是
    `fix(` / `fix:` / `revert` 开头就拦；查不到状态时放行并提示；
    逃生口 `SKIP_REDLIGHT_HOOK=1`）；
 3. 引入者负责修，修不了就 `git revert` 先恢复绿灯；
 4. 找不到引入者 → `git bisect` 从 `last-green` 二分定位。
 
-红灯只影响仓库，**不影响线上站点**——线上永远是最后一次成功的 `release.yml`
+红灯只影响仓库，**不影响线上站点**——线上永远是最后一次成功的发布流水线
 产物。这也是构建与部署必须手动的原因之一。
 
 ## 六、最低限度沟通机制

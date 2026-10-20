@@ -107,7 +107,7 @@ test('CHAPTERS 限定只处理列出的话；列出的话没有稿：meta 里有
   assert.ok(!existsSync(join(data, 'text', 'sample', 'vol02', 'c003.json')), '没列出的话不写');
   assert.equal(JSON.parse(await readFile(join(data, 'text', 'zeta', 'v1', 'ch1.json'), 'utf8')).pages[0].boxes.length, 2);
 
-  // c002 在 meta 里、没有稿：这正是 release.yml 开 ocr 要补的话，ingest:labelplus 不能在这里把发布拦下
+  // c002 在 meta 里、没有稿：这正是发布流水线开 ocr 要补的话，ingest:labelplus 不能在这里把发布拦下
   const r2 = run({ DATA_DIR: data, CHAPTERS: 'sample/vol01/c002' });
   assert.equal(r2.status, 0, r2.out);
   assert.match(

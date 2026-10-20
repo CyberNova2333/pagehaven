@@ -149,7 +149,7 @@ def main():
                 fresh.append((name, h))
             print("    %s" % name)
         print("\n  不要直接删——先归档成 tag 再删。推荐走 CI：")
-        print("    Actions → 🗄️ 归档分支为 tag → 输入分支名")
+        print("    CNB 分支详情页 →「归档分支」按钮 → 输入分支名")
         print("  （它会先打 archive/<原名> tag、验证推上远端，然后才删分支）")
         for _, name in strays:
             print("    手动等价: git push origin origin/%s^{}:refs/tags/archive/%s"

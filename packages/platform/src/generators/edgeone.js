@@ -1,7 +1,7 @@
 // EdgeOne Pages 的 edgeone.json 生成器。
 //
 // 上限来自平台文档（ARCHITECTURE §3 三平台矩阵）：headers ≤ 30 条、redirects/rewrites ≤ 100 条。
-// 超线在生成期就报错，而不是等部署时被平台拒绝——那时 release.yml 已经跑到一半。
+// 超线在生成期就报错，而不是等部署时被平台拒绝——那时发布流水线已经跑到一半。
 // JSON 放不下注释，所以「这是生成物」只能靠 check 守卫与文件所在目录的 README 说明。
 export const EDGEONE_MAX_HEADERS = 30;
 export const EDGEONE_MAX_REDIRECTS = 100;

@@ -80,9 +80,9 @@ git push origin --delete <分支名>                    # 删掉自己留下的�
 | `surgery/*` | 大手术，≤ 3 天，开工先登记 ACTIVE.md |
 
 **分支退役不许直接删**：先打 `archive/<原分支名>` tag 存档、确认推上远端，然后才
-删分支——用 CI 干这个事：Actions →「🗄️ 归档分支为 tag」。`archive/*` tag
-不可变（远端 ruleset 禁删/禁强推），不存在长期挂着的 `archive/*`、`research/*`
-**分支**。
+删分支——用 CI 干这个事：CNB 分支详情页 →「归档分支」按钮（`.cnb.yml` 的
+`web_trigger_archive`）。`archive/*` tag 不可变（远端 ruleset 禁删/禁强推），
+不存在长期挂着的 `archive/*`、`research/*` **分支**。
 
 ---
 
@@ -132,8 +132,8 @@ Co-authored-by: Codex <noreply@openai.com>
 | Kimi | `Kimi <noreply@moonshot.cn>` |
 | DeepSeek | `DeepSeek <noreply@deepseek.com>` |
 
-**不要**让 `github-actions[bot]` 当作者——那说明你在用 CI 代提交，见 §2。
-（`release.yml` 自动写 `STATUS.md` 的提交是唯一例外，它不算人的工作。）
+**不要**让 CI 机器人当作者——那说明你在用 CI 代提交，见 §2。
+（`.cnb.yml` 发布流水线自动写 `STATUS.md` 的提交是唯一例外，它不算人的工作。）
 
 ### 四、结尾交代文档
 
@@ -165,15 +165,15 @@ Co-authored-by: Codex <noreply@openai.com>
 - 建 `ci/xxx-<run-id>`、`build/xxx-<日期>`、`*-driver-*`、`*-success` 之类的分支
   让 workflow 跑起来；
 - 每失败一次就推一条新分支重试；
-- 新增任何 `on: push:` 或 `on: schedule:` 触发的**构建 / 发布 / 部署** workflow。
-  `CLAUDE.md` 铁律 6：只有检查类 workflow（`checks.yml`）允许 push 触发，
-  `release.yml` 只手动，`schedule:` 一律禁止。
+- 新增任何 `push:` 或 `crontab:` 触发的**构建 / 发布 / 部署**流水线。
+  `CLAUDE.md` 铁律 6：只有检查类流水线（`.cnb.yml` 里 main 的 `push`）允许自动触发，
+  发布（`web_trigger_release`）只手动，`crontab:` 一律禁止。
 
 **正确做法**：
 
-- 构建/发布由**人类**在 GitHub App 或网页上手动 `workflow_dispatch`；
-- 想验证代码能不能过 CI：`npm run check && npm test`——它与 `checks.yml` 跑的是
-  同一份脚本；push 到 main 后 `checks.yml` 会自动复验并移动 `last-green` tag；
+- 构建/发布由**人类**在 CNB 的分支详情页点「发布」按钮（`.cnb/web_trigger.yml`）；
+- 想验证代码能不能过 CI：`npm run check && npm test`——它与 CNB 检查流水线跑的是
+  同一份脚本；push 到 main 后检查流水线会自动复验并移动 `last-green` tag；
 - 一次性的构建触发器**不要留在远端**。
 
 ---
@@ -181,7 +181,7 @@ Co-authored-by: Codex <noreply@openai.com>
 ## §3 提交前自检：`npm run check` 不是可选的
 
 本仓库**没有"本地"**——维护者没有电脑。自检在 Codespaces 里跑，或者推 main
-后看 `checks.yml`：
+后看 CNB 的检查构建：
 
 ```bash
 npm ci
@@ -194,7 +194,7 @@ npm run build     # 全量静态构建（dry-run，不发布）
 dist 里混进图片或 DB、手改了 `_headers` / `edgeone.json`、`packages/core`
 里出现了 `node:` 导入或原生依赖。
 
-**改了 `packages/platform/` 的东西**，还要在 `release.yml` 里以 `target=<平台>`
+**改了 `packages/platform/` 的东西**，还要在 CNB 的发布流水线里以 `target=<平台>`
 向 preview 环境真实部署一次并在提交信息里写明结果——三平台适配层没有单测能
 替代真部署。
 
@@ -253,6 +253,6 @@ SKIP_REDLIGHT_HOOK=1 git push ...   # 跳过红灯闸门（联网查不到状态
 ## §6 一句话总结
 
 > 直接提 `main`；真要开分支就全程只开一条，且先跑
-> `check-branch-hygiene.py --can-branch`；不要用分支触发 CI，不写 `schedule:`；
+> `check-branch-hygiene.py --can-branch`；不要用分支触发 CI，不写 `crontab:`；
 > 一功能一 commit，中文，带 `Co-authored-by`；推之前 `npm run check && npm test`
 > 全过；收尾时远端只该剩 `main` + `archive/*` tag。

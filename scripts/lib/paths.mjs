@@ -15,5 +15,9 @@ export const OUT_DB_DIR = join(OUT_DIR, 'db');
 export const SITE_DIR = join(ROOT, 'packages', 'site');
 export const SITE_GENERATED_DIR = join(SITE_DIR, 'src', 'generated');
 export const PLATFORM_GENERATED_DIR = join(ROOT, 'packages', 'platform', 'generated');
+/** 流水线配置（CNB 云原生构建；仓库里唯一的一份，不用 .github/workflows）。 */
+export const CNB_FILE = join(ROOT, '.cnb.yml');
+export const CNB_DIR = join(ROOT, '.cnb');
+/** 已经迁走的旧载体。守卫拿它防回潮：存在就说明有两份流水线真相。 */
 export const WORKFLOWS_DIR = join(ROOT, '.github', 'workflows');
 export const CONFIG_FILE = join(ROOT, 'site.config.yaml');

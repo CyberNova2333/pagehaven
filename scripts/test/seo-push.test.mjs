@@ -162,7 +162,7 @@ test('interpretBaidu：成功体给 success / remain，not_same_site / not_valid
 
 // ── 脚本端到端 ──────────────────────────────────────────────────────
 
-/** 干净的环境：去掉本机 / Actions 里可能存在的开关、凭据与产物目录，行为只由测试给的决定。 */
+/** 干净的环境：去掉本机 / CI 里可能存在的开关、凭据与产物目录，行为只由测试给的决定。 */
 function cleanEnv() {
   const env = { ...process.env };
   const drop = /^(INDEXNOW_|BAIDU_|SEO_PUSH_|SITE_ORIGIN$|GITHUB_STEP_SUMMARY$|DATA_DIR$|DIST_DIR$|OUT_DIR$|RELEASE_)/;

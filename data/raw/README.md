@@ -8,13 +8,13 @@ data/raw/labelplus/<series>/<issue>/<chapter>.txt     LabelPlus 翻译稿（版�
 
 路径就是这一话的 key（与 `data/meta/<series>.yaml` 里的 id 对应，也与
 `data/text/<series>/<issue>/<chapter>.json` 同形）。在手机上交稿 = 用 GitHub 网页
-把 LabelPlus 导出的 txt 传到这个位置，然后跑 `release.yml`，`chapters` 填
+把 LabelPlus 导出的 txt 传到这个位置，然后在 CNB 的 main 分支详情页点「发布」按钮，`chapters` 填
 `<series>/<issue>/<chapter>`（多话逗号分隔）。扩展名 `.TXT` 也认；这个目录下除 README
 与点文件之外的其它文件会被提示「不是 .txt」——不是稿就删掉。
 
 ## ingest 做什么
 
-`npm run ingest:labelplus`（release.yml 里由 `chapters` 非空时触发）：
+`npm run ingest:labelplus`（发布流水线里由 `chapters` 非空时触发）：
 
 - 解析稿 → 每个标签一个框（LabelPlus 的标签是点，`w=h=0`），`t` 原文、`tn` 归一化；
 - 与 `data/meta` 核对：稿里页码超出 meta 页数 → **错误**；meta 里有页而稿里没有 →

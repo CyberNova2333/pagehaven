@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // push:search —— 页面上线之后，主动把本次新增的页面告诉搜索引擎。
 //
-// 在 release.yml 的 status job 里跑（两条部署与 GitHub Pages 都完成之后）：推送只对已经能抓到的
+// 在发布流水线写 STATUS 的那一步之后跑（部署都完成之后）：推送只对已经能抓到的
 // 页面有意义，推早了引擎抓到 404 反而扣分。推什么、怎么分批、回应怎么读，全在 scripts/lib/seo-push.mjs；
 // 这里只做接线：
 //   1. 读 site.config.yaml、OUT_DIR/manifest.json（缺 → 退 1：没 manifest 就没有页面清单）、
@@ -24,7 +24,7 @@
 //   SEO_PUSH_KEY_RETRIES    key 文件核对最多试几次（默认 6）；SEO_PUSH_KEY_RETRY_MS 每次间隔（默认 20000）——
 //                           部署刚完成时 CDN / Pages 还没铺开，第一次取到 404 很正常，等一等再判
 //   SEO_PUSH_DRY_RUN        1 = 只打印将推什么，不发任何请求（与 --dry-run 同义）
-//   GITHUB_STEP_SUMMARY     有就把一张小表追加进去（Actions 自带）
+//   GITHUB_STEP_SUMMARY     有就把一张小表追加进去（GitHub Actions 兼容；CNB 不设该变量）
 import { appendFile, readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { loadSiteConfig } from './lib/config.mjs';
@@ -129,7 +129,7 @@ async function pushEngine({ name, batches, send }) {
   return { name, urls: total, batches: batches.length, ok: failed.length === 0, summary };
 }
 
-/** Actions 的运行摘要：一张小表，手机上一眼看到每家引擎的结果。 */
+/** CI 的运行摘要：一张小表，手机上一眼看到每家引擎的结果。 */
 async function writeStepSummary(file, { version, pushed, rows }) {
   const lines = [
     `### push:search（版本 ${version}）`,

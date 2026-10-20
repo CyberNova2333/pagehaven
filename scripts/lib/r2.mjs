@@ -3,7 +3,7 @@
 // 这是仓库里唯一碰对象存储写端点的地方：build:manifest 用它核对图片清单，publish:r2 用它上传，
 // status 用它列出对象。凭据只从环境变量来（铁律 7：凭据与账号标识只在 secrets），四个变量
 // 缺任何一个就返回 null——调用方据此走「未校验 / 未上传」的降级路径，而不是拿半套凭据去撞。
-// 本地与 checks.yml 的 dry-run 正是这种情况：没有凭据，流水线照跑到底，只是不碰存储。
+// 本地与检查流水线的 dry-run 正是这种情况：没有凭据，流水线照跑到底，只是不碰存储。
 //
 // 为什么封装而不是让各脚本直接 send 命令：分页、404 → null、上传时的缓存头这些约定要三处一致；
 // 而且封装后的函数只依赖「一个有 send(cmd) 的对象」，测试可以用假 client 验分页与错误分支，
@@ -12,7 +12,7 @@
 // 存储的直连端点只在这里拼（scripts/ 允许；packages/ 不许出现，check 守卫会拦）。
 import { S3Client, ListObjectsV2Command, HeadObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 
-/** 写凭据所需的四个环境变量；与 release.yml 里传给 publish:r2 / status 的一致。 */
+/** 写凭据所需的四个环境变量；与发布流水线里传给 publish:r2 / status 的一致。 */
 export const R2_ENV_KEYS = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'];
 
 /** 账号级端点。只钉平台形态，账号 ID 由环境给。 */

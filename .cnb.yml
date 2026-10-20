@@ -1,0 +1,331 @@
+# .cnb.yml —— 本仓库唯一的流水线载体（CNB 云原生构建，cnb.cool）
+#
+# 三条流水线，与 CLAUDE.md 铁律 6 一一对应：
+#   · main 的 push        → 检查：check / test / 全量 build 空跑，通过后移动 last-green
+#   · web_trigger_check   → 同一套检查的手动入口（原 workflow_dispatch 的等价物）
+#   · web_trigger_release → 发布：ingest → build → 核对 → 发布到对象存储 → 部署 → STATUS → 搜索推送
+#   · web_trigger_archive → 归档：打 archive/<分支> tag、核对，然后才删分支
+#
+# 发布与部署只能手动（web_trigger），不许 push 触发，不许 crontab。
+# `npm run check` 的第 4 节会解析本文件，把这两条变成硬拦截（铁律 6）。
+#
+# 凭据只从密钥仓库来（铁律 7）：下面的 imports 指向一个独立密钥仓库里的 YAML 文件，
+# 内容是一行一个的 R2_* / CLOUDFLARE_* / EDGEONE_* / BAIDU_PUSH_TOKEN / GITHUB_PAGES_*。
+# 该文件不入本仓库；路径按实际密钥仓库调整，键名清单见 CONTRIBUTING.md §四。
+
+main:
+  # ── 检查：main 推送时自动跑（唯一允许 push 触发的流水线）────────────────────
+  push:
+    - name: 检查 · test · build（dry-run，不发布）
+      docker:
+        image: node:22-bookworm
+      # 后推的顶掉先推的：CI 只回答「现在的 main 好不好」，不给每个中间状态发成绩单。
+      lock:
+        key: checks-main
+        wait: true
+        cancel-in-progress: true
+      stages:
+        - name: 安装依赖
+          script: npm ci
+          timeout: 15m
+
+        # 只查本次推送新增的提交，与 pre-push 钩子同一个语义：历史不翻旧账。
+        # 拿不到 before（新建分支、手动触发、历史不可达）就跳过——护栏坏了让路。
+        - name: 本次推送新增的提交信息
+          script: |
+            set -eu
+            before="${CNB_BEFORE_SHA:-}"
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+              echo "拿不到 before（新建分支或手动触发），跳过"
+              exit 0
+            fi
+            if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              git fetch --quiet origin "$before" 2>/dev/null || true
+            fi
+            if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              echo "before=$before 在本地不可达，跳过"
+              exit 0
+            fi
+            python3 tools/check-commit-messages.py "$before..$CNB_COMMIT"
+
+        - name: npm run check（预算守卫 + 配置同步 + lint）
+          script: npm run check
+
+        - name: npm test
+          script: npm test
+
+        - name: npm run build（全量静态构建，dry-run）
+          script: npm run build
+
+        - name: 产物再过一遍守卫
+          script: npm run check
+
+        # 仓库 data/ 可能是空的（0 话时上面两步守不到「每话恰好一个 HTML」这类条目），
+        # 所以再拿测试样本跑一遍整条流水线：manifest → db → 站点 → 索引 → sitemap → check。
+        - name: 用测试样本全量空跑
+          script: |
+            export DATA_DIR=packages/core/test/fixtures/data
+            export DIST_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-dist"
+            export OUT_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-out"
+            npm run build && npm run check
+
+        # CI 能替代的只有前两级；platform / 流水线 / schema 的改动要人真跑过（CONTRIBUTING §二.3）。
+        - name: 分层验证提示
+          if: always()
+          script: |
+            python3 tools/verification-tier.py "${CNB_BEFORE_SHA:-}" "$CNB_COMMIT" || true
+
+        # last-green 是稳定锚点：git checkout last-green 立刻回到最近一次全绿。
+        # 只由 main 的 push 移动；手动检查不动它。
+        - name: 移动 last-green
+          if: '[ "$CNB_EVENT" = "push" ]'
+          script: |
+            set -eu
+            base="${CNB_WEB_ENDPOINT:-https://cnb.cool}"
+            repo_url="https://cnb:${CNB_TOKEN}@${base#*://}/${CNB_REPO_SLUG}"
+            git push --force "$repo_url" "HEAD:refs/tags/last-green"
+      failStages:
+        - name: 🔴 main 红灯
+          script: |
+            echo "🔴 main 红灯：检查流水线失败，这次推送没有移动 last-green。"
+            echo "   红灯期间只允许修复类提交推 main（标题以 fix( / fix: / revert 开头，pre-push 闸门会拦）。"
+            echo "   引入者负责修；修不了就 git revert 先恢复绿灯。规则：CONTRIBUTING.md §五。"
+            echo "   构建日志：${CNB_BUILD_WEB_URL}"
+
+  # ── 手动检查：与 push 同一套步骤，方便在页面上先跑一遍再推 ──────────────────
+  web_trigger_check:
+    - name: 手动检查 · test · build（dry-run，不发布）
+      docker:
+        image: node:22-bookworm
+      lock:
+        key: checks-manual
+        wait: true
+      stages:
+        - name: 本次推送新增的提交信息
+          script: |
+            set -eu
+            before="${CNB_BEFORE_SHA:-}"
+            if [ -z "$before" ]; then
+              echo "手动触发没有 before，跳过提交信息检查"
+              exit 0
+            fi
+            if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              git fetch --quiet origin "$before" 2>/dev/null || true
+            fi
+            if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              echo "before=$before 在本地不可达，跳过"
+              exit 0
+            fi
+            python3 tools/check-commit-messages.py "$before..$CNB_COMMIT"
+
+        - name: 安装依赖
+          script: npm ci
+          timeout: 15m
+
+        - name: npm run check（预算守卫 + 配置同步 + lint）
+          script: npm run check
+
+        - name: npm test
+          script: npm test
+
+        - name: npm run build（全量静态构建，dry-run）
+          script: npm run build
+
+        - name: 产物再过一遍守卫
+          script: npm run check
+
+        - name: 用测试样本全量空跑
+          script: |
+            export DATA_DIR=packages/core/test/fixtures/data
+            export DIST_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-dist"
+            export OUT_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-out"
+            npm run build && npm run check
+
+  # ── 发布：只手动（web_trigger_release），绝不接受 push 触发 ──────────────────
+  web_trigger_release:
+    - name: 发布（手动）
+      docker:
+        image: node:22-bookworm
+      # 同一时间只跑一个发布，且不取消进行中的：发布做到一半被顶掉比等一会儿糟得多。
+      lock:
+        key: release
+        wait: true
+      stages:
+        - name: 安装依赖
+          script: npm ci
+          timeout: 15m
+
+        # 版本号进文件名与对象 key（gallery-<v>.sqlite、site-<v>.tar.zst），且带一年 immutable 缓存，
+        # 所以同一版本号只能发布一次：缺省用「UTC 日期.构建号」，同一天再发也不会撞 key。
+        - name: 版本号
+          script: |
+            set -eu
+            v="${version:-$(date -u +%Y-%m-%d).$CNB_BUILD_ID}"
+            started="$(date -u +%FT%TZ)"
+            echo "版本 $v"
+            echo "##[set-output version=$v]"
+            echo "##[set-output started_at=$started]"
+          exports:
+            version: RELEASE_VERSION
+            started_at: RELEASE_STARTED_AT
+
+        - name: ingest:labelplus
+          if: '[ -n "${chapters:-}" ]'
+          script: |
+            export CHAPTERS="$chapters"
+            npm run ingest:labelplus
+
+        - name: ingest:ocr（只补缺稿）
+          if: '[ "${ocr:-false}" = "true" ]'
+          script: |
+            export CHAPTERS="$chapters"
+            npm run ingest:ocr
+
+        - name: build（config → manifest → db → site → index → sitemap）
+          script: npm run build
+
+        - name: check（预算守卫）
+          script: npm run check
+
+        - name: dist 文件数（给 STATUS.md）
+          script: echo "##[set-output dist_files=$(find dist -type f | wc -l)]"
+          exports:
+            dist_files: DIST_FILES
+
+        # 归档用 tar --zstd，需要 zstd CLI；只在发布里装，检查流水线不背这个成本。
+        - name: 归档工具（tar --zstd）
+          script: |
+            if command -v zstd >/dev/null 2>&1; then
+              echo "zstd 已可用：$(zstd --version)"
+              exit 0
+            fi
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zstd
+
+        # 图片清单核对单独一步：只有这一步拿得到存储凭据，astro build 等整条 build 都看不见 secret。
+        # 缺图在这里就拦住，manifest.json 的当前版本指针不会指向引用了不存在图片的站点。
+        - name: 核对对象存储里的图片清单
+          imports: &secrets https://cnb.cool/example/secrets/-/blob/main/comics-gallery.yml
+          script: npm run verify:manifest
+
+        # 写凭据只在这里出现，且只来自密钥仓库（铁律 7）。读永远走 CDN 域名。
+        - name: publish:r2
+          imports: *secrets
+          script: npm run publish:r2
+
+        - name: deploy:cloudflare
+          if: '[ "$target" = "cloudflare" ] || [ "$target" = "all" ]'
+          imports: *secrets
+          env:
+            DEPLOY_ENV: $deploy_env
+          script: npm run deploy:cloudflare
+
+        # EDGEONE_PROJECT_ID 的值是 Makers 的「项目名」（CLI 的 -n 语义：不存在就新建，填错不报错）。
+        # 首次部署先选 deploy_env=preview，核对 CLI 输出的项目名与 URL，再切 production。
+        - name: deploy:edgeone
+          if: '[ "$target" = "edgeone" ] || [ "$target" = "all" ]'
+          imports: *secrets
+          env:
+            DEPLOY_ENV: $deploy_env
+          script: npm run deploy:edgeone
+
+        # GitHub Pages 没有响应头、没有重定向、没有函数，是站点完整性的最小公分母（铁律 2）。
+        # CNB 流水线在这里校验 dist 基线，并用密钥仓库里的 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN
+        # 把 dist 推到该仓库的 gh-pages 分支；两者没配就是配置错误（见 scripts/deploy.mjs）。
+        - name: deploy:github（校验基线 → 推 gh-pages）
+          if: '[ "$target" = "github" ] || [ "$target" = "all" ]'
+          imports: *secrets
+          script: npm run deploy:github
+
+        - name: 写 STATUS.md
+          imports: *secrets
+          env:
+            RELEASE_VERSION: $RELEASE_VERSION
+            RELEASE_STARTED_AT: $RELEASE_STARTED_AT
+            DIST_FILES: $DIST_FILES
+            DEPLOY_TARGET: $target
+          script: npm run status
+
+        # 页面已经上线（部署步骤全部在前）才通知搜索引擎：只推本次新增的页面
+        # （publish:r2 存下的线上旧 manifest 与新 manifest 的差集）。IndexNow 的 key 在
+        # site.config.yaml（协议要求公开），百度的 token 只在密钥仓库；Google 没有普通页面的
+        # 推送接口。失败单独标红、不判已完成的部署失败（allowFailure）。
+        - name: 推送新页面给搜索引擎
+          if: '[ "$target" != "none" ]'
+          allowFailure: true
+          imports: *secrets
+          script: |
+            if [ "${push_all:-false}" = "true" ]; then
+              npm run push:search -- --all
+            else
+              npm run push:search
+            fi
+
+        # 这是唯一允许由 CI 身份提交的东西（AGENTS.md §1 三）：ingest 写回的 data/text 与 STATUS.md。
+        # 顶格独占一行的 [skip-hooks] 是记录在案的豁免——机器写的信息没有 Co-authored-by 可署。
+        - name: 提交 data/ 与 STATUS.md
+          if: always()
+          script: |
+            set -eu
+            git config user.name 'cnb'
+            git config user.email 'cnb@cnb.cool'
+            git add STATUS.md data/text
+            if git diff --cached --quiet; then
+              echo '没有需要提交的变化'
+              exit 0
+            fi
+            git commit -F - <<MSG
+            chore(status): 发布 ${RELEASE_VERSION}（target=${target}）后自动更新 STATUS.md
+
+            由 .cnb.yml 的发布流水线自动写入（CLAUDE.md 铁律 10）；同时写回本次 ingest 产出的 data/text。
+
+            [skip-hooks]
+            MSG
+            base="${CNB_WEB_ENDPOINT:-https://cnb.cool}"
+            repo_url="https://cnb:${CNB_TOKEN}@${base#*://}/${CNB_REPO_SLUG}"
+            git remote set-url origin "$repo_url"
+            git pull --rebase origin main
+            git push origin HEAD:main
+      failStages:
+        - name: 🔴 发布失败
+          script: |
+            echo "🔴 发布失败：对象存储的版本指针只在全部核对通过后才切换，线上仍是上一版。"
+            echo "   STATUS.md 与 data/text 未写回仓库。"
+            echo "   构建日志：${CNB_BUILD_WEB_URL}"
+
+  # ── 归档分支：只手动；先打 tag、核对成功，才删分支（AGENTS.md §0）──────────
+  web_trigger_archive:
+    - name: 🗄️ 归档分支为 tag
+      docker:
+        image: node:22-bookworm
+      lock:
+        key: archive
+        wait: true
+      stages:
+        - name: 打 tag → 验证 → 删分支
+          script: |
+            set -eu
+            branch="${branch:-}"
+            case "$branch" in
+              '') echo '✘ 必须填要归档的分支名'; exit 1;;
+              main) echo '✘ 不能归档 main'; exit 1;;
+              archive/*) echo '✘ 分支名不该以 archive/ 开头——那是 tag 的命名空间'; exit 1;;
+            esac
+            base="${CNB_WEB_ENDPOINT:-https://cnb.cool}"
+            repo_url="https://cnb:${CNB_TOKEN}@${base#*://}/${CNB_REPO_SLUG}"
+            sha=$(git ls-remote --heads "$repo_url" "refs/heads/$branch" | cut -f1)
+            if [ -z "$sha" ]; then echo "✘ 远端没有分支 $branch"; exit 1; fi
+            tag="archive/$branch"
+            if git ls-remote --tags "$repo_url" "refs/tags/$tag" | grep -q .; then
+              echo "✘ tag $tag 已存在（archive/* 不可变）；换个分支名或先人工核对"; exit 1
+            fi
+            git push "$repo_url" "$sha:refs/tags/$tag"
+            remote_tag=$(git ls-remote --tags "$repo_url" "refs/tags/$tag" | cut -f1)
+            if [ "$remote_tag" != "$sha" ]; then
+              echo "✘ tag 校验失败（远端 $remote_tag ≠ $sha），不删分支"; exit 1
+            fi
+            git push "$repo_url" --delete "$branch"
+            echo "## 已归档"
+            echo
+            echo "- 分支 \`$branch\` → tag \`$tag\`（\`$sha\`）"
+            echo "- 分支已从远端删除；要找回：\`git checkout -b $branch $tag\`"

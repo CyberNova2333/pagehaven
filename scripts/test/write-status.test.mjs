@@ -1,5 +1,5 @@
 // status 脚本的端到端测试：构造 out/manifest.json 与假 dist，真 spawn 脚本，STATUS_FILE 指到临时目录——
-// 仓库根的 STATUS.md 只由 release.yml 写（铁律 10），测试前后比对它一字未动。
+// 仓库根的 STATUS.md 只由发布流水线写（铁律 10），测试前后比对它一字未动。
 //
 // 对象存储那条路对着本地假 S3（只答 ListObjectsV2）跑真 SDK；渲染函数另有纯单测。
 // db / 图片前缀的期望值从仓库的 site.config.yaml 读（脚本经 loadSiteConfig 读固定路径，指不到
@@ -52,7 +52,7 @@ function manifest(overrides = {}) {
   };
 }
 
-/** 干净的环境：去掉本机 / Actions 里可能存在的凭据、版本与运行标识，行为只由测试给的决定。 */
+/** 干净的环境：去掉本机 / CI 里可能存在的凭据、版本与运行标识，行为只由测试给的决定。 */
 function cleanEnv() {
   const env = { ...process.env };
   const drop = /^(R2_|RELEASE_|GITHUB_|DEPLOY_TARGET$|STATUS_FILE$|DATA_DIR$|DIST_DIR$|OUT_DIR$)/;
@@ -143,7 +143,7 @@ async function fakeS3(objects, { deny = false } = {}) {
 const HEADER = [
   '# STATUS.md — 当前状态',
   '',
-  '> 本文件由 `release.yml` 在每次发布末尾自动写入（CLAUDE.md 铁律 10），**不手改**。',
+  '> 本文件由 `.cnb.yml` 的发布流水线在每次发布末尾自动写入（CLAUDE.md 铁律 10），**不手改**。',
   '> 它是弃维护后别人接手的入口：从这里能知道线上是哪个版本、部署在哪、数据在哪。',
   '',
   '| 项 | 值 |',
@@ -190,7 +190,7 @@ test('status：读 manifest + 环境 + dist，写 STATUS_FILE；无凭据时对�
   });
   assert.equal(r.status, 0, r.out);
   assert.match(r.out, /没有对象存储凭据/);
-  assert.equal(await readFile(REPO_STATUS, 'utf8'), repoStatusBefore, '仓库根 STATUS.md 只由 release.yml 写');
+  assert.equal(await readFile(REPO_STATUS, 'utf8'), repoStatusBefore, '仓库根 STATUS.md 只由发布流水线写');
 
   const md = await readFile(ws.STATUS, 'utf8');
   assert.ok(md.startsWith(HEADER + '\n'), '顶部那段「不手改」与表头原样保留');
@@ -209,7 +209,7 @@ test('status：读 manifest + 环境 + dist，写 STATUS_FILE；无凭据时对�
   assert.ok(!md.includes('## 对象存储里的检索库'), '没列清单就没有清单节');
 });
 
-test('status：dist 不存在、db 为 null、不在 Actions 里、没给版本 → 各写「—」/「尚未构建」，版本取 manifest', { timeout: 30_000 }, async (t) => {
+test('status：dist 不存在、db 为 null、不在 CI 里、没给版本 → 各写「—」/「尚未构建」，版本取 manifest', { timeout: 30_000 }, async (t) => {
   const ws = await workspace(t, { manifestJson: manifest({ db: null }), distFiles: null });
   // 缺 GITHUB_RUN_ID：三件套不齐
   const r = await run({ ...ws.env, GITHUB_SERVER_URL: 'https://github.com', GITHUB_REPOSITORY: 'someone/repo' });
@@ -344,7 +344,7 @@ test('renderStatus：纯渲染的各分支——空清单、列举失败、竖�
   assert.equal(formatDuration(3_725_000), '62 分 5 秒');
 });
 
-test('status：DIST_FILES 环境变量优先于自己数 dist（release.yml 的 status job 不下载 dist）', { timeout: 30_000 }, async (t) => {
+test('status：DIST_FILES 环境变量优先于自己数 dist（发布流水线的 STATUS 步骤不下载 dist）', { timeout: 30_000 }, async (t) => {
   const ws = await workspace(t, { distFiles: null });
   const r = await run({ ...ws.env, DIST_FILES: '18000' });
   assert.equal(r.status, 0, r.out);

@@ -10,10 +10,10 @@
 /**
  * @typedef {object} StatusData
  * @property {string} version          本次发布的版本号
- * @property {string} target           部署目标（release.yml 的 target 输入）
+ * @property {string} target           部署目标（发布流水线的 target 输入）
  * @property {string} domain           站点域名（来自 manifest / site.config.yaml）
  * @property {string} writtenAt        ISO 8601（UTC）
- * @property {string|null} runUrl      本次发布运行的链接；不在 Actions 里跑时为 null
+ * @property {string|null} runUrl      本次发布运行的链接；拿不到构建页时为 null
  * @property {number|null} distFiles   dist 文件数；dist 不存在为 null
  * @property {StatusDb|null} db        manifest.db；build:db 没跑为 null
  * @property {StatusStorage|null} storage  对象存储实际清单；没有凭据（没列）或列举失败为 null
@@ -79,7 +79,7 @@ export function renderStatus(data) {
   const lines = [
     '# STATUS.md — 当前状态',
     '',
-    '> 本文件由 `release.yml` 在每次发布末尾自动写入（CLAUDE.md 铁律 10），**不手改**。',
+    '> 本文件由 `.cnb.yml` 的发布流水线在每次发布末尾自动写入（CLAUDE.md 铁律 10），**不手改**。',
     '> 它是弃维护后别人接手的入口：从这里能知道线上是哪个版本、部署在哪、数据在哪。',
     '',
     '| 项 | 值 |',

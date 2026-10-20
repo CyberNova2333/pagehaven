@@ -1,4 +1,4 @@
-# 依赖与产物（产物只进对象存储与 Actions artifact，不进仓库；STATUS.md 例外）
+# 依赖与产物（产物只进对象存储与构建工作区，不进仓库；STATUS.md 例外）
 node_modules/
 dist/
 out/

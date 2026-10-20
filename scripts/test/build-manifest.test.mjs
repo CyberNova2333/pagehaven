@@ -41,7 +41,7 @@ const SAMPLE_KEYS = [
   hashes.flatMap((h, i) => [`${IMG}${chapter}/${i + 1}-${h}.avif`, `${IMG}${chapter}/${i + 1}-${h}.webp`]),
 );
 
-/** 干净的环境：去掉本机 / Actions 里可能存在的凭据与版本变量，脚本的行为只由测试给的决定。 */
+/** 干净的环境：去掉本机 / CI 里可能存在的凭据与版本变量，脚本的行为只由测试给的决定。 */
 function cleanEnv() {
   const env = { ...process.env };
   for (const k of Object.keys(env)) if (/^(R2_|RELEASE_|DATA_DIR$|DIST_DIR$|OUT_DIR$)/.test(k)) delete env[k];
@@ -114,7 +114,7 @@ test('build:manifest：样本 → manifest.json，形状与键顺序稳定；无
   const r = await run({ DATA_DIR: FIXTURES, OUT_DIR: OUT, RELEASE_VERSION: '2026-09-03' });
   assert.equal(r.status, 0, r.out);
   assert.match(r.out, /未校验对象存储清单：没有写凭据/);
-  // 提示说的是事实：在哪一步核对取决于 R2_* 传给了谁，不能断言「release.yml 里会校验」
+  // 提示说的是事实：在哪一步核对取决于 R2_* 传给了谁，不能断言「发布流水线里会校验」
   assert.match(r.out, /把 R2_\* 传给跑本脚本的那一步才会在此核对/);
   assert.match(r.out, /publish:r2/);
   assert.match(r.out, /16 个图片 key（8 页 × avif\/webp）/);
