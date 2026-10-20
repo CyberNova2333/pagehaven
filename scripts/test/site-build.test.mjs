@@ -174,10 +174,17 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
 
   await t.test('index/ 分片', async () => {
     const summary = JSON.parse(await readFile(join(DIST, 'index', 'series.json'), 'utf8'));
-    assert.deepEqual(summary, [
-      { id: 'zeta', title: '终章短篇', url: '/zeta/', issues: 1, chapters: 1 },
-      { id: 'sample', title: '示例作品', url: '/sample/', issues: 2, chapters: 3 },
-    ]);
+    assert.deepEqual(
+      summary.map((s) => ({ id: s.id, title: s.title, url: s.url, issues: s.issues, chapters: s.chapters })),
+      [
+        { id: 'zeta', title: '终章短篇', url: '/zeta/', issues: 1, chapters: 1 },
+        { id: 'sample', title: '示例作品', url: '/sample/', issues: 2, chapters: 3 },
+      ],
+    );
+    // 元数据检索用的字段（样本没有元数据，给空数组 / null）
+    assert.deepEqual(summary[1].authors, []);
+    assert.deepEqual(summary[1].tags, []);
+    assert.equal(summary[1].coverKey, null);
     const shard = JSON.parse(await readFile(join(DIST, 'index', 'sample.json'), 'utf8'));
     assert.equal(shard.id, 'sample');
     assert.equal(shard.title, '示例作品');
