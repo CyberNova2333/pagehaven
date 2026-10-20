@@ -72,7 +72,7 @@ flowchart TB
 
 1. **Fork** 本仓库（公开，CNB 账号或组织下）。
 2. **填凭据**：密钥仓库 `deployment-secrets` 按「目录 = 下游仓库名、文件 = 操作名」组织。
-   本项目对应 `comics-gallery/` 下的三份**脚本任务**凭据——不要写 `allow_images`
+   本项目对应 `comics-gallery/` 下的四份**脚本任务**凭据——不要写 `allow_images`
    （平台规则：声明了它，脚本任务读到的是空变量），用 `allow_slugs` + `allow_branches: main`
    收范围：
    - `publish.yml`：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET`
@@ -82,10 +82,14 @@ flowchart TB
      `deploy_env=preview` 核对）、`GITHUB_PAGES_REPO`（`owner/repo`）与 `GITHUB_PAGES_TOKEN`
      （有 repo 写权限，流水线把 dist 推到该仓库的 `gh-pages` 分支）；
    - `seo.yml`：`BAIDU_PUSH_TOKEN`（可选；IndexNow 的 key 在 `site.config.yaml` 的
-     `seo.indexnow_key`，不是凭据）。
+     `seo.indexnow_key`，不是凭据）；
+   - `notify.yml`：`NOTIFY_URL` `NOTIFY_TOKEN` `NOTIFY_TO` `NOTIFY_FROM` `NOTIFY_FROM_NAME`
+     ——失败邮件。组织标准：凡是有**线上产物**或**把产物/自身部署到其他平台**的仓库都必须有；
+     本仓库两者都占，所以不可省。
    救火用的 `purge` 另需 `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`，可以先不填。
    路径是**逐字匹配**的：目录或文件名差一个字，准备阶段就报 `GetFileContent: not found`。
-   凭据只进密钥仓库，不进本仓库（CLAUDE.md 铁律 7）。
+   凭据只进密钥仓库，不进本仓库（CLAUDE.md 铁律 7）。密钥仓库只能在网页上逐文件编辑，
+   改动它时按组织约定给**逐文件** Commit Message。
 3. 改 [`site.config.yaml`](site.config.yaml) 里的 `site.domain` 与 `images.hosts`（图片经 CDN
    读对象存储；把 img 域名切到任何支持 S3 私有回源的 CDN 都行）。
 4. **在 CNB 的 main 分支详情页点「发布」按钮**（`.cnb/web_trigger.yml`），选 `target`（首次可选
