@@ -71,8 +71,8 @@ flowchart TB
 重建需要仓库数据及有权访问的图片、检索库和部署配置；仅 Fork 源码不会取得原维护者的对象存储。配置齐全后按以下步骤执行：
 
 1. **Fork** 本仓库（公开，CNB 账号或组织下）。
-2. **填凭据**：在 CNB 建一个独立的密钥仓库，把下面这些键写进 `comics-gallery.yml`
-   （仓库路径与文件名按实际改 `.cnb.yml` 里的 `imports`）：
+2. **填凭据**：把下面这些键写进根组织下密钥仓库 `deployment-secrets` 的 `gallery.yml`
+   （`.cnb.yml` 的 `imports` 已指向该文件；换仓库或换文件名时两处一起改）：
    `R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET`——对象存储的**写**凭据；
    要发 Cloudflare Pages 再加 `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID`；
    要发 EdgeOne 再加 `EDGEONE_API_TOKEN` `EDGEONE_PROJECT_ID`（值填 Makers 的**项目名**，首次
