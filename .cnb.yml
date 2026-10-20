@@ -305,8 +305,9 @@ main:
         - name: 提交 data/ 与 STATUS.md
           script: |
             set -eu
-            git config user.name 'cnb'
-            git config user.email 'cnb@cnb.cool'
+            # 提交身份跟随触发者：pre-receive 会核对提交者邮箱是不是已注册的 CNB 账号
+            git config user.name "${CNB_BUILD_USER:-cnb}"
+            git config user.email "${CNB_BUILD_USER_EMAIL:-cnb@cnb.cool}"
             git add STATUS.md data/text
             if git diff --cached --quiet; then
               echo '没有需要提交的变化'
@@ -351,8 +352,9 @@ main:
         - name: 失败时也写回 ingest 产出的 data/text
           script: |
             set -eu
-            git config user.name 'cnb'
-            git config user.email 'cnb@cnb.cool'
+            # 提交身份跟随触发者：pre-receive 会核对提交者邮箱是不是已注册的 CNB 账号
+            git config user.name "${CNB_BUILD_USER:-cnb}"
+            git config user.email "${CNB_BUILD_USER_EMAIL:-cnb@cnb.cool}"
             git add data/text
             if git diff --cached --quiet; then
               echo 'data/text 没有需要提交的变化'
