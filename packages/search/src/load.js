@@ -66,9 +66,10 @@ export async function loadGalleryDb({ config, fetchImpl = fetch }) {
     throw new Error(`${showHost(manifest.host)}/${prefix}manifest.json 没有 db 字段：检索库还没发布过？`);
   }
 
-  // 2. 整份下载并校验。size 与 sha256 都来自 manifest，是构建期对导出字节算的
+  // 2. 整份下载并校验。size 与 sha256 都来自 manifest，是构建期对导出字节算的。
+  //    meta.key 是完整 key（含 db/ 前缀），不要再拼一次 prefix。
   const fetched = await firstHost(hosts, async (host) => {
-    const bytes = await get(fetchImpl, `${host}/${prefix}${meta.key}`);
+    const bytes = await get(fetchImpl, `${host}/${meta.key}`);
     if (typeof meta.size === 'number' && bytes.byteLength !== meta.size) {
       throw new Error(`长度 ${bytes.byteLength} 与 manifest 的 ${meta.size} 不符（截断或 CDN 回错对象）`);
     }
