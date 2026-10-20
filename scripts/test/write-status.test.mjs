@@ -55,7 +55,9 @@ function manifest(overrides = {}) {
 /** 干净的环境：去掉本机 / CI 里可能存在的凭据、版本与运行标识，行为只由测试给的决定。 */
 function cleanEnv() {
   const env = { ...process.env };
-  const drop = /^(R2_|RELEASE_|GITHUB_|DEPLOY_TARGET$|STATUS_FILE$|DATA_DIR$|DIST_DIR$|OUT_DIR$)/;
+  // CNB_ 前缀全部清掉：构建环境会注入 CNB_BUILD_WEB_URL 等，留着会让「运行链接」断言
+  // 拿到真实构建页而不是测试给的值。
+  const drop = /^(R2_|RELEASE_|GITHUB_|CNB_|DEPLOY_TARGET$|STATUS_FILE$|DATA_DIR$|DIST_DIR$|OUT_DIR$)/;
   for (const k of Object.keys(env)) if (drop.test(k)) delete env[k];
   return env;
 }
@@ -207,6 +209,20 @@ test('status：读 manifest + 环境 + dist，写 STATUS_FILE；无凭据时对�
   assert.equal(table.get('发布运行'), '[123456](https://github.com/someone/repo/actions/runs/123456)');
   assert.ok(md.endsWith('重建步骤见 [README.md](README.md)「十分钟重建」。\n'));
   assert.ok(!md.includes('## 对象存储里的检索库'), '没列清单就没有清单节');
+});
+
+test('status：CNB_BUILD_WEB_URL 优先于 GitHub 三件套（流水线迁到 CNB 后的运行链接）', { timeout: 30_000 }, async (t) => {
+  const ws = await workspace(t);
+  const r = await run({
+    ...ws.env,
+    CNB_BUILD_WEB_URL: 'https://cnb.cool/owner/repo/-/build/logs/sn-1',
+    GITHUB_SERVER_URL: 'https://github.com',
+    GITHUB_REPOSITORY: 'someone/repo',
+    GITHUB_RUN_ID: '123456',
+  });
+  assert.equal(r.status, 0, r.out);
+  const table = rows(await readFile(ws.STATUS, 'utf8'));
+  assert.equal(table.get('发布运行'), '[sn-1](https://cnb.cool/owner/repo/-/build/logs/sn-1)');
 });
 
 test('status：dist 不存在、db 为 null、不在 CI 里、没给版本 → 各写「—」/「尚未构建」，版本取 manifest', { timeout: 30_000 }, async (t) => {
