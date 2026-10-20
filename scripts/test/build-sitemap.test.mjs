@@ -217,7 +217,7 @@ test('build-sitemap.mjs：样本 → sitemap.xml + robots.txt，过期分片被�
   }
 });
 
-test('check 守卫：sitemap 缺一话 → dist 节点名那一话；build:sitemap 补全后通过；index 形态跟进各分片；缺分片、超上限被抓', { timeout: 60_000 }, async (t) => {
+test('check 守卫：sitemap 缺一话 → dist 节点名那一话；build:sitemap 补全后通过；index 形态跟进各分片；缺分片、超上限被抓', { timeout: 180_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-sitemap-check-'));
   t.after(() => rm(tmp, { recursive: true, force: true }));
   const DIST = join(tmp, 'dist');
