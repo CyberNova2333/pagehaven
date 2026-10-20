@@ -91,6 +91,22 @@ main:
             repo_url="https://cnb:${CNB_TOKEN}@${base#*://}/${CNB_REPO_SLUG}"
             git push --force "$repo_url" "HEAD:refs/tags/last-green"
       failStages:
+        # 失败通知走组织内共用的标准脚本（tools/notify-mail.sh，与兄弟仓库逐字节相同）。
+        # 只发失败；发信失败会让这一步变红，不静默吞掉。
+        - name: 失败通知
+          imports:
+            - ${notify_secrets_url}
+          script: |
+            TITLE="🔴 画廊检查流水线失败（main）" \
+            MSG="失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}
+            失败原因：${CNB_BUILD_FAILED_MSG}
+
+            分支：${CNB_BRANCH}
+            提交：${CNB_COMMIT_SHORT} — ${CNB_COMMIT_MESSAGE_TITLE}
+            触发人：${CNB_BUILD_USER}
+            日志：${CNB_BUILD_WEB_URL}" \
+            bash tools/notify-mail.sh
+
         - name: 🔴 main 红灯
           script: |
             echo "🔴 main 红灯：检查流水线失败，这次推送没有移动 last-green。"
@@ -146,6 +162,20 @@ main:
             export DIST_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-dist"
             export OUT_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-out"
             npm run build && npm run check
+      failStages:
+        - name: 失败通知
+          imports:
+            - ${notify_secrets_url}
+          script: |
+            TITLE="🔴 画廊手动检查失败" \
+            MSG="失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}
+            失败原因：${CNB_BUILD_FAILED_MSG}
+
+            分支：${CNB_BRANCH}
+            提交：${CNB_COMMIT_SHORT} — ${CNB_COMMIT_MESSAGE_TITLE}
+            触发人：${CNB_BUILD_USER}
+            日志：${CNB_BUILD_WEB_URL}" \
+            bash tools/notify-mail.sh
 
   # ── 发布：只手动（web_trigger_release），绝不接受 push 触发 ──────────────────
   web_trigger_release:
@@ -293,6 +323,21 @@ main:
             git pull --rebase origin main
             git push origin HEAD:main
       failStages:
+        - name: 失败通知
+          imports:
+            - ${notify_secrets_url}
+          script: |
+            TITLE="🔴 画廊发布流水线失败" \
+            MSG="失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}
+            失败原因：${CNB_BUILD_FAILED_MSG}
+
+            参数：target=${target} deploy_env=${deploy_env} version=${RELEASE_VERSION}
+            分支：${CNB_BRANCH}
+            提交：${CNB_COMMIT_SHORT} — ${CNB_COMMIT_MESSAGE_TITLE}
+            触发人：${CNB_BUILD_USER}
+            日志：${CNB_BUILD_WEB_URL}" \
+            bash tools/notify-mail.sh
+
         - name: 🔴 发布失败
           script: |
             echo "🔴 发布失败：对象存储的版本指针只在全部核对通过后才切换，线上仍是上一版。"
@@ -360,3 +405,18 @@ main:
             echo
             echo "- 分支 \`$branch\` → tag \`$tag\`（\`$sha\`）"
             echo "- 分支已从远端删除；要找回：\`git checkout -b $branch $tag\`"
+      failStages:
+        - name: 失败通知
+          imports:
+            - ${notify_secrets_url}
+          script: |
+            TITLE="🔴 画廊归档分支失败" \
+            MSG="失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}
+            失败原因：${CNB_BUILD_FAILED_MSG}
+
+            参数：branch=${branch}
+            分支：${CNB_BRANCH}
+            提交：${CNB_COMMIT_SHORT} — ${CNB_COMMIT_MESSAGE_TITLE}
+            触发人：${CNB_BUILD_USER}
+            日志：${CNB_BUILD_WEB_URL}" \
+            bash tools/notify-mail.sh
