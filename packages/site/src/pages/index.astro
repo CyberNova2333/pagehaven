@@ -1,28 +1,81 @@
 ---
-// 首页：作品列表（按模型顺序，即 sort 再 title）与检索入口。
+// 首页：hero（站名、检索入口、作品/期/话统计）+ 作品卡片网格（按模型顺序，即 sort 再 title）。
 import Base from '../layouts/Base.astro';
 import siteConfig from '../generated/site-config.json';
 import gallery from '../generated/gallery.json';
 import { chapterCount } from '../lib/gallery.js';
 
 const { site } = siteConfig;
+const seriesCount = gallery.series.length;
+const issueCount = gallery.series.reduce((n, s) => n + s.issues.length, 0);
+const chapterTotal = gallery.series.reduce((n, s) => n + chapterCount(s), 0);
 ---
 
 <Base url="/">
-  <h1>{site.title}</h1>
-  <p><a href="/search/">搜索台词 →</a></p>
+  <section class="hero card card-pad">
+    <p class="eyebrow">Comics Archive · 漫画画廊</p>
+    <h1>{site.title}</h1>
+    <p class="lede">
+      作品、期、话与台词检索。图片与检索库经 CDN 按需读取，整站是纯静态文件——没有服务端，也没有登录。
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="/search/">搜索台词 →</a>
+      <a class="btn" href="#series">浏览作品</a>
+    </div>
+    <dl class="stats">
+      <div><dt>作品</dt><dd>{seriesCount}</dd></div>
+      <div><dt>期</dt><dd>{issueCount}</dd></div>
+      <div><dt>话</dt><dd>{chapterTotal}</dd></div>
+    </dl>
+  </section>
+
+  <h2 id="series">作品</h2>
   {
     gallery.series.length === 0 ? (
       <p class="muted">还没有作品。</p>
     ) : (
-      <ul class="list">
+      <ul class="series-grid">
         {gallery.series.map((s) => (
-          <li>
-            <a href={s.url}>{s.title}</a>
-            <small>{s.issues.length} 期 · {chapterCount(s)} 话</small>
+          <li class="card">
+            <a class="series-card" href={s.url}>
+              <span class="series-title">{s.title}</span>
+              <span class="series-meta">{s.issues.length} 期 · {chapterCount(s)} 话</span>
+              <span class="series-arrow" aria-hidden="true">→</span>
+            </a>
           </li>
         ))}
       </ul>
     )
   }
 </Base>
+
+<style>
+  .hero { margin-bottom: 2rem; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1.1rem 0 1.4rem; }
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    margin: 0;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
+  }
+  .stats div { display: flex; flex-direction: column; gap: 0.1rem; }
+  .stats dt { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .stats dd { margin: 0; font-family: var(--font-serif); font-size: 1.6rem; color: var(--ink); }
+  .series-grid {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.7rem;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  }
+  .series-grid li { transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease; }
+  .series-grid li:hover { transform: translateY(-2px); border-color: var(--pink-soft); box-shadow: 0 14px 34px rgba(231, 95, 135, 0.16); }
+  .series-card { display: flex; flex-direction: column; gap: 0.2rem; padding: 1rem 1.1rem; color: var(--ink); }
+  .series-card:hover { color: var(--pink-deep); }
+  .series-title { font-family: var(--font-serif); font-size: 1.15rem; font-weight: 600; }
+  .series-meta { color: var(--text-dim); font-size: 0.85rem; }
+  .series-arrow { margin-top: 0.35rem; color: var(--pink-deep); }
+</style>

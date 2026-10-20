@@ -2,6 +2,7 @@
 // 作品页：期列表（number、title、published、话数）。
 import Base from '../../layouts/Base.astro';
 import gallery from '../../generated/gallery.json';
+import { chapterCount } from '../../lib/gallery.js';
 
 export function getStaticPaths() {
   return gallery.series.map((s) => ({ params: { series: s.id }, props: { series: s } }));
@@ -11,16 +12,22 @@ const { series } = Astro.props;
 ---
 
 <Base title={series.title} url={series.url} crumbs={[{ text: series.title }]}>
-  <h1>{series.title}</h1>
-  <p class="muted">{series.issues.length} 期</p>
+  <section class="page-head card card-pad">
+    <p class="eyebrow">Series</p>
+    <h1>{series.title}</h1>
+    <p class="muted head-meta">{series.issues.length} 期 · {chapterCount(series)} 话</p>
+  </section>
+
+  <h2>期</h2>
   <ul class="list">
     {
       series.issues.map((iss) => (
         <li>
           <a href={iss.url}>
-            <span class="num">{iss.number}</span> {iss.title}
+            <span class="badge">{iss.number}</span>
+            <span class="row-title">{iss.title}</span>
+            <small>{iss.chapters.length} 话{iss.published ? ` · ${iss.published}` : ''}</small>
           </a>
-          <small>{iss.chapters.length} 话{iss.published ? ` · ${iss.published}` : ''}</small>
         </li>
       ))
     }
@@ -28,5 +35,7 @@ const { series } = Astro.props;
 </Base>
 
 <style>
-  .num { display: inline-block; min-width: 2em; color: var(--muted); }
+  .page-head { margin-bottom: 1.2rem; }
+  .head-meta { margin: 0; }
+  .row-title { flex: 1; min-width: 0; }
 </style>
