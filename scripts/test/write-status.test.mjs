@@ -207,7 +207,7 @@ test('status：读 manifest + 环境 + dist，写 STATUS_FILE；无凭据时对�
   assert.match(table.get('最近一次发布耗时'), /^1 分 3\d 秒$/);
   assert.match(table.get('写入时间（UTC）'), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}Z$/);
   assert.equal(table.get('发布运行'), '[123456](https://github.com/someone/repo/actions/runs/123456)');
-  assert.ok(md.endsWith('重建步骤见 [README.md](README.md)「十分钟重建」。\n'));
+  assert.ok(md.endsWith('构建与发布入口见 [README.md](README.md)「怎么跑」。\n'));
   assert.ok(!md.includes('## 对象存储里的检索库'), '没列清单就没有清单节');
 });
 

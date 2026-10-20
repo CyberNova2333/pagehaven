@@ -94,7 +94,7 @@ npm run build     # 全量静态构建（dry-run，不发布）
 site.config.yaml        唯一配置源：域名、缓存、响应头、重定向、功能开关（铁律 5）
 data/meta/<series>.yaml 作品 / 期 / 话 / 页 元数据（人工维护）
 data/text/<series>/…    台词层，每话一文件（ingest 生成）
-data/raw/labelplus/     LabelPlus 原始稿（手机在 GitHub 网页上传），ingest 的输入
+data/raw/labelplus/     LabelPlus 原始稿（在 CNB 网页上传），ingest 的输入
 packages/core           schema、LabelPlus 解析、归一化、DB 构建、取块层 —— 只用 Web 标准 API
 packages/site           Astro：每话一个 HTML，阅读器，sitemap
 packages/search         浏览器端检索：加载并校验检索库、台词查询、搜索页接线
