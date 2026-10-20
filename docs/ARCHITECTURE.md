@@ -77,9 +77,9 @@ Cloudflare Workers 或 Makers Cloud Functions，且永远可选。
 `-n` 参数）、`EDGEONE_API_REGION`（token 签发区域：`china` | `global`）。EdgeOne 允许多个同名项目，
 所以 `deploy:edgeone` 先用 Pages API 按 ID 核对名字、按名字核对同名唯一性，不一致就拒绝部署；可选
 `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`（云 API 密钥对 + 站点 ID，
-只给 `purge` 用，与 Makers 的 token 不是一回事）、`BAIDU_PUSH_TOKEN`（百度站长平台该站点的
-链接提交 token，只给 `push:search` 用；IndexNow 的 key 不是凭据，在 `site.config.yaml`）、
-`ESA_*`（清缓存，未实现）。CDN 的回源凭据是一对**只读**的
+只给 `purge` 用，与 Makers 的 token 不是一回事）、`ESA_*`（清缓存，未实现）。
+SEO 只走 IndexNow：key 按协议公开在 `site.config.yaml` 的 `seo.indexnow_key`，不是凭据，
+不需要密钥文件；百度链路已废弃。CDN 的回源凭据是一对**只读**的
 R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 
 代码分层：`packages/core`（schema、解析器、归一化、DB 构建）、`packages/site`
@@ -160,8 +160,8 @@ publish:r2         先把线上旧 db/manifest.json 原样存成 out/manifest-pr
 deploy:cloudflare  deploy:edgeone  deploy:github（DEPLOY_ENV=production|preview）
 purge              可选救火：EdgeOne CreatePurgeTask（任一目标被拒即失败）；ESA 未实现
 push:search        部署之后（发布流水线写 STATUS 的那一步之后）主动把本次新增的页面推给搜索引擎：
-                   IndexNow（seo.indexnow_key，Bing / Yandex / Naver / Seznam 共用）与百度链接提交
-                   （BAIDU_PUSH_TOKEN）；Google 没有普通页面的推送接口，靠 robots.txt 的 Sitemap 声明。
+                   IndexNow（seo.indexnow_key，Bing / Yandex / Naver / Seznam 共用）；不走百度。
+                   Google 没有普通页面的推送接口，靠 robots.txt 的 Sitemap 声明。
                    新页面 = 新 manifest 与 out/manifest-previous.json 的 URL 差集；--all 推全部
 status             写 STATUS.md（只由发布流水线调用）
 ```
@@ -359,9 +359,8 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
      实际行为（是否放行、是否带 `Accept-Ranges`、`Content-Length` 是否为 0）。
   6. 用翻译组一份真实的 LabelPlus 导出跑一次 `ingest:labelplus`，核对分隔符形状与坐标小数位。
   7. 首次 `push:search`：IndexNow 回 403 说明引擎取不到 `/<key>.txt`（托管平台对 .txt 的
-     Content-Type 或缓存）、422 说明 urlList 的 host 与 `host` 不一致（www 与裸域名）；百度的 `site`
-     参数是 `https://<domain>`，须与站长平台登记的完全一致（协议、www），token 在「普通收录 → API
-     提交」处取，首次全站推送可能超当日配额、超出部分下次再推。
+     Content-Type 或缓存）、422 说明 urlList 的 host 与 `host` 不一致（www 与裸域名）；
+     首次全站推送可能超当日配额、超出部分下次再推。
 - 2026-09-03 sitemap 与搜索引擎推送。拆分线 45 000（协议 50 000）留余量，index 的 `<lastmod>` 是生成日；
   `sitemap.xml` 永远是入口（单文件或 index），分片 `sitemap-<n>.xml`，robots 与外部登记只指入口。
   IndexNow 的 key 进 `site.config.yaml` 而不是 secrets：协议要求它公开放在站点根，不是凭据。
@@ -381,4 +380,7 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
   （token 签发区域，决定 Pages API 端点）；`deploy:edgeone` 先用 DescribePagesProjects 按 ID 核对
   名字、按名字核对同名唯一性，不一致就拒绝部署（一个字节都不传）。当前项目：ID
   `example-project-id`、名 `comics-gallery`、Area global、token 区域 china。
+- 2026-10-20 SEO 只走 IndexNow，移除百度链接提交。百度要站点级 token、长期不推会被降权，
+  且与 IndexNow 的公开 key 验证是两套模型。`push:search` 去掉百度分支与 `BAIDU_PUSH_TOKEN`，
+  密钥仓库不再需要 `seo.yml`（IndexNow key 按协议公开在 `site.config.yaml`，不是凭据）。
 
