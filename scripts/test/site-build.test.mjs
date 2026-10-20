@@ -80,10 +80,19 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     for (const p of ['index.html', '404.html', 'search/index.html', 'sample/index.html', 'sample/vol01/index.html', 'zeta/v1/index.html']) {
       assert.ok(existsSync(join(DIST, p)), `${p} 不存在`);
     }
-    // 没有图片、没有 DB、没有独立的 JS/CSS（样式与脚本都内联）
+    // 没有图片、没有 DB。搜索页的执行器是懒加载 chunk（sqlite-wasm 的 wasm 与 worker 代理
+    // 也只能是独立文件），放在 dist/_astro/ 下；但话目录里不许出现独立 JS/CSS——话页面
+    // 仍是「一个 HTML，样式与脚本内联」，检索脚本不该被引到阅读器里。
     const files = await walk(DIST);
-    const bad = files.filter((f) => ['.avif', '.webp', '.png', '.jpg', '.sqlite', '.js', '.css'].includes(extname(f)));
+    const bad = files.filter((f) => ['.avif', '.webp', '.png', '.jpg', '.sqlite'].includes(extname(f)));
     assert.deepEqual(bad, []);
+    for (const key of ['sample/vol01/c001', 'sample/vol01/c002', 'sample/vol02/c003', 'zeta/v1/ch1']) {
+      const dir = join(DIST, ...key.split('/'));
+      const stray = (await walk(dir)).filter((f) => ['.js', '.css', '.wasm'].includes(extname(f)));
+      assert.deepEqual(stray, [], `${key} 下不该有独立 JS/CSS/wasm`);
+      const html = await readFile(join(dir, 'index.html'), 'utf8');
+      assert.ok(!html.includes('/_astro/'), `${key} 的 HTML 不该引用 _astro/ 下的检索 chunk`);
+    }
   });
 
   await t.test('阅读器 HTML：台词、avif/webp URL、上下话链接、#p 脚本、文字层高亮 id', async () => {
