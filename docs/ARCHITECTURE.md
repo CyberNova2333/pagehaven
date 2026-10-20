@@ -89,8 +89,8 @@ R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 
 ## 4. 数据模型
 
-- **图片 key**：`img/<series>/<chapter>/<n>-<sha256 前 12 位>.avif`（另出同名
-  `.webp`）。内容哈希 = 不可变；R2 对象元数据 `Cache-Control: public,
+- **图片 key**：`img/<series>/<issue>/<chapter>/<n>-<sha256 前 12 位>.webp`（只用 webp：
+  avif 编码慢、体积并不更小）。内容哈希 = 不可变；R2 对象元数据 `Cache-Control: public,
   max-age=31536000, immutable`。修图 = 新 key + 重建引用页，不依赖清缓存。
 - **`data/meta/<series>.yaml`**：作品、期（`number`、`title`、`published`）、
   话（`number`、`title`）、页（`n`、`img`、`w`、`h`），人工维护。
@@ -244,8 +244,8 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
   `Content-Encoding` 的响应 `Content-Length` 是压缩后长度，Range 语义整个变味；
   浏览器又改不了 `Accept-Encoding`，只能从 CDN 侧掐掉。
 - 图片域名：节点缓存 30 天 + 离线缓存（源站故障时继续服务已缓存对象）；浏览器侧
-  靠 immutable 哈希 key 缓存一年；关闭查询串透传；avif/webp 用不同文件名 +
-  `<picture>`，**不用 `Vary: Accept`**（两套 CDN 的缓存 key 行为不一致）。
+  靠 immutable 哈希 key 缓存一年；关闭查询串透传；图片只有 webp 一种格式（`<img>`，
+  **不用 `Vary: Accept`**）。
 - 防盗链放 CDN 层（Referer / 速率限制），不在 R2 层做。
 - HTML / 索引 JSON / sitemap 走托管平台默认策略（无哈希文件不缓存或短缓存，
   新部署自动失效），不要套图片域名的 30 天规则。
@@ -315,7 +315,7 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
 - 2026-09-03 骨架落地（§10 第 1 步）。约定几处文档没写死的形状：URL 结构为
   `/<series>/`、`/<series>/<issue>/`、`/<series>/<issue>/<chapter>/`（每话一目录一 `index.html`，
   阅读器内翻页）；§4 图片 key 里的 `<chapter>` 指「期/话」两段，即
-  `img/<series>/<issue>/<chapter>/<n>-<hash12>.avif`，与 `data/text` 的 `chapter` 字段同形。
+  `img/<series>/<issue>/<chapter>/<n>-<hash12>.webp`，与 `data/text` 的 `chapter` 字段同形。
   平台配置生成物入库在 `packages/platform/generated/`，`check` 逐字节比对；站点读的
   `site-config.json` 不入库，构建时重生成。产物目录：`dist/` 只放静态站，`out/` 放
   manifest、DB 与归档。`edgeone.json` 按 EdgeOne Pages 文档的 `headers[{source,headers[{key,value}]}]`

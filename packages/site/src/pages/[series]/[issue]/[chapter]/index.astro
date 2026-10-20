@@ -1,5 +1,5 @@
 ---
-// 阅读器：每话恰好一个 HTML（ARCHITECTURE §2：文件数预算不允许每页一个），全部页的 <picture>
+// 阅读器：每话恰好一个 HTML（ARCHITECTURE §2：文件数预算不允许每页一个），全部页的 img 标签
 // 与文字层都在这一份里，翻页在页内完成，#p<n> 深链定位到某一页。
 //
 // 渐进增强：初始 DOM 全部页纵向可见、文字层是普通 DOM 文本——没有 JS 时照样能读、能选、
@@ -89,12 +89,6 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
           var img = e.target;
           if (!img || img.tagName !== 'IMG' || !img.closest('.page') || img.dataset.retried) return;
           img.dataset.retried = '1';
-          var pic = img.parentNode;
-          if (pic && pic.tagName === 'PICTURE') {
-            Array.prototype.forEach.call(pic.querySelectorAll('source'), function (s) {
-              s.srcset = swapHost(s.srcset);
-            });
-          }
           img.src = swapHost(img.src);
         },
         true,
@@ -118,17 +112,14 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
           <section class="page" id={`p${p.n}`} data-n={p.n}>
             <p class="page-num muted">第 {p.n} 页</p>
             <div class="frame" style={`aspect-ratio:${p.w}/${p.h}`}>
-              <picture>
-                <source type="image/avif" srcset={imageUrl(hosts[0], p.keys.avif)} />
-                <img
-                  src={imageUrl(hosts[0], p.keys.webp)}
-                  loading="lazy"
-                  decoding="async"
-                  width={p.w}
-                  height={p.h}
-                  alt={`${chapter.title} 第 ${p.n} 页`}
-                />
-              </picture>
+              <img
+                src={imageUrl(hosts[0], p.keys.webp)}
+                loading="lazy"
+                decoding="async"
+                width={p.w}
+                height={p.h}
+                alt={`${chapter.title} 第 ${p.n} 页`}
+              />
               {boxes.length > 0 && (
                 <div class="text-layer">
                   {/* 框内文本与标签写在同一行：.box 是 pre-wrap，换行缩进会变成可见空白把字挤歪 */}
@@ -170,8 +161,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
       function clamp(n) {
         return Math.min(Math.max(n, 1), total);
       }
-      // 下一页的图先拉起来：display:none 里的 lazy 图不会加载，改成 eager 就会——
-      // 用 <picture> 自己的选源，不用猜浏览器认 avif 还是 webp。
+      // 下一页的图先拉起来：display:none 里的 lazy 图不会加载，改成 eager 就会。
       function warm(n) {
         var p = pages[n - 1];
         var img = p && p.querySelector('img');

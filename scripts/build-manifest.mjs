@@ -64,7 +64,7 @@ try {
     await mkdir(OUT_DIR, { recursive: true });
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
     ok(
-      `${show(manifestPath)}：版本 ${version}，${manifest.imageKeys.length} 个图片 key（${t.pages} 页 × avif/webp），` +
+      `${show(manifestPath)}：版本 ${version}，${manifest.imageKeys.length} 个图片 key（${t.pages} 页 × webp），` +
         'db 字段留给 build:db',
     );
   }

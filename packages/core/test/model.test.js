@@ -10,7 +10,7 @@ const chapter = (id, number, pages) => ({ id, number, title: id, pages });
 test('key / URL / 图片 key 的拼法', () => {
   assert.equal(chapterKey('s', 'v', 'c'), 's/v/c');
   assert.equal(urlFor('s', 'v', 'c'), '/s/v/c/');
-  assert.equal(imageKey('img/', 's/v/c', 3, 'abcdefabcdef', 'avif'), 'img/s/v/c/3-abcdefabcdef.avif');
+  assert.equal(imageKey('img/', 's/v/c', 3, 'abcdefabcdef', 'webp'), 'img/s/v/c/3-abcdefabcdef.webp');
 });
 
 test('排序：作品按 sort，期与话按 number；上一话/下一话在作品内跨期相连', () => {

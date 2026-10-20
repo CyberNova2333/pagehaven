@@ -31,14 +31,14 @@ const IMG = CONFIG.images.prefix;
 const DB = CONFIG.db.prefix;
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** 样本里 8 页 × avif/webp = 16 个 key；与 packages/core 的模型拼法一致。 */
+/** 样本里 8 页 × webp = 8 个 key；与 packages/core 的模型拼法一致。 */
 const SAMPLE_KEYS = [
   ['sample/vol01/c001', ['0123456789ab', '123456789abc', '23456789abcd']],
   ['sample/vol01/c002', ['3456789abcde', '456789abcdef']],
   ['sample/vol02/c003', ['56789abcdef0']],
   ['zeta/v1/ch1', ['6789abcdef01', '789abcdef012']],
 ].flatMap(([chapter, hashes]) =>
-  hashes.flatMap((h, i) => [`${IMG}${chapter}/${i + 1}-${h}.avif`, `${IMG}${chapter}/${i + 1}-${h}.webp`]),
+  hashes.flatMap((h, i) => [`${IMG}${chapter}/${i + 1}-${h}.webp`]),
 );
 
 /** 干净的环境：去掉本机 / CI 里可能存在的凭据与版本变量，脚本的行为只由测试给的决定。 */
@@ -117,7 +117,7 @@ test('build:manifest：样本 → manifest.json，形状与键顺序稳定；无
   // 提示说的是事实：在哪一步核对取决于 R2_* 传给了谁，不能断言「发布流水线里会校验」
   assert.match(r.out, /把 R2_\* 传给跑本脚本的那一步才会在此核对/);
   assert.match(r.out, /publish:r2/);
-  assert.match(r.out, /16 个图片 key（8 页 × avif\/webp）/);
+  assert.match(r.out, /8 个图片 key（8 页 × webp）/);
 
   const text = await readFile(join(OUT, 'manifest.json'), 'utf8');
   assert.ok(text.endsWith('}\n'));
@@ -159,11 +159,11 @@ test('build:manifest：样本 → manifest.json，形状与键顺序稳定；无
     ]);
   });
 
-  await t.test('imageKeys：页数 × 2、已按字节序排序、与模型的 key 拼法一致', () => {
-    assert.equal(m.imageKeys.length, m.totals.pages * 2);
+  await t.test('imageKeys：页数 × 1、已按字节序排序、与模型的 key 拼法一致', () => {
+    assert.equal(m.imageKeys.length, m.totals.pages);
     assert.deepEqual(m.imageKeys, [...m.imageKeys].sort(), '已排序');
     assert.deepEqual(m.imageKeys, [...SAMPLE_KEYS].sort());
-    const shape = new RegExp(`^${escapeRe(IMG)}[a-z0-9-]+/[a-z0-9-]+/[a-z0-9-]+/\\d+-[0-9a-f]{12}\\.(avif|webp)$`);
+    const shape = new RegExp(`^${escapeRe(IMG)}[a-z0-9-]+/[a-z0-9-]+/[a-z0-9-]+/\\d+-[0-9a-f]{12}\\.webp$`);
     for (const k of m.imageKeys) assert.match(k, shape);
   });
 
@@ -227,22 +227,22 @@ test('有凭据：对着本地假 S3 分页列清单核对；全都在 → 0，�
       await writeFile(join(OK_OUT, 'missing-images.txt'), 'stale\n');
       const r = await run({ DATA_DIR: FIXTURES, OUT_DIR: OK_OUT, RELEASE_VERSION: '2026-09-03', ...s3.env });
       assert.equal(r.status, 0, r.out);
-      assert.match(r.out, /对象存储清单核对通过：manifest 引用的 16 个图片 key 全部存在/);
-      assert.ok(r.out.includes(`${IMG} 下 17 个对象`), r.out);
+      assert.match(r.out, /对象存储清单核对通过：manifest 引用的 8 个图片 key 全部存在/);
+      assert.ok(r.out.includes(`${IMG} 下 9 个对象`), r.out);
       assert.doesNotMatch(r.out, /未校验/);
       assert.ok(!existsSync(join(OK_OUT, 'missing-images.txt')), '通过了就不该留着旧的缺 key 列表');
-      // 真翻了页：17 个 key、每页 5 个 → 4 次请求，后三次带 continuation-token，只列图片前缀
-      assert.equal(s3.requests.length, 4, s3.requests.join('\n'));
+      // 真翻了页：9 个 key、每页 5 个 → 2 次请求，后一次带 continuation-token，只列图片前缀
+      assert.equal(s3.requests.length, 2, s3.requests.join('\n'));
       const want = `prefix=${encodeURIComponent(IMG)}`;
       assert.ok(s3.requests.every((q) => q.includes(want)), s3.requests.join('\n'));
-      assert.equal(s3.requests.filter((q) => q.includes('continuation-token=')).length, 3);
+      assert.equal(s3.requests.filter((q) => q.includes('continuation-token=')).length, 1);
     } finally {
       await s3.close();
     }
   });
 
   await t.test('缺两个 key：控制台列出、完整列表写到 missing-images.txt、退出码非零、manifest 仍已写出', async () => {
-    const missing = [`${IMG}sample/vol01/c002/2-456789abcdef.webp`, `${IMG}zeta/v1/ch1/1-6789abcdef01.avif`];
+    const missing = [`${IMG}sample/vol01/c002/2-456789abcdef.webp`, `${IMG}zeta/v1/ch1/1-6789abcdef01.webp`];
     const s3 = await fakeS3(SAMPLE_KEYS.filter((k) => !missing.includes(k)));
     try {
       const OUT = join(tmp, 'missing');
@@ -291,7 +291,7 @@ test('有凭据：对着本地假 S3 分页列清单核对；全都在 → 0，�
       const r = await run(env, ['--verify-only']);
       assert.equal(r.status, 0, r.out);
       assert.match(r.out, /只核对，不重写/);
-      assert.match(r.out, /核对通过：manifest 引用的 16 个图片 key 全部存在/);
+      assert.match(r.out, /核对通过：manifest 引用的 8 个图片 key 全部存在/);
       assert.equal(await readFile(path, 'utf8'), filled, 'manifest.json 一字未动');
       assert.ok(s3.requests.length >= 1 && s3.requests.every((q) => q.includes(`prefix=${encodeURIComponent(IMG)}`)));
     } finally {
