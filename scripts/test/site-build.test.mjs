@@ -95,7 +95,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     }
   });
 
-  await t.test('阅读器 HTML：台词、avif/webp URL、上下话链接、#p 脚本、文字层高亮 id', async () => {
+  await t.test('阅读器 HTML：台词、webp URL、上下话链接、#p 脚本、文字层高亮 id', async () => {
     const html = await readFile(join(DIST, 'sample', 'vol01', 'c001', 'index.html'), 'utf8');
     // 台词是普通 DOM 文本
     assert.ok(html.includes('你好，世界！'), '台词文本不在 HTML 里');
@@ -103,14 +103,14 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.ok(html.includes('id="p1b0"') && html.includes('id="p1b1"'), '框的 id 应是 p<n>b<i>');
     assert.ok(html.includes('id="p2b0"'), '点标签（w=h=0）也应有框');
     assert.match(html, /class="box dot[^"]*"[^>]*id="p2b0"/, 'w=h=0 的框应带 dot 类');
-    // 三页的 <picture>：avif source + webp img，域名取 images.hosts[0]
+    // 三页的 <img src=webp>，域名取 images.hosts[0]
     for (const [n, hash] of [[1, '0123456789ab'], [2, '123456789abc'], [3, '23456789abcd']]) {
-      assert.ok(html.includes(`https://img.example.org/img/sample/vol01/c001/${n}-${hash}.avif`), `第 ${n} 页 avif URL`);
       assert.ok(html.includes(`https://img.example.org/img/sample/vol01/c001/${n}-${hash}.webp`), `第 ${n} 页 webp URL`);
+      assert.ok(!html.includes(`https://img.example.org/img/sample/vol01/c001/${n}-${hash}.avif`), `第 ${n} 页不该再有 avif`);
       assert.ok(html.includes(`id="p${n}"`), `第 ${n} 页的锚点`);
     }
-    assert.equal((html.match(/<source type="image\/avif"/g) ?? []).length, 3, '三页都在这一份 HTML 里');
-    assert.match(html, /<source type="image\/avif" srcset="https:\/\/img\.example\.org\/[^"]+\.avif"/);
+    assert.equal((html.match(/<img src="https:\/\/img\.example\.org\//g) ?? []).length, 3, '三页都在这一份 HTML 里');
+    assert.doesNotMatch(html, /<source type="image\/avif"/);
     assert.match(html, /<img src="https:\/\/img\.example\.org\/[^"]+\.webp" loading="lazy"[^>]*width="1200" height="1700"[^>]*alt="/);
     assert.ok(html.includes('aspect-ratio:2400/1700'), '宽页的纵横比');
     // 上一话 / 下一话：c001 是第一话，只有下一话
@@ -136,7 +136,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
 
   await t.test('没有台词稿的话：页面正常、没有文字层', async () => {
     const html = await readFile(join(DIST, 'sample', 'vol02', 'c003', 'index.html'), 'utf8');
-    assert.ok(html.includes('https://img.example.org/img/sample/vol02/c003/1-56789abcdef0.avif'));
+    assert.ok(html.includes('https://img.example.org/img/sample/vol02/c003/1-56789abcdef0.webp'));
     assert.ok(!html.includes('class="text-layer'), '不该有文字层');
     assert.ok(!/id="p\d+b\d+"/.test(html), '不该有框');
     assert.ok(html.includes('id="p1"'));
@@ -213,7 +213,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.deepEqual(gallery.totals, { series: 2, issues: 3, chapters: 4, pages: 8, boxes: 5 });
     const pagesInGallery = gallery.series.flatMap((s) => s.issues.flatMap((i) => i.chapters.flatMap((c) => c.pages)));
     assert.equal(pagesInGallery.length, 8);
-    assert.ok(pagesInGallery.every((pg) => !('boxes' in pg) && pg.keys.avif && pg.keys.webp), 'gallery.json 的页只有结构与图片 key，不含 boxes');
+    assert.ok(pagesInGallery.every((pg) => !('boxes' in pg) && pg.keys.webp), 'gallery.json 的页只有结构与图片 key，不含 boxes');
     const text = JSON.parse(await readFile(join(gen, 'text', 'sample', 'vol01', 'c001.json'), 'utf8'));
     assert.equal(text.chapter, 'sample/vol01/c001');
     assert.deepEqual(text.pages.map((p) => p.n), [1, 2], '只写有框的页');
@@ -283,7 +283,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       const html = await readFile(join(out, 'sample', 'vol01', 'c001', 'index.html'), 'utf8');
       assert.ok(!html.includes('class="text-layer'), 'flag 关了不该有文字层');
       assert.ok(!html.includes('你好，世界！'), 'flag 关了台词不该进 HTML');
-      assert.ok(html.includes('id="p1"') && html.includes('.avif'), '图片与翻页照常');
+      assert.ok(html.includes('id="p1"') && html.includes('.webp'), '图片与翻页照常');
       const issue = await readFile(join(out, 'sample', 'vol01', 'index.html'), 'utf8');
       assert.ok(!issue.includes('有台词'), '阅读器没有文字层时，列表不该承诺「有台词」');
     } finally {
