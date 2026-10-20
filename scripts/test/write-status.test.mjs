@@ -1,7 +1,7 @@
 // status 脚本的端到端测试：构造 out/manifest.json 与假 dist，真 spawn 脚本，STATUS_FILE 指到临时目录——
 // 仓库根的 STATUS.md 只由发布流水线写（铁律 10），测试前后比对它一字未动。
 //
-// 对象存储那条路对着本地假 S3（只答 ListObjectsV2）跑真 SDK；渲染函数另有纯单测。
+// 对象存储那条路对着本地假 S3（只答 ListObjectsV2）发真请求；渲染函数另有纯单测。
 // db / 图片前缀的期望值从仓库的 site.config.yaml 读（脚本经 loadSiteConfig 读固定路径，指不到
 // 临时配置）：维护者改前缀或域名时，这些与改动无关的断言不该跟着红。
 import { test } from 'node:test';
@@ -313,7 +313,11 @@ test('status：有凭据但列举失败（403）→ STATUS.md 照写并记「列
     assert.deepEqual([...table.keys()], ROW_NAMES, '表格形状不变');
     assert.equal(table.get('版本'), '2026-09-03');
     assert.equal(table.get('当前部署目标'), 'github');
-    assert.match(table.get('对象存储对象清单'), /^列出失败：AccessDenied HTTP 403：Access Denied to … for … at …$/);
+    // 状态码、错误码、服务端原话都要在；主机名与桶名换成 …
+    assert.match(
+      table.get('对象存储对象清单'),
+      /^列出失败：AccessDenied HTTP 403：.*Access Denied to … for … at …$/,
+    );
     assert.ok(!md.includes('## 对象存储里的检索库'), '没列出来就没有清单节');
     assertNoSecrets(md);
   } finally {

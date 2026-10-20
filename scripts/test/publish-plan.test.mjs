@@ -1,7 +1,7 @@
 // 上传计划的单测 + publish:r2 脚本的端到端。
 //
 // 计划是纯函数：key / Content-Type / Cache-Control / 顺序 / 图片取舍 / 各种对不上，直接比对。
-// 脚本那部分对着本地假 S3（只答 PUT、HEAD 与 GET，后两者可切成一律回 500）跑真 SDK，验的是真上传时带的头、
+// 脚本那部分对着本地假 S3（只答 PUT、HEAD 与 GET，后两者可切成一律回 500）发真请求，验的是真上传时带的头、
 // 已存在的图片被跳过、缺图或存储报错时 manifest 不换指针、manifest 永远最后一个传、经符号链接挂进
 // IMAGES_DIR 的图片也会传、线上旧 manifest 在任何上传之前被原样存下。dist 归档要 tar --zstd：这台机器未必有 zstd，
 // 所以在 PATH 前面放一个直通的 zstd 替身（exec cat），tar 真被起、真打包、真上传；再用一个只有
@@ -425,7 +425,7 @@ test('publish:r2：真传——缺图不换指针；齐了才传 manifest 且最
     assert.equal(s3.requests.filter((x) => x.startsWith('PUT ')).length, 4);
   });
 
-  await t.test('PUT 回 404（桶不存在）→ SDK 抛错、退 1，日志带状态码', async () => {
+  await t.test('PUT 回 404（桶不存在）→ 抛错、退 1，日志带状态码', async () => {
     // 桶名对不上，假服务器对一切路径回 404：第一个 PUT（库）就是真错误，必须抛，不能当「不存在」
     s3.requests.length = 0;
     const r = await run({ ...ws.env, ...s3.env, R2_BUCKET: 'other-bucket' });
