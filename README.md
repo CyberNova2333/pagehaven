@@ -11,7 +11,7 @@ sha256 校验；按 Range 分块读取与函数版加速仍待做）。
 
 **阅读导航**
 
-[🏛️ 分层代码架构](#section-1) · [🚀 环境与使用入口](#section-2) · [📚 重建与手动发布](#section-3) · [🚀 怎么跑](#section-4) · [🏛️ 目录](#section-5) · [📚 参与开发](#section-6) · [📜 许可](#section-7)
+[🏛️ 分层代码架构](#section-1) · [🚀 环境与使用入口](#section-2) · [🚀 怎么跑](#section-3) · [🏛️ 目录](#section-4) · [📚 参与开发](#section-5) · [📜 许可](#section-6)
 
 ---
 
@@ -32,7 +32,7 @@ flowchart TB
     subgraph L1["领域与数据访问包"]
         CORE["core · schema / model / labelplus"]
         DB["core/db 与 chunkfetch"]
-        SEARCH["search · 待实现"]
+        SEARCH["search · 浏览器端检索"]
     end
     subgraph L2["工具适配层"]
         TOOLS["scripts · 文件系统编排"]
@@ -53,7 +53,7 @@ flowchart TB
 | 页面层 | [gallery.js · 页面辅助](packages/site/src/lib/gallery.js) | 处理章节索引、图像地址和标注框样式。 |
 | 领域与数据访问包 | [core · schema / model / labelplus](packages/core/src/index.js) | 验证和规范化作品、章节及台词模型；不依赖 Node IO。 |
 | 领域与数据访问包 | [core/db 与 chunkfetch](packages/core/src/db/index.js) | 提供 SQLite 数据库构造与分块摘要；chunkfetch 提供 Range 获取、选源与缓存。 |
-| 领域与数据访问包 | [search · 待实现](packages/search/src/index.js) | 只有版本常量，未提供可用检索执行器。 |
+| 领域与数据访问包 | [search · 浏览器端检索](packages/search/src/index.js) | 按 manifest 下载并校验检索库，sqlite-wasm 查询台词，结果带 bbox 与阅读器 hash。 |
 | 工具适配层 | [scripts · 文件系统编排](scripts/) | 读取本地输入并调用 core 和 platform；Node IO 留在此层。 |
 | 工具适配层 | [platform · 配置纯函数](packages/platform/src/index.js) | 解析站点配置并生成各平台配置文本，不执行部署命令。 |
 | 工具适配层 | [generated · 页面数据](packages/site/src/generated/) | 页面消费的元数据、配置和台词数据。 |
@@ -65,52 +65,11 @@ flowchart TB
 需要 Node.js 22+ 和 npm。可以在 Codespaces 中运行下方检查与构建；Python 3 用于可选 OCR 导入及协作守卫。构建与发布是不同步骤，`npm run build` 不部署网站。
 
 
-<a id="section-3"></a>
-
-## 📚 重建与手动发布
-
-重建需要仓库数据及有权访问的图片、检索库和部署配置；仅 Fork 源码不会取得原维护者的对象存储。配置齐全后按以下步骤执行：
-
-1. **Fork** 本仓库（公开，CNB 账号或组织下）。
-2. **填凭据**：密钥仓库 `deployment-secrets` 按「目录 = 下游仓库名、文件 = 操作名」组织。
-   本项目对应 `comics-gallery/` 下的三份**脚本任务**凭据——不要写 `allow_images`
-   （平台规则：声明了它，脚本任务读到的是空变量），用 `allow_slugs` + `allow_branches: main`
-   收范围：
-   - `publish.yml`：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET`
-     ——对象存储的**写**凭据（`verify:manifest` / `publish:r2` / `status` 用）；
-   - `deploy.yml`：按目标填 `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID`（Cloudflare Pages）、
-     `EDGEONE_API_TOKEN` + `EDGEONE_PROJECT_ID`（**项目 ID**，`makers-…`）+ `EDGEONE_PROJECT_NAME`
-     （项目名，只作 CLI 的 `-n`）+ `EDGEONE_API_REGION`（token 签发区域 `china` | `global`，默认
-     `china`）。EdgeOne 允许多个同名项目，流水线部署前会按 ID 核对名字与同名唯一性，不一致就拒绝
-     部署（`EDGEONE_PROJECT_ID` 填项目名或 ID 填错都不会静默发错）；`GITHUB_PAGES_REPO`（`owner/repo`）与 `GITHUB_PAGES_TOKEN`
-     （有 repo 写权限，流水线把 dist 推到该仓库的 `gh-pages` 分支）；
-   - `notify.yml`：`NOTIFY_URL` `NOTIFY_TOKEN` `NOTIFY_TO` `NOTIFY_FROM` `NOTIFY_FROM_NAME`
-     ——失败邮件。组织标准：凡是有**线上产物**或**把产物/自身部署到其他平台**的仓库都必须有；
-     本仓库两者都占，所以不可省。
-   （SEO 不需要密钥文件：只走 IndexNow，key 在 `site.config.yaml` 的 `seo.indexnow_key`，
-   按协议公开放在站点根，不是凭据；不走百度。）
-   救火用的 `purge` 另需 `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`，可以先不填。
-   路径是**逐字匹配**的：目录或文件名差一个字，准备阶段就报 `GetFileContent: not found`。
-   凭据只进密钥仓库，不进本仓库（CLAUDE.md 铁律 7）。密钥仓库只能在网页上逐文件编辑，
-   改动它时按组织约定给**逐文件** Commit Message。
-3. 改 [`site.config.yaml`](site.config.yaml) 里的 `site.domain` 与 `images.hosts`（图片经 CDN
-   读对象存储；把 img 域名切到任何支持 S3 私有回源的 CDN 都行）。
-4. **在 CNB 的 main 分支详情页点「发布」按钮**（`.cnb/web_trigger.yml`），选 `target`（首次可选
-   `deploy_env=preview`）。整条流水线 = `package.json` 的 scripts，任何 CI 都能跑。图片与台词稿
-   怎么进来：图片经 `IMAGES_DIR` 由 `publish:r2` 上传（或已在对象存储里），台词稿放
-   `data/raw/labelplus/`，发布时填 `chapters`。
-5. 把站点域名的 **CNAME** 指到新目标（TTL 300）。
-
-当前状态（版本、部署目标、对象清单）在 [`STATUS.md`](STATUS.md)，由发布流程自动写。
-
 <a id="怎么跑"></a>
 
-<a id="section-4"></a>
+<a id="section-3"></a>
 
 ## 🚀 怎么跑
-
-维护者没有电脑：一切在手机浏览器 + Codespaces 里完成（CNB 的发布按钮与构建页都在
-网页上；CLAUDE.md 铁律 9）。
 
 ```bash
 npm ci
@@ -125,7 +84,7 @@ npm run build     # 全量静态构建（dry-run，不发布）
 
 <a id="目录"></a>
 
-<a id="section-5"></a>
+<a id="section-4"></a>
 
 ## 🏛️ 目录
 
@@ -138,7 +97,7 @@ data/text/<series>/…    台词层，每话一文件（ingest 生成）
 data/raw/labelplus/     LabelPlus 原始稿（手机在 GitHub 网页上传），ingest 的输入
 packages/core           schema、LabelPlus 解析、归一化、DB 构建、取块层 —— 只用 Web 标准 API
 packages/site           Astro：每话一个 HTML，阅读器，sitemap
-packages/search         检索包占位；浏览器检索执行器尚未实现
+packages/search         浏览器端检索：加载并校验检索库、台词查询、搜索页接线
 packages/platform       三平台配置生成器与函数入口壳；生成物在 generated/
 scripts/                构建期脚本（允许 Node），每个 = package.json 的一条 script
 tools/                  守卫：agent-guard、分支体检、commit-msg / pre-push 钩子
@@ -148,7 +107,7 @@ dist/  out/             产物（不入库）
 
 <a id="参与开发"></a>
 
-<a id="section-6"></a>
+<a id="section-5"></a>
 
 ## 📚 参与开发
 
@@ -160,7 +119,7 @@ AI 协作者的硬约束见 [`CLAUDE.md`](CLAUDE.md) 与 [`AGENTS.md`](AGENTS.md
 
 <a id="许可"></a>
 
-<a id="section-7"></a>
+<a id="section-6"></a>
 
 ## 📜 许可
 
