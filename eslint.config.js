@@ -11,6 +11,10 @@ export default [
       'node_modules/**',
       'dist/**',
       'out/**',
+      // 样本空跑（CI 的 stage「用测试样本全量空跑」）把产物写在仓库根的临时目录：
+      // 搜索页现在会生成 _astro/*.js，eslint . 不能把它们当源码扫。
+      'fixture-dist/**',
+      'fixture-out/**',
       '**/.astro/**',
       'packages/site/src/generated/**',
       '**/*.astro',
