@@ -105,8 +105,8 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.match(html, /class="box dot[^"]*"[^>]*id="p2b0"/, 'w=h=0 的框应带 dot 类');
     // 三页的 <img src=webp>，域名取 images.hosts[0]
     for (const [n, hash] of [[1, '0123456789ab'], [2, '123456789abc'], [3, '23456789abcd']]) {
-      assert.ok(html.includes(`https://img.cbnv.me/img/sample/vol01/c001/${n}-${hash}.webp`), `第 ${n} 页 webp URL`);
-      assert.ok(!html.includes(`https://img.cbnv.me/img/sample/vol01/c001/${n}-${hash}.avif`), `第 ${n} 页不该再有 avif`);
+      assert.ok(html.includes(`https://images.example.org/img/sample/vol01/c001/${n}-${hash}.webp`), `第 ${n} 页 webp URL`);
+      assert.ok(!html.includes(`https://images.example.org/img/sample/vol01/c001/${n}-${hash}.avif`), `第 ${n} 页不该再有 avif`);
       assert.ok(html.includes(`id="p${n}"`), `第 ${n} 页的锚点`);
     }
     assert.equal((html.match(/<img[^>]+src="https:\/\/img\.cbnv\.me\//g) ?? []).length, 3, '三页都在这一份 HTML 里');
@@ -124,7 +124,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.ok(html.includes('replaceState'));
     assert.ok(html.includes('ArrowLeft') && html.includes('ArrowRight'));
     // 图片失败切源的脚本读 data-hosts
-    assert.deepEqual(jsonAttr(html, 'data-hosts'), ['img.cbnv.me']);
+    assert.deepEqual(jsonAttr(html, 'data-hosts'), ['images.example.org']);
     // 外壳
     assert.ok(html.includes('<html lang="zh-CN">'));
     assert.ok(html.includes('<link rel="canonical" href="https://gallery.example.org/sample/vol01/c001/">'));
@@ -138,7 +138,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
 
   await t.test('没有台词稿的话：页面正常、没有文字层', async () => {
     const html = await readFile(join(DIST, 'sample', 'vol02', 'c003', 'index.html'), 'utf8');
-    assert.ok(html.includes('https://img.cbnv.me/img/sample/vol02/c003/1-56789abcdef0.webp'));
+    assert.ok(html.includes('https://images.example.org/img/sample/vol02/c003/1-56789abcdef0.webp'));
     assert.ok(!html.includes('class="text-layer'), '不该有文字层');
     assert.ok(!/id="p\d+b\d+"/.test(html), '不该有框');
     assert.ok(html.includes('id="p1"'));
@@ -165,7 +165,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     const m = /<script type="application\/json" id="search-config">(.*?)<\/script>/.exec(search);
     assert.ok(m, 'search-config JSON');
     const cfg = JSON.parse(m[1]);
-    assert.deepEqual(cfg.images.hosts, ['img.cbnv.me']);
+    assert.deepEqual(cfg.images.hosts, ['images.example.org']);
     assert.equal(cfg.search.request_chunk_size, cfg.db.page_size);
     const notFound = await readFile(join(DIST, '404.html'), 'utf8');
     assert.ok(notFound.includes('<meta name="robots" content="noindex">'));
@@ -251,22 +251,22 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     const cfgFile = join(GENERATED, 'site-config.json');
     const saved = await readFile(cfgFile, 'utf8');
     const cfg = JSON.parse(saved);
-    cfg.images.hosts = ['img.cbnv.me', 'img2.cbnv.me'];
+    cfg.images.hosts = ['images.example.org', 'img2.images.example.org'];
     await writeFile(cfgFile, JSON.stringify(cfg));
     try {
       const out = join(tmp, 'dist-two-hosts');
       const r = astroBuild(out);
       assert.equal(r.status, 0, r.out);
       const html = await readFile(join(out, 'sample', 'vol01', 'c001', 'index.html'), 'utf8');
-      assert.deepEqual(jsonAttr(html, 'data-hosts'), ['img.cbnv.me', 'img2.cbnv.me']);
+      assert.deepEqual(jsonAttr(html, 'data-hosts'), ['images.example.org', 'img2.images.example.org']);
       assert.ok(html.includes('你好，世界！'), '上一个用例放回的分片应仍被取到，文字层完整');
-      assert.ok(html.includes('https://img.cbnv.me/img/sample/vol01/c001/1-0123456789ab.webp'), '图片仍从第一条域名取');
-      assert.ok(!html.includes('https://img2.cbnv.me/'), '第二条域名只给切源脚本用，不该出现在图片 URL 里');
+      assert.ok(html.includes('https://images.example.org/img/sample/vol01/c001/1-0123456789ab.webp'), '图片仍从第一条域名取');
+      assert.ok(!html.includes('https://img2.images.example.org/'), '第二条域名只给切源脚本用，不该出现在图片 URL 里');
       // 内联脚本里的替换规则与 lib/gallery.js 的 swapHost 是同一条（那边有单测）：这里只钉它没被改成别的形状
       assert.ok(html.includes("u.replace('//'+hosts[0]+'/','//'+hosts[1]+'/')") || html.includes("u.replace('//' + hosts[0] + '/', '//' + hosts[1] + '/')"), '切源脚本的替换规则');
       const search = await readFile(join(out, 'search', 'index.html'), 'utf8');
       const m = /<script type="application\/json" id="search-config">(.*?)<\/script>/.exec(search);
-      assert.deepEqual(JSON.parse(m[1]).images.hosts, ['img.cbnv.me', 'img2.cbnv.me']);
+      assert.deepEqual(JSON.parse(m[1]).images.hosts, ['images.example.org', 'img2.images.example.org']);
     } finally {
       await writeFile(cfgFile, saved);
     }

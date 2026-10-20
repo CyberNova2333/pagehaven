@@ -12,11 +12,11 @@ site:
   lang: zh-CN
 
 images:
-  # 图片域名：经 CDN / 边缘代理读对象存储，浏览器永远不直连存储（铁律 7）。
-  # 当前是 Cloudflare Worker（ops/r2-images-worker）绑的自定义域：Worker 读私有 R2 桶
-  # comics-gallery，只暴露 GET/HEAD；以后换 CDN 只改这里。
+  # 图片域名：EdgeOne 加速域名 images.example.org，源站用 AWS_S3
+  # 私有回源直连 R2 的 comics-gallery 桶（S3 兼容，源站凭据在 EdgeOne 侧配置）。
+  # 浏览器只见 CDN 域名，不直连存储（铁律 7）；换 CDN 只改这里。
   hosts:
-    - img.cbnv.me
+    - images.example.org
   # 对象存储内图片 key 的前缀
   prefix: img/
 
