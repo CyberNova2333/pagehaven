@@ -21,7 +21,7 @@
     "build": "npm run build:config && npm run build:manifest && npm run build:db && npm run build:site && npm run build:index && npm run build:sitemap",
     "check": "node scripts/check.mjs",
     "lint": "eslint .",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "publish:r2": "node scripts/publish-r2.mjs",
     "deploy:cloudflare": "node scripts/deploy.mjs cloudflare",
     "deploy:edgeone": "node scripts/deploy.mjs edgeone",
