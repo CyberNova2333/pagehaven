@@ -3,6 +3,10 @@
 Astro 静态站：作品 / 期 / 话页面、阅读器（每话一个 HTML，`#p12` 深链，文字层内嵌）、
 搜索页（接线在 `@gallery/search`）。产物在仓库根 `dist/`（`DIST_DIR` 环境变量可覆盖）。
 
+视觉语言：浅色粉紫渐变底 + 玻璃拟态卡片、18px 圆角、衬线标题（`--font-serif`）与无衬线正文。
+设计 token 全在 `Base.astro` 的 `:root`，各页面只写自己的局部样式；样式随
+`inlineStylesheets=always` 内联，dist 里不多出 CSS 文件；字体只用系统栈，不引外部字体请求。
+
 只用 Web 标准 API（CLAUDE.md 铁律 1）：不 import Node 内置模块，Astro 页面的 frontmatter 也算。
 数据与配置由构建脚本（`scripts/lib/site-generated.mjs`，Node）在 `astro build` 前写到
 `src/generated/`（不入库），页面只 import 那些 JSON：

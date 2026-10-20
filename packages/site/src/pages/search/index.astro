@@ -1,6 +1,6 @@
 ---
-// 检索页的壳：输入框 + 结果区 + 状态区。真正的检索逻辑（sqlite-wasm 经取块层按 Range 读库，
-// ARCHITECTURE §6）由 packages/search 接进来，改这一页的 <script> 或 import 那个包；页面结构
+// 检索页的壳：输入框 + 结果区 + 状态区。真正的检索逻辑（sqlite-wasm 读库，
+// ARCHITECTURE §6）由 packages/search 接进来；页面结构
 // 与各元素的 id 是约定，别改：
 //   #search-form     <form>，GET /search/?q=…（没有 JS 时提交只是刷新，参数留在 URL 里）
 //   #search-input    <input name="q">
@@ -22,21 +22,26 @@ const searchConfig = {
 ---
 
 <Base title="搜索台词" url="/search/" crumbs={[{ text: '搜索' }]}>
-  <h1>搜索台词</h1>
-  <form id="search-form" role="search" action="/search/" method="get">
-    <input id="search-input" name="q" type="search" placeholder="输入台词片段" autocomplete="off" />
-    <button type="submit">搜索</button>
-  </form>
-  <p id="search-status" class="muted" aria-live="polite">检索库加载中……</p>
+  <section class="search-head card card-pad">
+    <p class="eyebrow">Search</p>
+    <h1>搜索台词</h1>
+    <form id="search-form" role="search" action="/search/" method="get">
+      <input id="search-input" name="q" type="search" placeholder="输入台词片段，例如「希望」" autocomplete="off" />
+      <button class="btn btn-primary" type="submit">搜索</button>
+    </form>
+    <p id="search-status" class="muted" aria-live="polite">输入台词片段开始检索</p>
+    <p class="muted note">
+      至少输入 {search.min_match_length} 个字。检索库经 CDN 整份下载并在浏览器里校验，
+      首次加载需要几秒；长时间停在「加载中」或提示不可用，说明检索库暂不可用，
+      作品与话页面不受影响。
+    </p>
+  </section>
+
   <ol id="search-results"></ol>
   <noscript>
     <p class="muted">台词检索在浏览器里完成，需要 JavaScript。作品与话页面不受影响。</p>
   </noscript>
-  <p class="muted note">
-    至少输入 {search.min_match_length} 个字。检索库经 CDN 整份下载并在浏览器里校验，
-    首次加载需要几秒；长时间停在「加载中」或提示不可用，说明检索库暂不可用，
-    作品与话页面不受影响。
-  </p>
+
   <script type="application/json" id="search-config" set:html={jsonForScript(searchConfig)} />
   <script>
     import { mountSearch } from '@gallery/search';
@@ -47,10 +52,42 @@ const searchConfig = {
 </Base>
 
 <style>
-  form { display: flex; gap: 0.5rem; margin: 0.5rem 0 1rem; }
-  input { flex: 1; font: inherit; padding: 0.5rem 0.75rem; background: #1a1a1a; color: var(--fg); border: 1px solid #444; border-radius: 4px; }
-  button { font: inherit; padding: 0.5rem 1rem; background: #333; color: var(--fg); border: 1px solid #555; border-radius: 4px; cursor: pointer; }
-  #search-results { padding-left: 1.25rem; }
+  .search-head { margin-bottom: 1.2rem; }
+  #search-form { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.9rem 0 0.7rem; }
+  #search-input {
+    flex: 1;
+    min-width: 12rem;
+    padding: 0.62rem 1rem;
+    font: inherit;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    outline: none;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  }
+  #search-input::placeholder { color: var(--text-dim); }
+  #search-input:focus { border-color: var(--pink); box-shadow: 0 0 0 3px rgba(255, 143, 171, 0.18); }
+  #search-status { margin: 0.2rem 0 0.8rem; }
+  .note { font-size: 0.82rem; line-height: 1.65; margin: 0; }
+  #search-results { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.55rem; }
   #search-results:empty { display: none; }
-  .note { font-size: 0.85rem; }
+  #search-results li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 0.6rem;
+    padding: 0.8rem 1rem;
+    background: var(--glass);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 6px 20px rgba(123, 94, 167, 0.07);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+  }
+  #search-results li:hover { transform: translateY(-1px); border-color: var(--pink-soft); box-shadow: 0 10px 28px rgba(231, 95, 135, 0.14); }
+  #search-results li a { color: var(--ink); font-weight: 500; }
+  #search-results li a:hover { color: var(--pink-deep); }
+  #search-results li small { color: var(--text-dim); font-size: 0.8rem; }
 </style>

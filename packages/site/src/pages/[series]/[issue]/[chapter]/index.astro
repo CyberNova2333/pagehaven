@@ -259,17 +259,51 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
      data-astro-cid 属性，18 000 话 × 每页几十个框就是几十 MB 的无用字节。所有选择器都以
      .reader / .chapter-nav 开头，只作用于这一页的结构。 -->
 <style is:global>
-  .chapter-nav { display: flex; justify-content: space-between; gap: 1rem; margin: 0.75rem 0; font-size: 0.95rem; }
-  .chapter-nav a { text-decoration: none; }
-  .reader { margin: 0.5rem 0 1rem; }
-  .reader .pager { display: none; justify-content: center; align-items: center; gap: 1rem; margin: 0.5rem 0; color: var(--muted); }
-  .reader .pager a { text-decoration: none; }
-  .reader .text-toggle { cursor: pointer; }
-  .reader .page { margin: 0 0 1.5rem; }
-  .reader .page-num { font-size: 0.85rem; margin: 0 0 0.25rem; }
+  /* 章节导航与翻页：玻璃胶囊；与全站同一套粉紫配色 */
+  .chapter-nav { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin: 0.9rem 0; font-size: 0.92rem; }
+  .chapter-nav a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--purple);
+    transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+  }
+  .chapter-nav a:hover { color: var(--pink-deep); border-color: var(--pink-soft); background: #fff; }
+  .reader { margin: 0.6rem 0 1rem; }
+  .reader .pager {
+    display: none;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    width: fit-content;
+    margin: 0.6rem auto 1rem;
+    padding: 0.35rem 0.9rem;
+    color: var(--text-dim);
+    background: rgba(255, 255, 255, 0.68);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(123, 94, 167, 0.1);
+  }
+  .reader .pager a { color: var(--purple); }
+  .reader .text-toggle { cursor: pointer; user-select: none; }
+  .reader .page {
+    margin: 0 0 1.25rem;
+    padding: 0.55rem;
+    background: var(--glass);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .reader .page-num { font-size: 0.8rem; margin: 0 0 0.3rem 0.2rem; }
 
   /* 定位容器：按 w/h 定纵横比，图没到之前也占好位；容器查询单位给文字框定字号 */
-  .reader .frame { position: relative; container-type: inline-size; background: #000; aspect-ratio: 1; }
+  .reader .frame { position: relative; container-type: inline-size; background: #14101f; border-radius: 12px; overflow: hidden; aspect-ratio: 1; }
   .reader .frame img { display: block; width: 100%; height: auto; }
   .reader .text-layer { position: absolute; inset: 0; }
   /* 文字框：透明背景、透明字，只留可选中的字形；字号随容器宽度缩放，不支持 cqw 的浏览器退回 1rem */
@@ -287,7 +321,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     user-select: text;
     -webkit-user-select: text;
   }
-  .reader .box::selection { background: rgba(120, 180, 255, 0.5); }
+  .reader .box::selection { background: rgba(255, 143, 171, 0.45); }
   /* 点标签（w=h=0）：画个小圆点，文本从点上溢出、照样可选 */
   .reader .box.dot { overflow: visible; white-space: nowrap; }
   .reader .box.dot::before {
@@ -298,12 +332,16 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     width: 0.6em;
     height: 0.6em;
     border-radius: 50%;
-    background: rgba(255, 209, 102, 0.85);
-    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45);
+    background: var(--gold);
+    box-shadow: 0 0 0 2px rgba(46, 35, 80, 0.35), 0 0 10px rgba(201, 154, 63, 0.6);
   }
   /* 高亮：JS 模式用 .hl（脚本控制），没有 JS 时靠 :target */
-  .reader .box.hl, .reader:not(.js) .box:target { outline: 2px solid var(--accent); background: rgba(255, 209, 102, 0.18); }
-  .reader.show-text .box { color: #fff; background: rgba(0, 0, 0, 0.6); text-shadow: 0 0 2px #000; }
+  .reader .box.hl, .reader:not(.js) .box:target {
+    outline: 2px solid var(--pink);
+    background: rgba(255, 143, 171, 0.28);
+    border-radius: 2px;
+  }
+  .reader.show-text .box { color: #fff; background: rgba(46, 35, 80, 0.82); text-shadow: 0 0 2px #000; border-radius: 2px; }
 
   /* JS 接管后：单页模式 */
   .reader.js .pager { display: flex; }

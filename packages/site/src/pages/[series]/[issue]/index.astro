@@ -21,18 +21,24 @@ const showText = siteConfig.features.text_layer;
   url={issue.url}
   crumbs={[{ text: series.title, href: series.url }, { text: issue.title }]}
 >
-  <h1>{issue.title}</h1>
-  <p class="muted">
-    {series.title} · {issue.chapters.length} 话{issue.published ? ` · ${issue.published}` : ''}
-  </p>
+  <section class="page-head card card-pad">
+    <p class="eyebrow">Issue</p>
+    <h1>{issue.title}</h1>
+    <p class="muted head-meta">
+      {series.title} · {issue.chapters.length} 话{issue.published ? ` · ${issue.published}` : ''}
+    </p>
+  </section>
+
+  <h2>话</h2>
   <ul class="list">
     {
       issue.chapters.map((c) => (
         <li>
           <a href={c.url}>
-            <span class="num">{c.number}</span> {c.title}
+            <span class="badge">{c.number}</span>
+            <span class="row-title">{c.title}</span>
+            <small>{c.pages.length} 页{showText && c.hasText ? ' · 有台词' : ''}</small>
           </a>
-          <small>{c.pages.length} 页{showText && c.hasText ? ' · 有台词' : ''}</small>
         </li>
       ))
     }
@@ -40,5 +46,7 @@ const showText = siteConfig.features.text_layer;
 </Base>
 
 <style>
-  .num { display: inline-block; min-width: 2em; color: var(--muted); }
+  .page-head { margin-bottom: 1.2rem; }
+  .head-meta { margin: 0; }
+  .row-title { flex: 1; min-width: 0; }
 </style>
