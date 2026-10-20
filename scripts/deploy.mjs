@@ -9,13 +9,16 @@
 //     只校验不上传用 DEPLOY_DRY_RUN=1。
 // 只在 CI 里真跑；凭据缺失是配置错误，退出 1（铁律 7）。
 //
-// 交给 CLI 的环境不是原样透传：计划里 unsetEnv 列的变量会先删掉（EdgeOne 的 EDGEONE_PROJECT_ID /
-// EDGEONE_API_TOKEN），再注入 env 里的（token 经 CLI 认的变量名给）。CLI 包里有把 EDGEONE_PROJECT_ID
-// 当 ProjectId 读的路径，而我们那个 secret 放的是项目名——不让它拿到，项目只经 -n 一个口子指定。
+// EdgeOne 的项目定位有两层（scripts/lib/edgeone.mjs）：
+//   · EDGEONE_PROJECT_ID 是权威定位：部署前用 Pages API 按 ID 核对名字、按名字核对同名唯一性，
+//     任何不一致都拒绝部署（一个字节都不传）；
+//   · CLI 的 `-n` 只接受项目名（源码里按 Name 过滤取第一个，同名项目并存时会发错），
+//     EDGEONE_PROJECT_NAME 只是「已核对过的名字」；把 ID 塞进 -n 会静默新建同名项目。
+//   交给 CLI 的环境也不原样透传：EDGEONE_PROJECT_ID / EDGEONE_API_REGION 等被 unsetEnv 删掉，
+//   token 只经 EDGEONE_PAGES_API_TOKEN 一个口子给。
 //
-// EdgeOne 首次真实部署要人验证的点（不对就改 deploy-plan.mjs）：`-n` 是「项目名，不存在就新建」，
-// secret 填错不报错而是新建同名项目——先 DEPLOY_ENV=preview 看 CLI 打出的项目名与 URL；给一个已
-// build 好的目录时 CLI 是否只上传不再自行 build；dist 里的 edgeone.json 是否被识别。
+// 首次真实部署要人验证的点：给一个已 build 好的目录时 CLI 是否只上传不再自行 build；
+// dist 里的 edgeone.json 是否被识别；EDGEONE_API_REGION 与 token 的签发区域是否一致。
 import { spawnSync } from 'node:child_process';
 import { readFile, readdir, mkdtemp, mkdir, cp, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -23,6 +26,7 @@ import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { loadSiteConfig } from './lib/config.mjs';
 import { TARGETS, GITHUB_BASELINE_FILES, planDeployCommand, checkGithubBaseline } from './lib/deploy-plan.mjs';
+import { verifyEdgeoneProject } from './lib/edgeone.mjs';
 import { DIST_DIR, ROOT } from './lib/paths.mjs';
 import { step, ok, fail, note } from './lib/log.mjs';
 
@@ -131,6 +135,24 @@ try {
   if (process.env.DEPLOY_DRY_RUN === '1') {
     ok('DEPLOY_DRY_RUN=1：只打印命令，不执行');
     process.exit(0);
+  }
+
+  // EdgeOne：CLI 的 -n 只认名字，而 EdgeOne 允许多个同名项目。部署前按项目 ID 校验名字、
+  // 按名字校验同名唯一性；任何不一致都拒绝部署（一个字节都不传）。
+  if (target === 'edgeone') {
+    const problems = await verifyEdgeoneProject({
+      token: process.env.EDGEONE_API_TOKEN,
+      region: process.env.EDGEONE_API_REGION,
+      baseUrl: process.env.EDGEONE_API_BASE_URL,
+      projectId: process.env.EDGEONE_PROJECT_ID,
+      projectName: process.env.EDGEONE_PROJECT_NAME,
+    });
+    if (problems.length) {
+      for (const p of problems) fail(p);
+      fail('EdgeOne 项目校验未通过：拒绝部署（一个字节都没传）');
+      process.exit(1);
+    }
+    note(`EdgeOne 项目校验通过：${process.env.EDGEONE_PROJECT_NAME}（${process.env.EDGEONE_PROJECT_ID}）`);
   }
 
   const childEnv = { ...process.env };

@@ -71,10 +71,11 @@ Cloudflare Workers 或 Makers Cloud Functions，且永远可选。
 | 函数入口 | `functions/`（Workers 运行时，`export default { fetch }`） | `edge-functions/`（isolate，`onRequest`）、`cloud-functions/`（真 Node） | 无 |
 | 切换动作 | 改站点域名 CNAME，TTL 300 | 同左 | 同左 |
 
-密钥（GitHub Secrets）：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY`
-`R2_BUCKET` `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID` `EDGEONE_API_TOKEN`
-`EDGEONE_PROJECT_ID`（值是 Makers 的**项目名**：CLI 的 `-n` 语义是「不存在就新建」，
-填错不报错而是静默新建同名项目——首次部署先 `deploy_env=preview` 核对）；可选
+密钥（密钥仓库 `deployment-secrets/comics-gallery/`）：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID`
+`R2_SECRET_ACCESS_KEY` `R2_BUCKET` `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID` `EDGEONE_API_TOKEN`
+`EDGEONE_PROJECT_ID`（**项目 ID**，形如 `makers-…`，是权威定位）、`EDGEONE_PROJECT_NAME`（只作 CLI 的
+`-n` 参数）、`EDGEONE_API_REGION`（token 签发区域：`china` | `global`）。EdgeOne 允许多个同名项目，
+所以 `deploy:edgeone` 先用 Pages API 按 ID 核对名字、按名字核对同名唯一性，不一致就拒绝部署；可选
 `EDGEONE_SECRET_ID` `EDGEONE_SECRET_KEY` `EDGEONE_ZONE_ID`（云 API 密钥对 + 站点 ID，
 只给 `purge` 用，与 Makers 的 token 不是一回事）、`BAIDU_PUSH_TOKEN`（百度站长平台该站点的
 链接提交 token，只给 `push:search` 用；IndexNow 的 key 不是凭据，在 `site.config.yaml`）、
@@ -344,7 +345,8 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
     单独的「么」折成「幺」；「著/着」「裡/裏」的取舍等看过真实稿再定（改 normalize.js 一行）。
   - sha256 只有一份实现（`db/chunks.js`），取块层转发它：构建端算、浏览器端验，算法必须逐字节一致。
 - 首次真实部署时必须由人验证（CI 替代不了，CONTRIBUTING §二.3 第三级）：
-  1. EdgeOne：secret `EDGEONE_PROJECT_ID` 填项目名；先 preview 核对 CLI 输出的项目名与 URL；
+  1. EdgeOne：`EDGEONE_PROJECT_ID` 填项目 ID（makers-…）、`EDGEONE_PROJECT_NAME` 填项目名、
+     `EDGEONE_API_REGION` 与 token 签发区域一致；先 preview 核对 CLI 输出的项目名与 URL；
      项目须是「直接上传」类型；给已 build 的目录时 CLI 是否只上传不再自行 build；dist 里的
      `edgeone.json` 是否被识别（不识别则把 `deploy.mjs` 的 cwd 改为 dist 再试）；`-a` 取值。
   2. Cloudflare：Pages 项目已建（direct upload）、production branch 为 main、token 有 Pages 编辑权限。
@@ -373,4 +375,10 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
   提交下留言」的接口，红灯以构建状态为准（pre-push 闸门仍查 CNB 构建状态）。
   首次真实发布时要验证：密钥仓库引用权限、`git push` last-green 与回写 main 的令牌权限、
   CNB 仓库是否强制提交签名（CI 提交未签名；强制的话需要给构建令牌登记签名密钥或对 CI 提交放宽）。
+- 2026-10-20 EdgeOne 项目定位改为「ID 权威 + 名字部署 + 部署前校验」。CLI 的 `makers deploy -n`
+  只按名字解析（源码里按 Name 过滤取第一个；EdgeOne 允许多个同名项目），没有按 ID 部署的参数。
+  因此 `EDGEONE_PROJECT_ID` 填项目 ID，新增 `EDGEONE_PROJECT_NAME`（仅作 `-n`）与 `EDGEONE_API_REGION`
+  （token 签发区域，决定 Pages API 端点）；`deploy:edgeone` 先用 DescribePagesProjects 按 ID 核对
+  名字、按名字核对同名唯一性，不一致就拒绝部署（一个字节都不传）。当前项目：ID
+  `example-project-id`、名 `comics-gallery`、Area global、token 区域 china。
 

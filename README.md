@@ -78,8 +78,10 @@ flowchart TB
    - `publish.yml`：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET`
      ——对象存储的**写**凭据（`verify:manifest` / `publish:r2` / `status` 用）；
    - `deploy.yml`：按目标填 `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID`（Cloudflare Pages）、
-     `EDGEONE_API_TOKEN` `EDGEONE_PROJECT_ID`（EdgeOne Makers，值填**项目名**，首次先选
-     `deploy_env=preview` 核对）、`GITHUB_PAGES_REPO`（`owner/repo`）与 `GITHUB_PAGES_TOKEN`
+     `EDGEONE_API_TOKEN` + `EDGEONE_PROJECT_ID`（**项目 ID**，`makers-…`）+ `EDGEONE_PROJECT_NAME`
+     （项目名，只作 CLI 的 `-n`）+ `EDGEONE_API_REGION`（token 签发区域 `china` | `global`，默认
+     `china`）。EdgeOne 允许多个同名项目，流水线部署前会按 ID 核对名字与同名唯一性，不一致就拒绝
+     部署（`EDGEONE_PROJECT_ID` 填项目名或 ID 填错都不会静默发错）；`GITHUB_PAGES_REPO`（`owner/repo`）与 `GITHUB_PAGES_TOKEN`
      （有 repo 写权限，流水线把 dist 推到该仓库的 `gh-pages` 分支）；
    - `seo.yml`：`BAIDU_PUSH_TOKEN`（可选；IndexNow 的 key 在 `site.config.yaml` 的
      `seo.indexnow_key`，不是凭据）；

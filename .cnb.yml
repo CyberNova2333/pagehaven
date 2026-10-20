@@ -256,7 +256,8 @@ main:
             DEPLOY_ENV: $deploy_env
           script: npm run deploy:cloudflare
 
-        # EDGEONE_PROJECT_ID 的值是 Makers 的「项目名」（CLI 的 -n 语义：不存在就新建，填错不报错）。
+        # EdgeOne 用 ID 定位：EDGEONE_PROJECT_ID 填项目 ID（makers-…），EDGEONE_PROJECT_NAME 只作
+        # CLI 的 -n 参数；部署前会按 ID 核对名字与同名唯一性（EdgeOne 允许多个同名项目）。
         # 首次部署先选 deploy_env=preview，核对 CLI 输出的项目名与 URL，再切 production。
         - name: deploy:edgeone
           if: '[ "$target" = "edgeone" ] || [ "$target" = "all" ]'

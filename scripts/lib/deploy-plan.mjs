@@ -17,10 +17,10 @@
 //     gh-pages 分支（GitHub Pages 的发布源）——GitHub Pages 没有响应头、没有重定向，缺了这几个
 //     文件站点就不完整（铁律 2）。
 //
-// EdgeOne 的 `-n` 是「项目名，不存在就新建」（CLI 自述：creates new or updates existing project），
-// 不是「找不到就报错」：secret EDGEONE_PROJECT_ID 里若放的是项目 ID 或任何别的串，CLI 不会失败，而是
-// 静默新建一个以那串字符为名的项目并把站点发过去。所以那个 secret 的值必须是 Makers 的项目名，
-// 且首次部署先 DEPLOY_ENV=preview、核对 CLI 输出的项目名与 URL，再切 production。
+// EdgeOne 的 `-n` 只认项目名（EdgeOne 允许多个同名项目，CLI 按 Name 过滤取第一个）：
+// 名字不是权威定位，部署前由 deploy.mjs 用 Pages API 按 EDGEONE_PROJECT_ID 核对名字与同名唯一性；
+// 把项目 ID 塞进 -n 会被 CLI 当成名字，静默新建一个以那串字符为名的项目。
+// 首次部署先 DEPLOY_ENV=preview、核对 CLI 输出的项目名与 URL，再切 production。
 //
 // DEPLOY_ENV（可选，production | preview，默认 production）：CONTRIBUTING §二.3 要求平台层改动先向
 // preview 真实部署一次，这个开关就是给那一步用的。cloudflare 用 --branch 区分（等于项目的 production
@@ -41,7 +41,8 @@ export const CLOUDFLARE_PREVIEW_BRANCH = 'preview';
 
 const REQUIRED_ENV = {
   cloudflare: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'],
-  edgeone: ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID'],
+  // EdgeOne 三件套：ID 是权威定位（部署前由 lib/edgeone.mjs 校验），名字只是 CLI -n 的参数
+  edgeone: ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID', 'EDGEONE_PROJECT_NAME'],
   github: [],
 };
 
@@ -88,8 +89,10 @@ export function planDeployCommand({ target, config, env, distDir }) {
     return { ok: true, npmArgs, display: `npm ${npmArgs.join(' ')}`, env: {}, unsetEnv: [] };
   }
 
-  // edgeone：项目名是 secret（账号标识只在 secrets，铁律 7），日志里打码；token 不进命令行
-  const npmArgs = ['exec', '--yes', '--', EDGEONE_CLI_SPEC, 'makers', 'deploy', distDir, '-n', env.EDGEONE_PROJECT_ID, '-e', deployEnv];
+  // edgeone：CLI 的 -n 只认项目名（源码里按 Name 过滤取第一个，同名项目并存时会发错）。
+  // 所以名字不是凭据、只是参数；项目 ID 由 deploy.mjs 在部署前用 Pages API 校验，
+  // 校验不过就一个字节都不传。project ID 不能进 -n：CLI 会把它当名字，静默新建同名项目。
+  const npmArgs = ['exec', '--yes', '--', EDGEONE_CLI_SPEC, 'makers', 'deploy', distDir, '-n', env.EDGEONE_PROJECT_NAME, '-e', deployEnv];
   const shown = npmArgs.map((a, i) => (npmArgs[i - 1] === '-n' ? '***' : a));
   return {
     ok: true,
@@ -100,9 +103,9 @@ export function planDeployCommand({ target, config, env, distDir }) {
       EDGEONE_NON_INTERACTIVE: '1',
       EDGEONE_PAGES_API_TOKEN: env.EDGEONE_API_TOKEN,
     },
-    // CLI 包里有按 EDGEONE_PROJECT_ID 取 ProjectId 的路径：secret 里放的是项目名，不能让它当 ID 读到；
-    // 原始 token 变量也不透传，只经上面那一个通道给
-    unsetEnv: ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID'],
+    // CLI 包里有按 EDGEONE_PROJECT_ID 取 ProjectId 的路径：部署命令只用 -n（名字），
+    // ID 与区域不能让 CLI 顺手读到；原始 token 变量也不透传，只经上面那一个通道给
+    unsetEnv: ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID', 'EDGEONE_PROJECT_NAME', 'EDGEONE_API_REGION', 'EDGEONE_API_BASE_URL'],
   };
 }
 

@@ -6,7 +6,8 @@
 // 与退出码的透传——真跑 CLI 要连外部服务，那是首次真实部署时人做的事。github 那条路在 deploy-github.test.mjs。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,7 +33,7 @@ const DIST = '/tmp/some dist';
 test('requiredEnv：三个目标各自的凭据；返回副本', () => {
   assert.deepEqual(TARGETS, ['cloudflare', 'edgeone', 'github']);
   assert.deepEqual(requiredEnv('cloudflare'), ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']);
-  assert.deepEqual(requiredEnv('edgeone'), ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID']);
+  assert.deepEqual(requiredEnv('edgeone'), ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID', 'EDGEONE_PROJECT_NAME']);
   assert.deepEqual(requiredEnv('github'), []);
   assert.deepEqual(requiredEnv('nope'), []);
   requiredEnv('cloudflare').push('x');
@@ -52,16 +53,21 @@ test('planDeployCommand cloudflare：wrangler@4 pages deploy，项目名取配�
   assert.equal(CLOUDFLARE_PRODUCTION_BRANCH, 'main');
 });
 
-test('planDeployCommand edgeone：edgeone@1 makers deploy <dist> -n <项目名> -e production；token 走环境变量不进命令行；原始 secrets 不透传', () => {
-  const env = { EDGEONE_API_TOKEN: 'secret-token-xyz', EDGEONE_PROJECT_ID: 'proj-name' };
+test('planDeployCommand edgeone：-n 只取项目名（不是项目 ID）；token 走环境变量不进命令行；ID 与区域不透传', () => {
+  const env = {
+    EDGEONE_API_TOKEN: 'secret-token-xyz',
+    EDGEONE_PROJECT_ID: 'makers-abc123',
+    EDGEONE_PROJECT_NAME: 'proj-name',
+  };
   const plan = planDeployCommand({ target: 'edgeone', config, env, distDir: DIST });
   assert.equal(plan.ok, true);
   assert.deepEqual(plan.npmArgs, ['exec', '--yes', '--', EDGEONE_CLI_SPEC, 'makers', 'deploy', DIST, '-n', 'proj-name', '-e', 'production']);
+  assert.ok(!plan.npmArgs.includes('makers-abc123'), '项目 ID 不能进 -n：CLI 会把它当名字，静默新建同名项目');
   assert.equal(EDGEONE_CLI_SPEC, 'edgeone@1');
   assert.equal(plan.display, `npm exec --yes -- edgeone@1 makers deploy ${DIST} -n *** -e production`);
   assert.ok(!plan.npmArgs.includes('-t') && !plan.npmArgs.includes('secret-token-xyz'), 'token 不进命令行');
   assert.deepEqual(plan.env, { EDGEONE_NON_INTERACTIVE: '1', EDGEONE_PAGES_API_TOKEN: 'secret-token-xyz' });
-  assert.deepEqual(plan.unsetEnv, ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID']);
+  assert.deepEqual(plan.unsetEnv, ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID', 'EDGEONE_PROJECT_NAME', 'EDGEONE_API_REGION', 'EDGEONE_API_BASE_URL']);
 });
 
 test('planDeployCommand：DEPLOY_ENV=preview → cloudflare --branch preview、edgeone -e preview；非法值是问题；空串当没设', () => {
@@ -69,13 +75,13 @@ test('planDeployCommand：DEPLOY_ENV=preview → cloudflare --branch preview、e
   const cf = planDeployCommand({ target: 'cloudflare', config, env: { CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc', DEPLOY_ENV: 'preview' }, distDir: DIST });
   assert.equal(cf.ok, true);
   assert.deepEqual(cf.npmArgs.slice(-3), ['--branch', 'preview', '--commit-dirty=true']);
-  const eo = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: 't', EDGEONE_PROJECT_ID: 'p', DEPLOY_ENV: 'preview' }, distDir: DIST });
+  const eo = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: 't', EDGEONE_PROJECT_ID: 'makers-p', EDGEONE_PROJECT_NAME: 'p', DEPLOY_ENV: 'preview' }, distDir: DIST });
   assert.equal(eo.ok, true);
   assert.deepEqual(eo.npmArgs.slice(-2), ['-e', 'preview']);
-  const bad = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: 't', EDGEONE_PROJECT_ID: 'p', DEPLOY_ENV: 'staging' }, distDir: DIST });
+  const bad = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: 't', EDGEONE_PROJECT_ID: 'makers-p', EDGEONE_PROJECT_NAME: 'p', DEPLOY_ENV: 'staging' }, distDir: DIST });
   assert.equal(bad.ok, false);
   assert.match(bad.problems[0], /DEPLOY_ENV 只能是 production \| preview，现在是 "staging"/);
-  const empty = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: 't', EDGEONE_PROJECT_ID: 'p', DEPLOY_ENV: '' }, distDir: DIST });
+  const empty = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: 't', EDGEONE_PROJECT_ID: 'makers-p', EDGEONE_PROJECT_NAME: 'p', DEPLOY_ENV: '' }, distDir: DIST });
   assert.deepEqual(empty.npmArgs.slice(-2), ['-e', 'production']);
 });
 
@@ -90,7 +96,7 @@ test('planDeployCommand：缺凭据逐个点名；github 不由命令部署；�
   assert.match(both.problems[0], /缺少 CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID/);
   assert.match(both.problems[0], /不能静默成功/);
 
-  const empty = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: '', EDGEONE_PROJECT_ID: 'p' }, distDir: DIST });
+  const empty = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: '', EDGEONE_PROJECT_ID: 'makers-p', EDGEONE_PROJECT_NAME: 'p' }, distDir: DIST });
   assert.equal(empty.ok, false);
   assert.match(empty.problems[0], /缺少 EDGEONE_API_TOKEN（/, '空串也算缺');
 
@@ -139,9 +145,42 @@ function cleanEnv() {
   return env;
 }
 
+/** 假 Pages API：deploy 脚本部署前会按 ID / 名字各查一次，这里固定返回同一个直传项目。 */
+async function edgeoneApiServer(t) {
+  const project = { ProjectId: 'makers-abc123', Name: 'proj-name', Provider: 'Upload', Area: 'global' };
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => (body += d));
+    req.on('end', () => {
+      const json = JSON.parse(body || '{}');
+      const projects = json.ProjectIds ? [project] : [project];
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ Code: 0, Data: { Response: { Projects: projects } } }));
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  // fetch 默认 keep-alive：不主动断掉空闲连接，server.close() 会一直等
+  t.after(() => new Promise((r) => { server.closeAllConnections(); server.close(() => r()); }));
+  return `http://127.0.0.1:${server.address().port}/v1`;
+}
+
 function run(args, env) {
   const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd: ROOT, encoding: 'utf8', env: { ...cleanEnv(), ...env } });
   return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
+}
+
+/**
+ * 异步 spawn：假 Pages API 就住在测试进程里，spawnSync 会把事件循环卡住，
+ * 服务器答不了话、子进程等回应——死锁。
+ */
+function runAsync(args, env) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: ROOT, env: { ...cleanEnv(), ...env } });
+    let out = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (out += d));
+    child.on('close', (status) => resolve({ status, out }));
+  });
 }
 
 test('deploy 脚本：未知目标退 2；dist 不存在退 1；缺凭据退 1；DEPLOY_DRY_RUN 只打印且不泄露 token', { timeout: 30_000 }, async (t) => {
@@ -167,27 +206,31 @@ test('deploy 脚本：未知目标退 2；dist 不存在退 1；缺凭据退 1�
 
   const cf = run(['cloudflare'], { DIST_DIR: dist, CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc', DEPLOY_DRY_RUN: '1' });
   assert.equal(cf.status, 0, cf.out);
-  assert.match(cf.out, new RegExp(`npm exec --yes -- wrangler@4 pages deploy ${dist} --project-name ${config.deploy.cloudflare.project} --branch main --commit-dirty=true`));
+  assert.ok(
+    cf.out.includes(`npm exec --yes -- wrangler@4 pages deploy ${dist} --project-name ${config.deploy.cloudflare.project} --branch main --commit-dirty=true`),
+    cf.out,
+  );
   assert.match(cf.out, /DEPLOY_DRY_RUN=1：只打印命令，不执行/);
 
-  const eo = run(['edgeone'], { DIST_DIR: dist, EDGEONE_API_TOKEN: 'secret-token-xyz', EDGEONE_PROJECT_ID: 'proj-123', DEPLOY_DRY_RUN: '1' });
+  const eo = run(['edgeone'], { DIST_DIR: dist, EDGEONE_API_TOKEN: 'secret-token-xyz', EDGEONE_PROJECT_ID: 'makers-abc123', EDGEONE_PROJECT_NAME: 'proj-name', DEPLOY_DRY_RUN: '1' });
   assert.equal(eo.status, 0, eo.out);
-  assert.match(eo.out, new RegExp(`npm exec --yes -- edgeone@1 makers deploy ${dist} -n \\*\\*\\* -e production\\n`));
-  assert.doesNotMatch(eo.out, /secret-token-xyz|proj-123| -t /, '日志里不出现凭据，命令行没有 -t');
+  assert.match(eo.out, /edgeone@1 makers deploy .+ -n \*\*\* -e production/);
+  assert.doesNotMatch(eo.out, /secret-token-xyz|makers-abc123|proj-name| -t /, '日志里不出现凭据，命令行没有 -t');
 
-  const preview = run(['edgeone'], { DIST_DIR: dist, EDGEONE_API_TOKEN: 'x', EDGEONE_PROJECT_ID: 'p', DEPLOY_DRY_RUN: '1', DEPLOY_ENV: 'preview' });
+  const preview = run(['edgeone'], { DIST_DIR: dist, EDGEONE_API_TOKEN: 'x', EDGEONE_PROJECT_ID: 'makers-p', EDGEONE_PROJECT_NAME: 'p', DEPLOY_DRY_RUN: '1', DEPLOY_ENV: 'preview' });
   assert.equal(preview.status, 0, preview.out);
   assert.match(preview.out, / -e preview\n/);
   assert.match(preview.out, /DEPLOY_ENV=preview：发到预览环境/);
 
   const eoMissing = run(['edgeone'], { DIST_DIR: dist, EDGEONE_API_TOKEN: 'x' });
   assert.equal(eoMissing.status, 1, eoMissing.out);
-  assert.match(eoMissing.out, /缺少 EDGEONE_PROJECT_ID/);
+  assert.match(eoMissing.out, /缺少 EDGEONE_PROJECT_ID、EDGEONE_PROJECT_NAME/);
 });
 
 test('deploy 脚本：真起 npm（假的 npm_execpath）——交给 CLI 的参数与环境；token 只经环境变量给；退出码原样透传', { timeout: 30_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-deploy-'));
   t.after(() => rm(tmp, { recursive: true, force: true }));
+  const apiBase = await edgeoneApiServer(t);
   const dist = join(tmp, 'dist');
   await mkdir(dist);
   await writeFile(join(dist, 'index.html'), '<!doctype html>');
@@ -197,7 +240,7 @@ test('deploy 脚本：真起 npm（假的 npm_execpath）——交给 CLI 的参
   await writeFile(
     fakeNpm,
     [
-      "const keys = ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID', 'EDGEONE_PAGES_API_TOKEN', 'EDGEONE_NON_INTERACTIVE', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'];",
+      "const keys = ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID', 'EDGEONE_PROJECT_NAME', 'EDGEONE_API_REGION', 'EDGEONE_API_BASE_URL', 'EDGEONE_PAGES_API_TOKEN', 'EDGEONE_NON_INTERACTIVE', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'];",
       "console.log('FAKE_NPM ' + JSON.stringify({ argv: process.argv.slice(2), env: Object.fromEntries(keys.map((k) => [k, process.env[k]])) }));",
       'process.exit(Number(process.env.FAKE_NPM_EXIT || 0));',
       '',
@@ -206,20 +249,35 @@ test('deploy 脚本：真起 npm（假的 npm_execpath）——交给 CLI 的参
   // JSON.stringify 会丢掉值为 undefined 的键：seen().env 里只剩真的交给了 CLI 的那些
   const seen = (out) => JSON.parse(out.split('\n').find((l) => l.startsWith('FAKE_NPM ')).slice('FAKE_NPM '.length));
 
-  const eo = run(['edgeone'], { DIST_DIR: dist, npm_execpath: fakeNpm, EDGEONE_API_TOKEN: 'secret-token-xyz', EDGEONE_PROJECT_ID: 'proj-name' });
+  const eo = await runAsync(['edgeone'], {
+    DIST_DIR: dist,
+    npm_execpath: fakeNpm,
+    EDGEONE_API_TOKEN: 'secret-token-xyz',
+    EDGEONE_PROJECT_ID: 'makers-abc123',
+    EDGEONE_PROJECT_NAME: 'proj-name',
+    EDGEONE_API_BASE_URL: apiBase,
+  });
   assert.equal(eo.status, 0, eo.out);
   assert.match(eo.out, /deploy:edgeone 完成/);
   const e = seen(eo.out);
   assert.deepEqual(e.argv, ['exec', '--yes', '--', 'edgeone@1', 'makers', 'deploy', dist, '-n', 'proj-name', '-e', 'production']);
-  assert.deepEqual(e.env, { EDGEONE_PAGES_API_TOKEN: 'secret-token-xyz', EDGEONE_NON_INTERACTIVE: '1' }, 'EDGEONE_API_TOKEN / EDGEONE_PROJECT_ID 不透传给 CLI');
+  assert.deepEqual(e.env, { EDGEONE_PAGES_API_TOKEN: 'secret-token-xyz', EDGEONE_NON_INTERACTIVE: '1' }, 'ID / 名字 / 区域 / 原始 token 都不透传给 CLI');
 
-  const cf = run(['cloudflare'], { DIST_DIR: dist, npm_execpath: fakeNpm, CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' });
+  const cf = await runAsync(['cloudflare'], { DIST_DIR: dist, npm_execpath: fakeNpm, CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' });
   assert.equal(cf.status, 0, cf.out);
   const c = seen(cf.out);
   assert.deepEqual(c.argv, ['exec', '--yes', '--', 'wrangler@4', 'pages', 'deploy', dist, '--project-name', config.deploy.cloudflare.project, '--branch', 'main', '--commit-dirty=true']);
   assert.deepEqual(c.env, { CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' }, 'wrangler 从环境读凭据，必须原样在');
 
-  const failed = run(['edgeone'], { DIST_DIR: dist, npm_execpath: fakeNpm, EDGEONE_API_TOKEN: 'x', EDGEONE_PROJECT_ID: 'p', FAKE_NPM_EXIT: '3' });
+  const failed = await runAsync(['edgeone'], {
+    DIST_DIR: dist,
+    npm_execpath: fakeNpm,
+    EDGEONE_API_TOKEN: 'x',
+    EDGEONE_PROJECT_ID: 'makers-abc123',
+    EDGEONE_PROJECT_NAME: 'proj-name',
+    EDGEONE_API_BASE_URL: apiBase,
+    FAKE_NPM_EXIT: '3',
+  });
   assert.equal(failed.status, 3, failed.out);
   assert.match(failed.out, /deploy:edgeone 失败，CLI 退出码 3/);
 });
