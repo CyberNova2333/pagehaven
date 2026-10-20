@@ -70,8 +70,9 @@ main:
             npm run build && npm run check
 
         # CI 能替代的只有前两级；platform / 流水线 / schema 的改动要人真跑过（CONTRIBUTING §二.3）。
+        # 放在最后：只有前面的检查全过才走到这里（CNB 的 stages 失败会直接跳 failStages，
+        # 没有 GitHub Actions 那种 always() 表达式——写 `if: always()` 会被当成 shell 命令而跳过）。
         - name: 分层验证提示
-          if: always()
           script: |
             python3 tools/verification-tier.py "${CNB_BEFORE_SHA:-}" "$CNB_COMMIT" || true
 
@@ -263,8 +264,8 @@ main:
 
         # 这是唯一允许由 CI 身份提交的东西（AGENTS.md §1 三）：ingest 写回的 data/text 与 STATUS.md。
         # 顶格独占一行的 [skip-hooks] 是记录在案的豁免——机器写的信息没有 Co-authored-by 可署。
+        # 只在 stages 成功路径上执行；失败路径由 failStages 的「写回 data/text」兜住。
         - name: 提交 data/ 与 STATUS.md
-          if: always()
           script: |
             set -eu
             git config user.name 'cnb'
@@ -290,8 +291,33 @@ main:
         - name: 🔴 发布失败
           script: |
             echo "🔴 发布失败：对象存储的版本指针只在全部核对通过后才切换，线上仍是上一版。"
-            echo "   STATUS.md 与 data/text 未写回仓库。"
+            echo "   STATUS.md 未写回仓库；ingest 产出的 data/text 由下一步尽力写回。"
             echo "   构建日志：${CNB_BUILD_WEB_URL}"
+
+        # 对应 GitHub Actions 时 always() 提交的那一半语义：稿已经 ingest 出来了，
+        # 不能因为后面某一步失败就只留在构建容器里。提交失败不改变发布失败的状态。
+        - name: 失败时也写回 ingest 产出的 data/text
+          script: |
+            set -eu
+            git config user.name 'cnb'
+            git config user.email 'cnb@cnb.cool'
+            git add data/text
+            if git diff --cached --quiet; then
+              echo 'data/text 没有需要提交的变化'
+              exit 0
+            fi
+            git commit -F - <<MSG
+            chore(data): 发布中断时写回 ingest 产出的 data/text
+
+            由 .cnb.yml 的发布流水线在失败路径上自动写回，避免稿只留在构建容器里。
+
+            [skip-hooks]
+            MSG
+            base="${CNB_WEB_ENDPOINT:-https://cnb.cool}"
+            repo_url="https://cnb:${CNB_TOKEN}@${base#*://}/${CNB_REPO_SLUG}"
+            git remote set-url origin "$repo_url"
+            git pull --rebase origin main || true
+            git push origin HEAD:main || echo '⚠ data/text 写回失败：稿仍在构建容器里，重新发布或手动取回'
 
   # ── 归档分支：只手动；先打 tag、核对成功，才删分支（AGENTS.md §0）──────────
   web_trigger_archive:
