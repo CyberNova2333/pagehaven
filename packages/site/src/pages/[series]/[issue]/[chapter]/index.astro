@@ -1,23 +1,20 @@
 ---
-// 阅读器：每话恰好一个 HTML（ARCHITECTURE §2：文件数预算不允许每页一个），全部页的 img 标签
-// 与文字层都在这一份里，翻页在页内完成，#p<n> 深链定位到某一页。
+// 阅读器：每话恰好一个 HTML（ARCHITECTURE §2：文件数预算不允许每页一个），全部页的 <img> 与文字层
+// 都在这一份里，翻页在页内完成，#p<n> 深链定位到某一页。
 //
-// 渐进增强：初始 DOM 全部页纵向可见、文字层是普通 DOM 文本——没有 JS 时照样能读、能选、
-// 爬虫能看见台词；页尾的内联脚本一跑才切成单页模式。脚本内联而不是 hoist 成独立文件，是为了
-// 它紧跟在阅读器 DOM 后面同步执行，不会先闪一下全部页再收成单页；代价是每份 HTML 多几 KB。
+// 渐进增强：初始 DOM 全部页纵向可见、文字层是普通 DOM 文本——没有 JS 时照样能读、能选、爬虫能看见；
+// 页尾的内联脚本一跑才切成单页模式。脚本内联是为了紧跟阅读器 DOM 同步执行，不先闪全部页。
 //
-// hash 约定（检索结果也按这个链过来）：
-//   #p<n>        打开时显示第 n 页；翻页时用 replaceState 更新，不刷新、不堆历史
-//   #p<n>b<i>    同时高亮第 n 页的第 i 个框；没有 JS 时靠 :target 高亮 + 浏览器原生滚到锚点
-// 键盘：← 上一页、→ 下一页；点击页面左半 / 右半也翻页（正在选文字时不翻）。
+// 功能（有 JS 时）：单页 / 长条 / 双页、阅读方向、全屏、亮度、页码跳转、目录侧栏、
+// 阅读进度记忆（localStorage，首页「继续阅读」读它）、触摸滑动、图片失败重试。
+// hash 约定（检索结果也按这个链过来）：#p<n>、#p<n>b<i>（高亮第 i 个框）。
+// 键盘：←/→ 翻页、空格下一页、f 全屏、t 目录、Esc 关闭面板。
 import Base from '../../../../layouts/Base.astro';
 import siteConfig from '../../../../generated/site-config.json';
 import gallery from '../../../../generated/gallery.json';
 import { boxStyle, chaptersByKey, imageUrl, isDot, urlForKey } from '../../../../lib/gallery.js';
 
 export function getStaticPaths() {
-  // 上一话 / 下一话要显示标题，模型里只有 key：查找表在这里建一次就够。getStaticPaths 整个构建只跑
-  // 一次，而下面的 frontmatter 是每话跑一次——把表建在那里就是每话重建一张全站的表，18 000 话下是 O(N²)。
   const byKey = chaptersByKey(gallery);
   const link = (key) => {
     if (!key) return null;
@@ -35,19 +32,13 @@ export function getStaticPaths() {
   );
 }
 
-// 台词按话分片在 src/generated/text/ 下，用 glob 按需取自己那一份（Vite 处理，不是 Node）。
-// 模式以 / 开头 = 相对项目根，键就是那个路径，不随本文件的嵌套深度变。
 const textModules = import.meta.glob('/src/generated/text/**/*.json', { import: 'default' });
 
 const { series, issue, chapter, prev, next } = Astro.props;
 const { images, features } = siteConfig;
-// 切源脚本（下面第一段 is:inline）里换域名的那一行与 lib/gallery.js 的 swapHost 是同一条规则；
-// 内联脚本没法 import，只能各留一份——改一处要同步另一处，单测在 swapHost 那边。
 const hosts = images.hosts;
 const wantText = features.text_layer && chapter.hasText;
 const loadText = textModules[`/src/generated/text/${chapter.key}.json`];
-// 数据说有台词、分片却取不到，是构建错误，不是「本来就没台词」：这里若静默退化成无文字层，
-// check 守卫事后抓不到（它只数 HTML），分片路径或 glob 键格式一旦变动，全站会整体丢掉文字层而没有任何报错。
 if (wantText && !loadText) {
   throw new Error(`${chapter.key} 标记 hasText 但 src/generated/text/ 下没有对应分片——先跑 npm run build:site`);
 }
@@ -56,6 +47,15 @@ const boxesByN = new Map(text.pages.map((p) => [p.n, p.boxes]));
 
 const total = chapter.pages.length;
 const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
+// 目录：当前作品全部期的章节（每话 HTML 内嵌，几十条；浏览器端不再请求）
+const tocIssues = series.issues.map((iss) => ({
+  id: iss.id,
+  number: iss.number,
+  title: iss.title,
+  url: iss.url,
+  current: iss.id === issue.id,
+  chapters: iss.chapters.map((c) => ({ key: c.key, title: c.title, url: c.url, current: c.key === chapter.key })),
+}));
 ---
 
 <Base
@@ -64,7 +64,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
   crumbs={[{ text: series.title, href: series.url }, { text: issue.title, href: issue.url }, { text: chapter.title }]}
 >
   <h1>{chapter.title}</h1>
-  <p class="muted">
+  <p class="muted chapter-meta">
     {series.title} · {issue.title} · 共 {total} 页{boxCount ? ` · ${boxCount} 条台词` : ''}
   </p>
 
@@ -74,8 +74,6 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     {next ? <a rel="next" href={urlForKey(next.key)}>下一话：{next.title} →</a> : <span></span>}
   </nav>
 
-  <!-- 图片加载失败：把这一张的域名换成第二条图片源再试一次。要在任何图片可能出错之前注册，
-       所以放在阅读器 DOM 前面；error 不冒泡，用捕获。 -->
   <script is:inline data-hosts={JSON.stringify(hosts)}>
     (function () {
       var hosts = JSON.parse(document.currentScript.dataset.hosts);
@@ -96,15 +94,66 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     })();
   </script>
 
-  <div id="reader" class="reader" data-total={total}>
+  <div
+    id="reader"
+    class="reader"
+    data-total={total}
+    data-key={chapter.key}
+    data-url={chapter.url}
+    data-title={chapter.title}
+    data-series={series.title}
+    data-issue={issue.title}
+  >
+    <div class="progress" aria-hidden="true"><span id="progress-fill"></span></div>
     <p class="pager">
+      <button id="toc-btn" type="button" class="icon-btn" aria-label="目录" title="目录（t）">☰</button>
       <a id="page-prev" href="#p1" hidden>← 上一页</a>
-      <span>第 <span id="page-cur">1</span> / {total} 页</span>
+      <span class="page-indicator">
+        第 <input id="page-input" type="number" min="1" max={total} value="1" inputmode="numeric" aria-label="页码" /> / {total} 页
+      </span>
       <a id="page-next" href="#p2" hidden={total <= 1}>下一页 →</a>
+      <button id="settings-btn" type="button" class="icon-btn" aria-label="阅读设置" title="阅读设置">⚙</button>
+      <button id="fullscreen-btn" type="button" class="icon-btn" aria-label="全屏" title="全屏（f）">⛶</button>
       {boxCount > 0 && (
         <label class="text-toggle"><input type="checkbox" id="text-toggle" /> 显示文字</label>
       )}
     </p>
+
+    <aside id="toc" class="toc card" hidden aria-label="目录">
+      <div class="toc-head">
+        <strong>目录</strong>
+        <button id="toc-close" type="button" class="icon-btn" aria-label="关闭目录">×</button>
+      </div>
+      <nav>
+        {tocIssues.map((iss) => (
+          <details open={iss.current}>
+            <summary>{iss.number}. {iss.title}</summary>
+            <ol>
+              {iss.chapters.map((c) => (
+                <li><a href={c.url} class:list={[{ current: c.current }]}>{c.title}</a></li>
+              ))}
+            </ol>
+          </details>
+        ))}
+      </nav>
+    </aside>
+
+    <div id="settings" class="settings card" hidden aria-label="阅读设置">
+      <p class="settings-row"><span>模式</span>
+        <label><input type="radio" name="reader-mode" value="single" /> 单页</label>
+        <label><input type="radio" name="reader-mode" value="long" /> 长条</label>
+        <label><input type="radio" name="reader-mode" value="double" /> 双页</label>
+      </p>
+      <p class="settings-row"><span>方向</span>
+        <label><input type="radio" name="reader-dir" value="ltr" /> 左→右</label>
+        <label><input type="radio" name="reader-dir" value="rtl" /> 右→左</label>
+      </p>
+      <p class="settings-row"><span>亮度</span>
+        <input id="brightness" type="range" min="40" max="100" value="100" />
+      </p>
+      <p class="settings-row settings-note">快捷键：← / → 翻页，空格下一页，f 全屏，t 目录，Esc 关闭</p>
+    </div>
+
     {
       chapter.pages.map((p) => {
         const boxes = boxesByN.get(p.n) ?? [];
@@ -122,7 +171,6 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
               />
               {boxes.length > 0 && (
                 <div class="text-layer">
-                  {/* 框内文本与标签写在同一行：.box 是 pre-wrap，换行缩进会变成可见空白把字挤歪 */}
                   {boxes.map((b) => (
                     <span class:list={['box', { dot: isDot(b) }]} id={`p${p.n}b${b.i}`} style={boxStyle(b)}>{b.t}</span>
                   ))}
@@ -144,15 +192,64 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
   <script is:inline>
     (function () {
       var reader = document.getElementById('reader');
+      if (!reader) return;
       var pages = Array.prototype.slice.call(reader.querySelectorAll('.page'));
       var total = pages.length;
       if (!total) return;
-      var curEl = document.getElementById('page-cur');
+
+      var key = reader.dataset.key;
+      var progressKey = 'gallery:progress:' + key;
+      var settingsKey = 'gallery:reader:settings';
+      var curEl = document.getElementById('page-input');
       var prevLink = document.getElementById('page-prev');
       var nextLink = document.getElementById('page-next');
+      var fill = document.getElementById('progress-fill');
       var toggle = document.getElementById('text-toggle');
+      var toc = document.getElementById('toc');
+      var settingsPanel = document.getElementById('settings');
+      var brightness = document.getElementById('brightness');
       var cur = 1;
       var hl = null;
+      var settings = loadSettings();
+
+      function loadSettings() {
+        var d = { mode: 'single', dir: 'ltr', brightness: 100 };
+        try {
+          var s = JSON.parse(localStorage.getItem(settingsKey) || '{}');
+          if (s.mode === 'single' || s.mode === 'long' || s.mode === 'double') d.mode = s.mode;
+          if (s.dir === 'ltr' || s.dir === 'rtl') d.dir = s.dir;
+          if (typeof s.brightness === 'number') d.brightness = s.brightness;
+        } catch (e) {
+          /* 坏设置用默认 */
+        }
+        return d;
+      }
+      function saveSettings() {
+        try {
+          localStorage.setItem(settingsKey, JSON.stringify(settings));
+        } catch (e) {
+          /* 隐私模式写不进去就算了 */
+        }
+      }
+      function applySettings() {
+        reader.classList.remove('mode-single', 'mode-long', 'mode-double');
+        reader.classList.add('mode-' + settings.mode);
+        reader.classList.toggle('rtl', settings.dir === 'rtl');
+        reader.style.setProperty('--reader-brightness', String(settings.brightness / 100));
+        if (brightness) brightness.value = String(settings.brightness);
+        var modeInput = settingsPanel.querySelector('input[name="reader-mode"][value="' + settings.mode + '"]');
+        if (modeInput) modeInput.checked = true;
+        var dirInput = settingsPanel.querySelector('input[name="reader-dir"][value="' + settings.dir + '"]');
+        if (dirInput) dirInput.checked = true;
+        if (settings.mode === 'long') {
+          // 长条模式把全部图片拉起来，否则 display:block 里的 lazy 图要在滚动时才加载
+          pages.forEach(function (p) {
+            var img = p.querySelector('img');
+            if (img && img.loading === 'lazy') img.loading = 'eager';
+          });
+        }
+        updateProgress();
+      }
 
       function parseHash(h) {
         var m = /^#p(\d+)(?:b(\d+))?$/.exec(h || '');
@@ -161,26 +258,66 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
       function clamp(n) {
         return Math.min(Math.max(n, 1), total);
       }
-      // 下一页的图先拉起来：display:none 里的 lazy 图不会加载，改成 eager 就会。
+      function step() {
+        return settings.mode === 'double' ? 2 : 1;
+      }
+      function updateProgress() {
+        if (!fill) return;
+        var pct;
+        if (settings.mode === 'long') {
+          var max = document.documentElement.scrollHeight - window.innerHeight;
+          pct = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+        } else {
+          pct = cur / total;
+        }
+        fill.style.width = (pct * 100).toFixed(2) + '%';
+      }
       function warm(n) {
         var p = pages[n - 1];
         var img = p && p.querySelector('img');
         if (img && img.loading === 'lazy') img.loading = 'eager';
+        var p2 = pages[n];
+        var img2 = p2 && p2.querySelector('img');
+        if (img2 && img2.loading === 'lazy') img2.loading = 'eager';
+      }
+      function saveProgress(n) {
+        try {
+          localStorage.setItem(
+            progressKey,
+            JSON.stringify({
+              url: reader.dataset.url,
+              title: reader.dataset.title,
+              series: reader.dataset.series,
+              issue: reader.dataset.issue,
+              n: n,
+              ts: Date.now(),
+            }),
+          );
+        } catch (e) {
+          /* 写不进去就算了 */
+        }
       }
       function show(n, opts) {
         opts = opts || {};
         n = clamp(n);
+        if (settings.mode === 'double' && n % 2 === 0) n -= 1;
         pages.forEach(function (p, i) {
           p.classList.toggle('current', i === n - 1);
         });
+        if (settings.mode === 'double' && pages[n]) pages[n].classList.add('current');
         cur = n;
-        curEl.textContent = String(n);
-        prevLink.hidden = n <= 1;
-        prevLink.href = '#p' + Math.max(n - 1, 1);
-        nextLink.hidden = n >= total;
-        nextLink.href = '#p' + Math.min(n + 1, total);
+        if (curEl) curEl.value = String(n);
+        if (prevLink) {
+          prevLink.hidden = n <= 1;
+          prevLink.href = '#p' + Math.max(n - step(), 1);
+        }
+        if (nextLink) {
+          nextLink.hidden = n + (settings.mode === 'double' ? 1 : 0) >= total;
+          nextLink.href = '#p' + Math.min(n + step(), total);
+        }
         if (!opts.keepHash) history.replaceState(null, '', '#p' + n);
-        warm(n);
+        saveProgress(n);
+        updateProgress();
         warm(n + 1);
         if (opts.scroll) reader.scrollIntoView();
       }
@@ -197,44 +334,147 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
         if (t) {
           show(t.n, { keepHash: true, scroll: scroll });
           highlight(t.n, t.b);
-        } else {
-          show(1, { keepHash: true });
+          return;
+        }
+        // 没有 hash：恢复本话的上次进度（首页「继续阅读」也靠这份记录）
+        var resumed = 1;
+        try {
+          var saved = JSON.parse(localStorage.getItem(progressKey) || 'null');
+          if (saved && saved.n) resumed = saved.n;
+        } catch (e) {
+          /* 坏记录忽略 */
+        }
+        show(resumed, { keepHash: true });
+        if (resumed > 1 && settings.mode !== 'long') {
+          var tip = document.getElementById('resume-tip');
+          if (!tip) {
+            tip = document.createElement('p');
+            tip.id = 'resume-tip';
+            tip.className = 'muted resume-tip';
+            reader.parentNode.insertBefore(tip, reader);
+          }
+          tip.textContent = '已恢复到第 ' + resumed + ' 页';
         }
       }
       function go(delta) {
-        var n = cur + delta;
+        if (settings.mode === 'long') {
+          window.scrollBy({ top: delta * window.innerHeight * 0.9, behavior: 'smooth' });
+          return;
+        }
+        var d = delta * step();
+        if (settings.dir === 'rtl') d = -d;
+        var n = cur + d;
         if (n < 1 || n > total) return;
         highlight(n, null);
         show(n);
+        if (settings.mode !== 'long') reader.scrollIntoView({ block: 'nearest' });
+      }
+      function openPanel(el, open) {
+        if (!el) return;
+        el.hidden = !open;
+      }
+      function closeAll() {
+        openPanel(toc, false);
+        openPanel(settingsPanel, false);
       }
 
       reader.classList.add('js');
+      applySettings();
       applyHash(false);
-      window.addEventListener('hashchange', function () {
-        applyHash(true);
+
+      if (curEl) {
+        curEl.addEventListener('change', function () {
+          var n = parseInt(curEl.value, 10);
+          if (!isNaN(n)) show(n);
+        });
+      }
+      if (prevLink) {
+        prevLink.addEventListener('click', function (e) {
+          e.preventDefault();
+          go(-1);
+        });
+      }
+      if (nextLink) {
+        nextLink.addEventListener('click', function (e) {
+          e.preventDefault();
+          go(1);
+        });
+      }
+      var tocBtn = document.getElementById('toc-btn');
+      var tocClose = document.getElementById('toc-close');
+      var settingsBtn = document.getElementById('settings-btn');
+      var fsBtn = document.getElementById('fullscreen-btn');
+      if (tocBtn) tocBtn.addEventListener('click', function () { openPanel(toc, toc.hidden); openPanel(settingsPanel, false); });
+      if (tocClose) tocClose.addEventListener('click', function () { openPanel(toc, false); });
+      if (settingsBtn) settingsBtn.addEventListener('click', function () { openPanel(settingsPanel, settingsPanel.hidden); openPanel(toc, false); });
+      if (fsBtn) {
+        fsBtn.addEventListener('click', function () {
+          if (document.fullscreenElement) document.exitFullscreen();
+          else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+        });
+      }
+      settingsPanel.addEventListener('change', function (e) {
+        var t = e.target;
+        if (t.name === 'reader-mode') settings.mode = t.value;
+        else if (t.name === 'reader-dir') settings.dir = t.value;
+        else if (t.id === 'brightness') settings.brightness = Number(t.value);
+        else return;
+        saveSettings();
+        applySettings();
+        if (settings.mode !== 'long') show(cur);
+        if (settings.mode === 'long') {
+          var target = document.getElementById('p' + cur);
+          if (target) target.scrollIntoView();
+        }
       });
+      if (brightness) {
+        brightness.addEventListener('input', function () {
+          settings.brightness = Number(brightness.value);
+          reader.style.setProperty('--reader-brightness', String(settings.brightness / 100));
+        });
+      }
+      window.addEventListener('hashchange', function () { applyHash(true); });
+      window.addEventListener('scroll', updateProgress, { passive: true });
       document.addEventListener('keydown', function (e) {
         if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
         var t = e.target;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
         if (e.key === 'ArrowLeft') go(-1);
         else if (e.key === 'ArrowRight') go(1);
+        else if (e.key === ' ') go(1);
+        else if (e.key === 'f') {
+          if (document.fullscreenElement) document.exitFullscreen();
+          else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+        } else if (e.key === 't') {
+          openPanel(toc, toc.hidden);
+          openPanel(settingsPanel, false);
+        } else if (e.key === 'Escape') closeAll();
         else return;
         e.preventDefault();
       });
-      [prevLink, nextLink].forEach(function (a, i) {
-        a.addEventListener('click', function (e) {
-          e.preventDefault();
-          go(i === 0 ? -1 : 1);
-        });
-      });
       reader.addEventListener('click', function (e) {
+        if (e.target.closest('.box') || e.target.closest('a') || e.target.closest('button') || e.target.closest('input') || e.target.closest('.toc') || e.target.closest('.settings')) return;
         var frame = e.target.closest('.frame');
-        if (!frame || e.target.closest('.box')) return;
+        if (!frame) return;
         var sel = window.getSelection();
         if (sel && sel.toString()) return;
         var r = frame.getBoundingClientRect();
-        go(e.clientX - r.left < r.width / 2 ? -1 : 1);
+        var leftToRight = settings.dir !== 'rtl';
+        go(e.clientX - r.left < r.width / 2 ? (leftToRight ? -1 : 1) : leftToRight ? 1 : -1);
+      });
+      // 触摸滑动（单页/双页模式）
+      var touchX = null;
+      reader.addEventListener('touchstart', function (e) {
+        if (settings.mode === 'long' || e.touches.length !== 1) return;
+        touchX = e.touches[0].clientX;
+      }, { passive: true });
+      reader.addEventListener('touchend', function (e) {
+        if (touchX === null) return;
+        var dx = e.changedTouches[0].clientX - touchX;
+        touchX = null;
+        if (Math.abs(dx) < 50) return;
+        var leftToRight = settings.dir !== 'rtl';
+        go(dx < 0 ? (leftToRight ? 1 : -1) : leftToRight ? -1 : 1);
       });
       if (toggle) {
         toggle.addEventListener('change', function () {
@@ -245,11 +485,9 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
   </script>
 </Base>
 
-<!-- 样式用 is:global 而不是作用域样式：作用域样式会给每个元素——包括每个台词框——加一个
-     data-astro-cid 属性，18 000 话 × 每页几十个框就是几十 MB 的无用字节。所有选择器都以
-     .reader / .chapter-nav 开头，只作用于这一页的结构。 -->
+<!-- 样式用 is:global 而不是作用域样式：作用域样式会给每个台词框加 data-astro-cid 属性。 -->
 <style is:global>
-  /* 章节导航与翻页：玻璃胶囊；与全站同一套粉紫配色 */
+  .chapter-meta { margin: 0 0 0.4rem; }
   .chapter-nav { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin: 0.9rem 0; font-size: 0.92rem; }
   .chapter-nav a {
     display: inline-flex;
@@ -264,11 +502,14 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
   }
   .chapter-nav a:hover { color: var(--pink-deep); border-color: var(--pink-soft); background: #fff; }
   .reader { margin: 0.6rem 0 1rem; }
+  .reader .progress { position: sticky; top: 0; z-index: 5; height: 3px; background: rgba(123, 94, 167, 0.12); border-radius: 999px; overflow: hidden; }
+  .reader .progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--pink), var(--purple-light)); transition: width 0.15s linear; }
   .reader .pager {
     display: none;
     justify-content: center;
     align-items: center;
-    gap: 1rem;
+    flex-wrap: wrap;
+    gap: 0.6rem;
     width: fit-content;
     margin: 0.6rem auto 1rem;
     padding: 0.35rem 0.9rem;
@@ -278,8 +519,29 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     border-radius: 999px;
     box-shadow: 0 8px 24px rgba(123, 94, 167, 0.1);
   }
-  .reader .pager a { color: var(--purple); }
+  .reader .pager a { color: var(--purple); text-decoration: none; }
+  .reader .page-indicator { display: inline-flex; align-items: center; gap: 0.3rem; }
+  .reader #page-input { width: 3.4rem; padding: 0.12rem 0.3rem; font: inherit; text-align: center; color: var(--ink); background: rgba(255, 255, 255, 0.8); border: 1px solid var(--line); border-radius: 8px; }
+  .reader .icon-btn { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.7); color: var(--purple); font-size: 0.95rem; cursor: pointer; }
+  .reader .icon-btn:hover { border-color: var(--pink-soft); color: var(--pink-deep); background: #fff; }
   .reader .text-toggle { cursor: pointer; user-select: none; }
+  .reader .resume-tip { text-align: center; font-size: 0.82rem; margin: 0 0 0.6rem; }
+  .reader .toc, .reader .settings {
+    position: fixed; right: clamp(1rem, 4vw, 3rem); top: 4.2rem; z-index: 30;
+    width: min(22rem, calc(100vw - 2rem)); max-height: 70vh; overflow: auto;
+    padding: 0.8rem 1rem; box-shadow: 0 18px 50px rgba(46, 35, 80, 0.18);
+    background: rgba(255, 255, 255, 0.92);
+  }
+  .reader .toc-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
+  .reader .toc nav { display: grid; gap: 0.4rem; }
+  .reader .toc details summary { cursor: pointer; color: var(--ink); font-weight: 500; padding: 0.2rem 0; }
+  .reader .toc ol { list-style: none; margin: 0.2rem 0 0.4rem; padding: 0 0 0 0.8rem; display: grid; gap: 0.15rem; max-height: 20rem; overflow: auto; }
+  .reader .toc a { color: var(--text); font-size: 0.88rem; }
+  .reader .toc a.current { color: var(--pink-deep); font-weight: 600; }
+  .reader .settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin: 0.35rem 0; font-size: 0.9rem; }
+  .reader .settings-row > span { color: var(--text-dim); min-width: 2.4rem; }
+  .reader .settings-row label { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--text); cursor: pointer; }
+  .reader .settings-note { color: var(--text-dim); font-size: 0.78rem; margin-top: 0.6rem; }
   .reader .page {
     margin: 0 0 1.25rem;
     padding: 0.55rem;
@@ -291,12 +553,9 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     -webkit-backdrop-filter: blur(12px);
   }
   .reader .page-num { font-size: 0.8rem; margin: 0 0 0.3rem 0.2rem; }
-
-  /* 定位容器：按 w/h 定纵横比，图没到之前也占好位；容器查询单位给文字框定字号 */
   .reader .frame { position: relative; container-type: inline-size; background: #14101f; border-radius: 12px; overflow: hidden; aspect-ratio: 1; }
   .reader .frame img { display: block; width: 100%; height: auto; }
   .reader .text-layer { position: absolute; inset: 0; }
-  /* 文字框：透明背景、透明字，只留可选中的字形；字号随容器宽度缩放，不支持 cqw 的浏览器退回 1rem */
   .reader .box {
     position: absolute;
     overflow: hidden;
@@ -312,7 +571,6 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     -webkit-user-select: text;
   }
   .reader .box::selection { background: rgba(255, 143, 171, 0.45); }
-  /* 点标签（w=h=0）：画个小圆点，文本从点上溢出、照样可选 */
   .reader .box.dot { overflow: visible; white-space: nowrap; }
   .reader .box.dot::before {
     content: '';
@@ -325,7 +583,6 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     background: var(--gold);
     box-shadow: 0 0 0 2px rgba(46, 35, 80, 0.35), 0 0 10px rgba(201, 154, 63, 0.6);
   }
-  /* 高亮：JS 模式用 .hl（脚本控制），没有 JS 时靠 :target */
   .reader .box.hl, .reader:not(.js) .box:target {
     outline: 2px solid var(--pink);
     background: rgba(255, 143, 171, 0.28);
@@ -333,10 +590,23 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
   }
   .reader.show-text .box { color: #fff; background: rgba(46, 35, 80, 0.82); text-shadow: 0 0 2px #000; border-radius: 2px; }
 
-  /* JS 接管后：单页模式 */
+  /* JS 接管后：单页 / 双页 / 长条 */
   .reader.js .pager { display: flex; }
   .reader.js .page { display: none; }
   .reader.js .page.current { display: block; }
   .reader.js .page-num { display: none; }
   .reader.js .frame { cursor: pointer; }
+  .reader.js.mode-long .page { display: block; }
+  .reader.js.mode-long #page-prev, .reader.js.mode-long #page-next, .reader.js.mode-long #page-input { display: none; }
+  .reader.js.mode-double .page.current { display: block; }
+  .reader.js.mode-double {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr));
+    gap: 0.8rem;
+    align-items: start;
+  }
+  .reader.js.mode-double .pager, .reader.js.mode-double .toc, .reader.js.mode-double .settings, .reader.js.mode-double .progress { grid-column: 1 / -1; }
+  .reader.js.mode-double .page { margin: 0; }
+  .reader.rtl .frame { direction: rtl; }
+  .reader { filter: brightness(var(--reader-brightness, 1)); }
 </style>

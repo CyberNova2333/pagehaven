@@ -137,7 +137,7 @@ test('build:manifest：样本 → manifest.json，形状与键顺序稳定；无
 
   await t.test('series 树：作品 / 期 / 话与 URL，话只带 key / url / 页数 / hasText', () => {
     assert.deepEqual(m.series.map((s) => s.id), ['zeta', 'sample'], '按模型顺序（zeta sort=0 在前）');
-    assert.deepEqual(Object.keys(m.series[0]), ['id', 'title', 'url', 'issues']);
+    assert.deepEqual(Object.keys(m.series[0]), ['id', 'title', 'url', 'coverKey', 'issues']);
     assert.deepEqual(Object.keys(m.series[0].issues[0]), ['id', 'number', 'title', 'published', 'url', 'chapters']);
     assert.deepEqual(m.series[0].issues[0].published, null, '没有 published 写 null');
     assert.deepEqual(m.series[0].issues[0].chapters, [
