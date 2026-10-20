@@ -114,7 +114,7 @@ test('loadGalleryDb：读 manifest → 整份下载 → 校验 → 打开；返�
     if (url.endsWith('/db/manifest.json')) {
       return { ok: true, status: 200, json: async () => manifest };
     }
-    if (url.endsWith(`/db/${key}`)) {
+    if (url.endsWith(`/${key}`)) {
       return { ok: true, status: 200, arrayBuffer: async () => DB_BYTES.buffer.slice(DB_BYTES.byteOffset, DB_BYTES.byteOffset + DB_BYTES.byteLength) };
     }
     return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
@@ -127,7 +127,7 @@ test('loadGalleryDb：读 manifest → 整份下载 → 校验 → 打开；返�
     assert.equal(loaded.host, 'https://img.example.org');
     assert.deepEqual(calls, [
       'https://img.example.org/db/manifest.json',
-      `https://img.example.org/db/${key}`,
+      `https://img.example.org/${key}`,
     ]);
     assert.equal(queryLines(loaded.db, '漫画作者').rows.length, 1);
   } finally {
@@ -142,7 +142,7 @@ test('loadGalleryDb：sha256 / size 不符、没有 db 字段、所有源失败 
   const serve = ({ manifest, bytes = DB_BYTES, fail = null }) => async (url) => {
     if (fail) throw Object.assign(new Error('connect ECONNREFUSED'), { cause: { code: 'ECONNREFUSED' } });
     if (url.endsWith('/db/manifest.json')) return { ok: true, status: 200, json: async () => manifest };
-    if (url.endsWith(`/db/${key}`)) return { ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+    if (url.endsWith(`/${key}`)) return { ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
     return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
   };
 
