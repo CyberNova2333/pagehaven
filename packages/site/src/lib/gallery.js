@@ -7,7 +7,7 @@
 /**
  * 图片的公开 URL：https://<图片域名>/<key>。浏览器永远只见 CDN 域名，不见对象存储（铁律 7）。
  * @param {string} host  site.config.yaml 的 images.hosts 之一
- * @param {string} key   对象存储内的 key，例如 img/s/v/c/1-<hash12>.avif
+ * @param {string} key   对象存储内的 key，例如 img/s/v/c/1-<hash12>.webp
  */
 export function imageUrl(host, key) {
   return `https://${host}/${key}`;
@@ -65,10 +65,9 @@ export function jsonForScript(value) {
 }
 
 /**
- * 图片加载失败时切到第二条图片域名：把 URL 里的 //<from>/ 换成 //<to>/。只匹配带两侧分隔符的完整
+ * 图片加载失败时切换图片域名：把 URL 里的 //<from>/ 换成 //<to>/。只匹配带两侧分隔符的完整
  * 域名，所以只会换掉域名那一处——路径里恰好含有域名字样、或域名只是另一个域名的后缀时都不动。
- * 阅读器真正跑的是 [chapter]/index.astro 内联脚本里的同一行（is:inline 没法 import 这里），
- * 改这里要同步那里；替换规则由本函数的单测钉住。
+ * 阅读器图片模块直接复用本函数。
  * @param {string} url
  * @param {string} from  images.hosts[0]
  * @param {string} to    images.hosts[1]
