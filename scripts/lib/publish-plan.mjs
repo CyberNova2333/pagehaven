@@ -5,15 +5,16 @@
 // 缓存头的取舍：
 //   · 带版本号的 key（gallery-<v>.sqlite、.chunks.json、site-<v>.tar.zst）内容不会再变，
 //     给一年 immutable，CDN 与浏览器都可以放心久存；
-//   · manifest.json 是「当前版本指针」，切版本靠改它，所以只给 5 分钟；
+//   · 版本 manifest 也是不可变对象；共享指针由启用步骤另行更新，缓存只给 5 分钟；
 //   · 图片 key 里带内容哈希，同样一年 immutable；而且同 key 字节一定相同，已存在就不必重传。
 // Content-Type 的取舍：DB 与 chunks.json 都用 application/octet-stream——chunks.json 明明是 JSON，
 // 但 CDN 的智能压缩会对 text/json 类型套 Content-Encoding，带压缩的响应 Content-Length 是压缩后
 // 长度，Range 语义整个变味（§7）；取块层按 64 KB 对齐取 Range，两份文件都必须逃过压缩。
 //
-// 上传顺序就是数组顺序，manifest.json 排最后：它一换，检索端就按新指针取库，所以必须等库、
-// 归档、图片都在位并核对过之后再换。发布中途失败时指针仍指向上一版，线上不会坏。
+// 上传顺序就是数组顺序，版本 manifest 排最后：库、归档和图片核对通过才可使用该版本。
+// 本阶段不读写共享 manifest.json；正式部署成功后由单独的启用步骤更新当前版本。
 import { basename } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
 export const CACHE_IMMUTABLE_YEAR = 'public, max-age=31536000, immutable';
 export const CACHE_MANIFEST = 'public, max-age=300';
@@ -37,6 +38,25 @@ export function archiveFileName(version) {
   return `site-${version}.tar.zst`;
 }
 
+/** 每个站点版本绑定自己的 manifest；共享 manifest.json 只在部署成功后启用。 */
+export function releaseManifestFileName(version) {
+  return `manifest-${version}.json`;
+}
+
+/** 重建时间不改变版本内容；保留第一次上传的生成时间和 JSON 原文。 */
+export function sameReleaseManifest(previous, next) {
+  try {
+    const left = JSON.parse(Buffer.from(previous).toString('utf8'));
+    const right = JSON.parse(Buffer.from(next).toString('utf8'));
+    if (!left || !right || typeof left !== 'object' || typeof right !== 'object' || Array.isArray(left) || Array.isArray(right)) return false;
+    delete left.generatedAt;
+    delete right.generatedAt;
+    return isDeepStrictEqual(left, right);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * @typedef {object} Upload
  * @property {'db'|'chunks'|'archive'|'image'|'manifest'} kind
@@ -44,7 +64,7 @@ export function archiveFileName(version) {
  * @property {string} path          本地文件路径（脚本传进来什么就原样带回）
  * @property {string} contentType
  * @property {string} cacheControl
- * @property {boolean} skipIfExists 先查再传：只有图片（内容哈希 key，同 key 字节一定相同）
+ * @property {boolean} skipIfExists 已存在时核对内容，相同跳过、不同拒绝；新对象用条件写入创建
  */
 
 /**
@@ -109,9 +129,9 @@ export function planUploads({ version, config, manifest, files }) {
   }
 
   const uploads = [
-    { kind: 'db', key: dbKey, path: dbFiles.get(names.db), contentType: CONTENT_TYPE_OCTET, cacheControl: CACHE_IMMUTABLE_YEAR, skipIfExists: false },
-    { kind: 'chunks', key: chunksKey, path: dbFiles.get(names.chunks), contentType: CONTENT_TYPE_OCTET, cacheControl: CACHE_IMMUTABLE_YEAR, skipIfExists: false },
-    { kind: 'archive', key: ARCHIVE_PREFIX + archiveFileName(version), path: files.distArchive, contentType: CONTENT_TYPE_ARCHIVE, cacheControl: CACHE_IMMUTABLE_YEAR, skipIfExists: false },
+    { kind: 'db', key: dbKey, path: dbFiles.get(names.db), contentType: CONTENT_TYPE_OCTET, cacheControl: CACHE_IMMUTABLE_YEAR, skipIfExists: true },
+    { kind: 'chunks', key: chunksKey, path: dbFiles.get(names.chunks), contentType: CONTENT_TYPE_OCTET, cacheControl: CACHE_IMMUTABLE_YEAR, skipIfExists: true },
+    { kind: 'archive', key: ARCHIVE_PREFIX + archiveFileName(version), path: files.distArchive, contentType: CONTENT_TYPE_ARCHIVE, cacheControl: CACHE_IMMUTABLE_YEAR, skipIfExists: true },
   ];
 
   const wanted = new Set(manifest.imageKeys);
@@ -139,11 +159,11 @@ export function planUploads({ version, config, manifest, files }) {
 
   uploads.push({
     kind: 'manifest',
-    key: config.db.prefix + MANIFEST_KEY_NAME,
+    key: config.db.prefix + releaseManifestFileName(version),
     path: files.manifest,
     contentType: CONTENT_TYPE_MANIFEST,
-    cacheControl: CACHE_MANIFEST,
-    skipIfExists: false,
+    cacheControl: CACHE_IMMUTABLE_YEAR,
+    skipIfExists: true,
   });
 
   return { version, uploads, verifyKeys: [...manifest.imageKeys], images };

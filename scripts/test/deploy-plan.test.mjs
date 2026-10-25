@@ -4,15 +4,17 @@
 // 脚本部分验「凭据缺失退 1、DEPLOY_DRY_RUN 只打印、日志里不出现 token」，再用一个假的 npm_execpath
 // 真起一次 npm：看交给 CLI 的参数与环境（token 只经 EDGEONE_PAGES_API_TOKEN 给、原始 secrets 不透传）
 // 与退出码的透传——真跑 CLI 要连外部服务，那是首次真实部署时人做的事。github 那条路在 deploy-github.test.mjs。
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import yaml from 'js-yaml';
 import { loadSiteConfig } from '../lib/config.mjs';
+import { deploymentReceipt, releaseFingerprint } from '../lib/release.mjs';
 import {
   TARGETS,
   DEPLOY_ENVS,
@@ -28,6 +30,12 @@ import {
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const SCRIPT = join(ROOT, 'scripts', 'deploy.mjs');
 const config = await loadSiteConfig();
+config.site.domain = 'gallery.unit-fixture.org';
+config.images.hosts = ['images.unit-fixture.org'];
+const configDir = await mkdtemp(join(tmpdir(), 'gallery-deploy-config-'));
+const configFile = join(configDir, 'site.config.yaml');
+await writeFile(configFile, yaml.dump(config));
+after(() => rm(configDir, { recursive: true, force: true }));
 const DIST = '/tmp/some dist';
 
 test('requiredEnv：三个目标各自的凭据；返回副本', () => {
@@ -127,7 +135,7 @@ test('checkGithubBaseline：三个基线文件 + CNAME 与 site.domain 一致', 
 
   const wrong = checkGithubBaseline({ config, files: { ...good, CNAME: 'wrong.example.org\n' } });
   assert.equal(wrong.length, 1);
-  assert.match(wrong[0], /"wrong\.example\.org"，应等于 site\.domain（gallery\.example\.org）/);
+  assert.ok(wrong[0].includes(`"wrong.example.org"，应等于 site.domain（${config.site.domain}）`));
 
   // cname 关：不该有 CNAME
   const noCname = { ...config, deploy: { ...config.deploy, github: { cname: false } } };
@@ -141,7 +149,8 @@ test('checkGithubBaseline：三个基线文件 + CNAME 与 site.domain 一致', 
 
 function cleanEnv() {
   const env = { ...process.env };
-  for (const k of Object.keys(env)) if (/^(CLOUDFLARE_|EDGEONE_|DEPLOY_|DIST_DIR$)/.test(k)) delete env[k];
+  for (const k of Object.keys(env)) if (/^(CLOUDFLARE_|EDGEONE_|DEPLOY_|DIST_DIR$|OUT_DIR$|RELEASE_VERSION$|CONFIG_FILE$)/.test(k)) delete env[k];
+  env.CONFIG_FILE = configFile;
   return env;
 }
 
@@ -181,6 +190,18 @@ function runAsync(args, env) {
     child.stderr.on('data', (d) => (out += d));
     child.on('close', (status) => resolve({ status, out }));
   });
+}
+
+/** 假 CLI 只验证部署边界：提供相互匹配的构建清单与 dist 标记，不连接对象存储。 */
+async function releaseInput(distDir, outDir, environment = 'production') {
+  const manifest = {
+    version: 'deploy-test', site: { domain: config.site.domain },
+    db: { version: 'deploy-test', key: 'db/gallery-deploy-test.sqlite', size: 4096, sha256: 'a'.repeat(64) },
+  };
+  await mkdir(outDir, { recursive: true });
+  await writeFile(join(outDir, 'manifest.json'), JSON.stringify(manifest));
+  await writeFile(join(distDir, 'release.json'), JSON.stringify({ version: manifest.version, fingerprint: releaseFingerprint(manifest), environment }));
+  return manifest;
 }
 
 test('deploy 脚本：未知目标退 2；dist 不存在退 1；缺凭据退 1；DEPLOY_DRY_RUN 只打印且不泄露 token', { timeout: 30_000 }, async (t) => {
@@ -234,6 +255,8 @@ test('deploy 脚本：真起 npm（假的 npm_execpath）——交给 CLI 的参
   const dist = join(tmp, 'dist');
   await mkdir(dist);
   await writeFile(join(dist, 'index.html'), '<!doctype html>');
+  const outDir = join(tmp, 'out');
+  const manifest = await releaseInput(dist, outDir);
   // 假 npm：把收到的参数与我们关心的环境变量打成一行 JSON；退出码由 FAKE_NPM_EXIT 决定。
   // deploy.mjs 在 npm_execpath 存在时用 node 起它，所以这里能拦住整条真实的 spawn 路径
   const fakeNpm = join(tmp, 'fake-npm.mjs');
@@ -251,6 +274,7 @@ test('deploy 脚本：真起 npm（假的 npm_execpath）——交给 CLI 的参
 
   const eo = await runAsync(['edgeone'], {
     DIST_DIR: dist,
+    OUT_DIR: outDir,
     npm_execpath: fakeNpm,
     EDGEONE_API_TOKEN: 'secret-token-xyz',
     EDGEONE_PROJECT_ID: 'makers-abc123',
@@ -262,15 +286,24 @@ test('deploy 脚本：真起 npm（假的 npm_execpath）——交给 CLI 的参
   const e = seen(eo.out);
   assert.deepEqual(e.argv, ['exec', '--yes', '--', 'edgeone@1', 'makers', 'deploy', dist, '-n', 'proj-name', '-e', 'production']);
   assert.deepEqual(e.env, { EDGEONE_PAGES_API_TOKEN: 'secret-token-xyz', EDGEONE_NON_INTERACTIVE: '1' }, 'ID / 名字 / 区域 / 原始 token 都不透传给 CLI');
+  assert.deepEqual(JSON.parse(await readFile(join(outDir, 'deployed-edgeone.json'), 'utf8')), deploymentReceipt(manifest, 'edgeone', 'production'));
 
-  const cf = await runAsync(['cloudflare'], { DIST_DIR: dist, npm_execpath: fakeNpm, CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' });
+  const cf = await runAsync(['cloudflare'], { DIST_DIR: dist, OUT_DIR: outDir, npm_execpath: fakeNpm, CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' });
   assert.equal(cf.status, 0, cf.out);
   const c = seen(cf.out);
   assert.deepEqual(c.argv, ['exec', '--yes', '--', 'wrangler@4', 'pages', 'deploy', dist, '--project-name', config.deploy.cloudflare.project, '--branch', 'main', '--commit-dirty=true']);
   assert.deepEqual(c.env, { CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' }, 'wrangler 从环境读凭据，必须原样在');
+  assert.deepEqual(JSON.parse(await readFile(join(outDir, 'deployed-cloudflare.json'), 'utf8')), deploymentReceipt(manifest, 'cloudflare', 'production'));
+
+  await releaseInput(dist, outDir, 'preview');
+  const preview = await runAsync(['cloudflare'], { DIST_DIR: dist, OUT_DIR: outDir, DEPLOY_ENV: 'preview', npm_execpath: fakeNpm, CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' });
+  assert.equal(preview.status, 0, preview.out);
+  assert.deepEqual(JSON.parse(await readFile(join(outDir, 'deployed-cloudflare.json'), 'utf8')), deploymentReceipt(manifest, 'cloudflare', 'preview'));
+  await releaseInput(dist, outDir);
 
   const failed = await runAsync(['edgeone'], {
     DIST_DIR: dist,
+    OUT_DIR: outDir,
     npm_execpath: fakeNpm,
     EDGEONE_API_TOKEN: 'x',
     EDGEONE_PROJECT_ID: 'makers-abc123',
@@ -280,4 +313,43 @@ test('deploy 脚本：真起 npm（假的 npm_execpath）——交给 CLI 的参
   });
   assert.equal(failed.status, 3, failed.out);
   assert.match(failed.out, /deploy:edgeone 失败，CLI 退出码 3/);
+  await assert.rejects(readFile(join(outDir, 'deployed-edgeone.json')), { code: 'ENOENT' }, '失败不能留下上次成功的部署凭据');
+});
+
+test('deploy 脚本：缺少完整清单或 dist 标记不匹配时，在启动 CLI 前拒绝', async (t) => {
+  const tmp = await mkdtemp(join(tmpdir(), 'gallery-deploy-input-'));
+  t.after(() => rm(tmp, { recursive: true, force: true }));
+  const dist = join(tmp, 'dist');
+  const outDir = join(tmp, 'out');
+  await mkdir(dist);
+  const env = { DIST_DIR: dist, OUT_DIR: outDir, CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc', npm_execpath: join(tmp, 'must-not-run.mjs') };
+  const missing = run(['cloudflare'], env);
+  assert.equal(missing.status, 1, missing.out);
+  assert.match(missing.out, /缺少本次完整构建的发布清单/);
+  const manifest = await releaseInput(dist, outDir);
+  await writeFile(join(dist, 'release.json'), JSON.stringify({ version: manifest.version, fingerprint: '0'.repeat(64), environment: 'production' }));
+  await writeFile(join(outDir, 'deployed-cloudflare.json'), JSON.stringify(deploymentReceipt(manifest, 'cloudflare', 'production')));
+  const stale = run(['cloudflare'], env);
+  assert.equal(stale.status, 1, stale.out);
+  assert.match(stale.out, /dist 与发布清单不属于同一次构建/);
+  assert.doesNotMatch(stale.out, /MODULE_NOT_FOUND/);
+  await assert.rejects(readFile(join(outDir, 'deployed-cloudflare.json')), { code: 'ENOENT' });
+});
+
+test('deploy 脚本：preview 产物不能用于 production，旧标记缺少环境也拒绝', async (t) => {
+  const tmp = await mkdtemp(join(tmpdir(), 'gallery-deploy-environment-'));
+  t.after(() => rm(tmp, { recursive: true, force: true }));
+  const dist = join(tmp, 'dist');
+  const outDir = join(tmp, 'out');
+  await mkdir(dist);
+  const manifest = await releaseInput(dist, outDir, 'preview');
+  const env = { DIST_DIR: dist, OUT_DIR: outDir, DEPLOY_ENV: 'production', CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc', npm_execpath: join(tmp, 'must-not-run.mjs') };
+  for (const environment of ['preview', undefined]) {
+    await writeFile(join(dist, 'release.json'), JSON.stringify({ version: manifest.version, fingerprint: releaseFingerprint(manifest), environment }));
+    const rejected = run(['cloudflare'], env);
+    assert.equal(rejected.status, 1, rejected.out);
+    assert.match(rejected.out, /dist 与发布清单|环境/);
+    assert.doesNotMatch(rejected.out, /MODULE_NOT_FOUND/);
+    await assert.rejects(readFile(join(outDir, 'deployed-cloudflare.json')), { code: 'ENOENT' });
+  }
 });

@@ -14,17 +14,24 @@ import { dirname, join, relative } from 'node:path';
 import { GENERATED_FILES } from '@gallery/platform';
 import { loadSiteConfig } from './lib/config.mjs';
 import { loadGallery } from './lib/data.mjs';
-import { DATA_DIR, DIST_DIR, PLATFORM_GENERATED_DIR, ROOT, SITE_DIR } from './lib/paths.mjs';
+import { readManifest, galleryFingerprint } from './lib/manifest.mjs';
+import { releaseFingerprint } from './lib/release.mjs';
+import { DATA_DIR, DIST_DIR, OUT_DIR, PLATFORM_GENERATED_DIR, ROOT, SITE_DIR } from './lib/paths.mjs';
 import { writeSiteConfigJson, writeSiteGalleryJson } from './lib/site-generated.mjs';
 import { step, ok, note, warn } from './lib/log.mjs';
 
 step('build:site');
 const config = await loadSiteConfig();
-await writeSiteConfigJson(config);
+await writeSiteConfigJson(config, { preview: process.env.DEPLOY_ENV === 'preview' });
 // 数据进站点的唯一通道：模型写成 src/generated/ 下的 JSON，页面用 import / import.meta.glob 读。
 // 0 话时也照建——gallery.json 是空树、text/ 是空目录，动态路由生成不出页面，其余页面照常。
 const gallery = await loadGallery({ dataDir: DATA_DIR, imagePrefix: config.images.prefix });
-const generated = await writeSiteGalleryJson(gallery);
+const manifest = await readManifest(OUT_DIR);
+if (manifest?.db && (manifest.sourceSha256 !== galleryFingerprint(gallery) || manifest.site.domain !== config.site.domain ||
+    (process.env.RELEASE_VERSION && manifest.version !== process.env.RELEASE_VERSION))) {
+  throw new Error('站点数据与检索库构建清单不一致，请重新运行完整 build');
+}
+const generated = await writeSiteGalleryJson(gallery, { searchDb: manifest?.db ?? null });
 note(`${relative(ROOT, generated.galleryFile)}：${gallery.totals.series} 个作品、${gallery.totals.chapters} 话；台词分片 ${generated.textFiles.length} 份`);
 await rm(DIST_DIR, { recursive: true, force: true });
 
@@ -39,6 +46,12 @@ const r = spawnSync(process.execPath, [astro, 'build', '--outDir', DIST_DIR], {
   env: { ...process.env, DATA_DIR },
 });
 if (r.status !== 0) process.exit(r.status ?? 1);
+
+if (manifest?.db) {
+  await writeFile(join(DIST_DIR, 'release.json'), JSON.stringify({
+    version: manifest.version, fingerprint: releaseFingerprint(manifest), environment: process.env.DEPLOY_ENV || 'production',
+  }) + '\n');
+}
 
 if (config.features.platform_config) {
   for (const f of GENERATED_FILES) {

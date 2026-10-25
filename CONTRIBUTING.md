@@ -107,14 +107,18 @@ push 到 main
 人类在 main 分支详情页点按钮（.cnb/web_trigger.yml）
  ├── 发布（web_trigger_release）
  │    输入 chapters / target / deploy_env / ocr / version / push_all
- │    ingest → build → check → verify:manifest → publish:r2 → deploy:<target>
- │    → STATUS.md → push:search
+ │    参数检查 → ingest → build → check → verify:manifest → release:prepare
+ │    → publish:r2 → deploy:<target> → release:activate → STATUS.md → push:search
  └── 归档分支（web_trigger_archive）：archive/<分支> tag → 核对 → 删分支
 ```
 
 - `last-green` 是稳定锚点：`git checkout last-green` 立刻回到最近一次全绿；
 - 构建 / 发布 / 部署**只手动**；`crontab:` 一律禁止（CLAUDE.md 铁律 6）；
 - 产物只进 R2 与构建工作区，不进仓库（`STATUS.md` 例外，它就是给人看的）。
+- `preview` 与 `target=none` 不启用生产版本、不写 `STATUS.md`、不通知搜索引擎；
+  GitHub Pages 暂无独立预览目标，不能选择 `preview + github/all`。
+- OCR 必须填写明确的 `chapters`；待校对草稿保存在提交附件，按 `data/raw/README.md`
+  校对与导入后才进入台词库。未校对草稿不会随发布进入正文或搜索结果。
 
 ## 五、红灯协议（main 挂了的处理 SOP）
 

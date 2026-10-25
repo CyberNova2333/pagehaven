@@ -5,7 +5,7 @@
 // 推早了引擎抓到 404 反而扣分。推什么、怎么分批、回应怎么读，全在 scripts/lib/seo-push.mjs；
 // 这里只做接线：
 //   1. 读 site.config.yaml、OUT_DIR/manifest.json（缺 → 退 1：没 manifest 就没有页面清单）、
-//      OUT_DIR/manifest-previous.json（publish:r2 存下的线上旧 manifest；缺 → 首次发布，推全部）；
+//      OUT_DIR/manifest-previous.json（release:prepare 存下的线上旧 manifest；缺 → 首次发布，推全部）；
 //   2. 新 URL = 两份 manifest 页面集合的差集；--all 强制推全部；
 //   3. 引擎：只有 IndexNow（config.seo.indexnow_key 非空，或 INDEXNOW_KEY 环境变量覆盖）。
 //      不走百度；Google 没有普通页面的推送接口（sitemap ping 已下线，Indexing API 只收招聘 /
@@ -87,7 +87,7 @@ async function readPrevious() {
   try {
     return JSON.parse(text);
   } catch (e) {
-    throw new Error(`${show(file)} 不是合法 JSON（${e.message}）：publish:r2 存下的线上旧 manifest 坏了？想无视它推全部用 --all`, { cause: e });
+    throw new Error(`${show(file)} 不是合法 JSON（${e.message}）：release:prepare 存下的线上旧 manifest 坏了？想无视它推全部用 --all`, { cause: e });
   }
 }
 
@@ -139,6 +139,10 @@ async function writeStepSummary(file, { version, pushed, rows }) {
 }
 
 step('push:search');
+if (process.env.DEPLOY_ENV === 'preview' || process.env.DEPLOY_TARGET === 'none') {
+  note('预览或仅上传不通知搜索引擎');
+  process.exit(0);
+}
 const args = new Set(process.argv.slice(2));
 const unknown = [...args].filter((a) => !['--all', '--dry-run'].includes(a));
 if (unknown.length) bail(`不认识的参数：${unknown.join(' ')}（只有 --all 与 --dry-run）`);

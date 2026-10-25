@@ -20,14 +20,17 @@
 // 首次真实部署要人验证的点：给一个已 build 好的目录时 CLI 是否只上传不再自行 build；
 // dist 里的 edgeone.json 是否被识别；EDGEONE_API_REGION 与 token 的签发区域是否一致。
 import { spawnSync } from 'node:child_process';
-import { readFile, readdir, mkdtemp, mkdir, cp, rm } from 'node:fs/promises';
+import { readFile, readdir, mkdtemp, mkdir, cp, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { loadSiteConfig } from './lib/config.mjs';
 import { TARGETS, GITHUB_BASELINE_FILES, planDeployCommand, checkGithubBaseline } from './lib/deploy-plan.mjs';
 import { verifyEdgeoneProject } from './lib/edgeone.mjs';
-import { DIST_DIR, ROOT } from './lib/paths.mjs';
+import { waitForGithubPagesBuild } from './lib/github-pages-ready.mjs';
+import { readManifest } from './lib/manifest.mjs';
+import { releasePlan, releaseFingerprint, deploymentReceipt } from './lib/release.mjs';
+import { DIST_DIR, OUT_DIR, ROOT } from './lib/paths.mjs';
 import { step, ok, fail, note } from './lib/log.mjs';
 
 const show = (p) => (p.startsWith(ROOT + sep) ? relative(ROOT, p).split(sep).join('/') : p);
@@ -36,6 +39,23 @@ const bail = (msg) => {
   fail(msg);
   process.exit(1);
 };
+
+async function deploymentInput(target, environment) {
+  await rm(join(OUT_DIR, `deployed-${target}.json`), { force: true });
+  const manifest = await readManifest(OUT_DIR);
+  if (!manifest?.db || (process.env.RELEASE_VERSION && manifest.version !== process.env.RELEASE_VERSION)) {
+    throw new Error('缺少本次完整构建的发布清单，请先运行 build');
+  }
+  const marker = JSON.parse(await readFile(join(DIST_DIR, 'release.json'), 'utf8'));
+  if (marker.version !== manifest.version || marker.fingerprint !== releaseFingerprint(manifest) || marker.environment !== environment) {
+    throw new Error('dist 与发布清单不属于同一次构建或部署环境不符，拒绝部署');
+  }
+  return deploymentReceipt(manifest, target, environment);
+}
+
+async function recordDeployment(receipt) {
+  await writeFile(join(OUT_DIR, `deployed-${receipt.target}.json`), JSON.stringify(receipt) + '\n');
+}
 
 /**
  * GitHub Pages 的发布：把 dist 原样推到 <repo> 的 gh-pages 分支。
@@ -74,12 +94,12 @@ async function pushGithubPages({ repo, token, version }) {
     git(['add', '-A']);
     if (!git(['status', '--porcelain']).trim()) {
       note('gh-pages 内容没有变化，不产生空提交');
-      return false;
+      return { pushed: false, commit: git(['rev-parse', 'HEAD']).trim() };
     }
     const message = version ? `chore(pages): 发布 ${version}` : 'chore(pages): 发布';
     git(['-c', 'user.name=cnb', '-c', 'user.email=cnb@cnb.cool', 'commit', '--quiet', '-m', message]);
     git(['push', '--force', 'origin', 'gh-pages']);
-    return true;
+    return { pushed: true, commit: git(['rev-parse', 'HEAD']).trim() };
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
@@ -94,6 +114,8 @@ if (!TARGETS.includes(target)) {
 step(`deploy:${target}`);
 try {
   const config = await loadSiteConfig();
+  const environment = process.env.DEPLOY_ENV || 'production';
+  releasePlan({ target, environment, domain: config.site.domain, imageHosts: config.images.hosts });
   if (!existsSync(DIST_DIR)) bail(`${show(DIST_DIR)} 不存在：先 npm run build`);
 
   if (target === 'github') {
@@ -120,8 +142,11 @@ try {
       );
       process.exit(1);
     }
-    const pushed = await pushGithubPages({ repo, token, version: process.env.RELEASE_VERSION });
-    ok(pushed ? `已推送 ${show(DIST_DIR)} → ${repo} 的 gh-pages 分支` : `${summary}；gh-pages 内容未变，无需推送`);
+    const receipt = await deploymentInput(target, environment);
+    const { pushed, commit } = await pushGithubPages({ repo, token, version: receipt.version });
+    await waitForGithubPagesBuild({ repo, token, commit, onProgress: note });
+    await recordDeployment(receipt);
+    ok(pushed ? `已推送 ${show(DIST_DIR)} → ${repo} 的 gh-pages 分支，Pages 构建已成功` : `${summary}；gh-pages 内容未变，Pages 构建已确认`);
     process.exit(0);
   }
 
@@ -136,6 +161,8 @@ try {
     ok('DEPLOY_DRY_RUN=1：只打印命令，不执行');
     process.exit(0);
   }
+
+  const receipt = await deploymentInput(target, environment);
 
   // EdgeOne：CLI 的 -n 只认名字，而 EdgeOne 允许多个同名项目。部署前按项目 ID 校验名字、
   // 按名字校验同名唯一性；任何不一致都拒绝部署（一个字节都不传）。
@@ -167,6 +194,7 @@ try {
     fail(`deploy:${target} 失败，CLI 退出码 ${r.status}（报错见上方 CLI 输出）`);
     process.exit(r.status ?? 1);
   }
+  await recordDeployment(receipt);
   ok(`deploy:${target} 完成`);
 } catch (e) {
   fail(e.message);

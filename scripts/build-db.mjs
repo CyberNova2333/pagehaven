@@ -20,7 +20,7 @@ import { buildGalleryDb, openGalleryDb, tableCounts } from '@gallery/core/db/bui
 import { computeChunkManifest } from '@gallery/core/db/chunks';
 import { loadSiteConfig } from './lib/config.mjs';
 import { loadGallery } from './lib/data.mjs';
-import { readManifest, resolveVersion, MANIFEST_FILE } from './lib/manifest.mjs';
+import { readManifest, resolveVersion, galleryFingerprint, MANIFEST_FILE } from './lib/manifest.mjs';
 import { DATA_DIR, OUT_DIR, OUT_DB_DIR, ROOT } from './lib/paths.mjs';
 import { step, ok, fail, note } from './lib/log.mjs';
 
@@ -45,6 +45,9 @@ try {
   }
 
   const gallery = await loadGallery({ dataDir: DATA_DIR, imagePrefix: config.images.prefix });
+  if (manifest?.sourceSha256 && manifest.sourceSha256 !== galleryFingerprint(gallery)) {
+    throw new Error('输入数据与 manifest 不一致，请重新运行 build:manifest');
+  }
   const t = gallery.totals;
   note(`${show(DATA_DIR)}：${t.series} 个作品、${t.issues} 期、${t.chapters} 话、${t.pages} 页、${t.boxes} 个台词框`);
   if (t.chapters === 0) note('0 话：照建一份空库，检索页对着空库能正常回「无结果」');

@@ -19,7 +19,9 @@ import {
   listAllObjects,
   headObject,
   getObjectText,
+  getObject,
   putObject,
+  putImmutableObject,
 } from '../lib/r2.mjs';
 
 const FULL_ENV = { R2_ACCOUNT_ID: 'acct', R2_ACCESS_KEY_ID: 'ak', R2_SECRET_ACCESS_KEY: 'sk', R2_BUCKET: 'bkt' };
@@ -42,6 +44,7 @@ function fakeClient(responses) {
 /** response 的最小形状：封装只用到 text() / headers.get()。 */
 const jsonResponse = (text, headers = {}) => ({
   text: async () => text,
+  arrayBuffer: async () => Buffer.from(text),
   headers: { get: (k) => headers[k.toLowerCase()] ?? null },
 });
 
@@ -216,6 +219,54 @@ test('putObject：正文、ContentType、CacheControl 落到请求上，返回 e
   assert.deepEqual(client.calls[1].opts.headers, {});
 });
 
+test('getObject：正文与 ETag 来自同一次 GET，支持摘要元数据，非 404 错误不吞', async () => {
+  const hash = 'ab'.repeat(32);
+  const client = fakeClient([jsonResponse('正文', { etag: '"v1"', 'x-amz-meta-sha256': hash })]);
+  assert.deepEqual(await getObject(client, 'bkt', 'key'), { body: Buffer.from('正文'), size: 6, etag: '"v1"', sha256: hash });
+  assert.equal(client.calls.length, 1);
+  assert.equal(await getObject(fakeClient([new StorageError('missing', { status: 404 })]), 'bkt', 'key'), null);
+  await assert.rejects(getObject(fakeClient([new StorageError('denied', { status: 403 })]), 'bkt', 'key'), /denied/);
+});
+
+test('putObject：条件与摘要进入请求，拒绝空条件及互斥条件', async () => {
+  const client = fakeClient([jsonResponse(''), jsonResponse('')]);
+  await putObject(client, 'bkt', 'key', 'body', { ifNoneMatch: '*', sha256: 'ab'.repeat(32) });
+  assert.equal(client.calls[0].opts.headers['if-none-match'], '*');
+  assert.equal(client.calls[0].opts.headers['x-amz-meta-sha256'], 'ab'.repeat(32));
+  await putObject(client, 'bkt', 'key', 'body', { ifMatch: '"previous"' });
+  assert.equal(client.calls[1].opts.headers['if-match'], '"previous"');
+  await assert.rejects(putObject(client, 'bkt', 'key', 'body', { ifMatch: '', ifNoneMatch: '*' }), /不能同时/);
+  await assert.rejects(putObject(client, 'bkt', 'key', 'body', { ifMatch: '' }), /非空/);
+  await assert.rejects(putObject(client, 'bkt', 'key', 'body', { sha256: 'invalid' }), /64 位/);
+});
+
+test('putImmutableObject：同内容不写，不同内容拒绝，首次写入有原子条件和摘要', async () => {
+  const existing = fakeClient([jsonResponse('same', { etag: '"old"' })]);
+  assert.deepEqual(await putImmutableObject(existing, 'bkt', 'key', 'same'), { created: false, etag: '"old"', body: Buffer.from('same') });
+  assert.equal(existing.calls.length, 1);
+  const different = fakeClient([jsonResponse('old')]);
+  await assert.rejects(putImmutableObject(different, 'bkt', 'key', 'new'), /不可变对象.*内容不同/);
+  assert.equal(different.calls.length, 1);
+  const absent = fakeClient([new StorageError('missing', { status: 404 }), jsonResponse('', { etag: '"new"' })]);
+  const created = await putImmutableObject(absent, 'bkt', 'key', 'same');
+  assert.equal(created.created, true);
+  assert.equal(absent.calls[1].opts.headers['if-none-match'], '*');
+  assert.equal(absent.calls[1].opts.headers['x-amz-meta-sha256'], createHash('sha256').update('same').digest('hex'));
+});
+
+test('putImmutableObject：并发抢写 412 后核对胜出对象，未知写入结果不降级为覆盖', async () => {
+  const missing = () => new StorageError('missing', { status: 404 });
+  const conflict = () => new StorageError('condition failed', { status: 412 });
+  const same = fakeClient([missing(), conflict(), jsonResponse('same', { etag: '"winner"' })]);
+  assert.equal((await putImmutableObject(same, 'bkt', 'key', 'same')).etag, '"winner"');
+  assert.deepEqual(same.calls.map((c) => c.method), ['GET', 'PUT', 'GET']);
+  const different = fakeClient([missing(), conflict(), jsonResponse('other')]);
+  await assert.rejects(putImmutableObject(different, 'bkt', 'key', 'same'), /内容不同/);
+  const uncertain = fakeClient([missing(), new StorageError('connection lost', { status: 0 })]);
+  await assert.rejects(putImmutableObject(uncertain, 'bkt', 'key', 'same'), /connection lost/);
+  assert.deepEqual(uncertain.calls.map((c) => c.method), ['GET', 'PUT']);
+});
+
 /**
  * 本地假 S3：收请求、把 method / path / query / 头 / 正文记下来，按 handler 回话。
  * 这里验的是「客户端真的发了一个签过名、路径式寻址、正文完整的 HTTP 请求」。
@@ -266,6 +317,8 @@ test('客户端：真发 HTTP —— 路径式寻址、key 转义、签名头齐
   const put = await putObject(client, 'bkt', 'img/中文 目录/a b.avif', new Uint8Array([1, 2, 3]), {
     contentType: 'image/avif',
     cacheControl: 'public, max-age=31536000, immutable',
+    ifNoneMatch: '*',
+    sha256: createHash('sha256').update(Buffer.from([1, 2, 3])).digest('hex'),
   });
   assert.deepEqual(put, { etag: '"etag-from-server"' });
   const upload = s3.seen[0];
@@ -273,9 +326,11 @@ test('客户端：真发 HTTP —— 路径式寻址、key 转义、签名头齐
   assert.equal(upload.url, '/bkt/img/%E4%B8%AD%E6%96%87%20%E7%9B%AE%E5%BD%95/a%20b.avif');
   assert.equal(upload.headers['content-type'], 'image/avif');
   assert.equal(upload.headers['cache-control'], 'public, max-age=31536000, immutable');
+  assert.equal(upload.headers['if-none-match'], '*');
+  assert.equal(upload.headers['x-amz-meta-sha256'], upload.headers['x-amz-content-sha256']);
   assert.deepEqual([...upload.body], [1, 2, 3]);
   // SigV4 的三个硬要求：算法与凭证范围、签的头全小写有序并声明、正文摘要与实际正文一致
-  assert.match(upload.headers.authorization, /^AWS4-HMAC-SHA256 Credential=ak\/\d{8}\/auto\/s3\/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=[0-9a-f]{64}$/);
+  assert.match(upload.headers.authorization, /^AWS4-HMAC-SHA256 Credential=ak\/\d{8}\/auto\/s3\/aws4_request, SignedHeaders=cache-control;content-type;host;if-none-match;x-amz-content-sha256;x-amz-date;x-amz-meta-sha256, Signature=[0-9a-f]{64}$/);
   assert.equal(
     upload.headers['x-amz-content-sha256'],
     createHash('sha256').update(Buffer.from([1, 2, 3])).digest('hex'),

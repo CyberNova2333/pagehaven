@@ -10,9 +10,12 @@
 // db 字段这里恒为 null：build:db 在之后跑，读回 manifest.json 只填 db 字段、其余原样保留
 // （形状见 scripts/build-db.mjs）。build:manifest 不知道也不该猜库的版本与摘要。
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 export const MANIFEST_FILE = 'manifest.json';
+
+export const galleryFingerprint = (gallery) => createHash('sha256').update(JSON.stringify(gallery)).digest('hex');
 
 /** 版本号进文件名与对象 key：只放字母数字与 . _ -，路径分隔符与空白一律拒收。 */
 export const VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -35,6 +38,7 @@ export function resolveVersion(env = process.env, now = new Date()) {
  * @typedef {object} Manifest
  * @property {string} version
  * @property {string} generatedAt  ISO 8601（UTC）
+ * @property {string} sourceSha256 元数据与完整台词内容的摘要，阻止旧 DB 与新页面混用
  * @property {{ domain: string }} site
  * @property {{ hosts: string[], prefix: string }} images
  * @property {{ series: number, issues: number, chapters: number, pages: number, boxes: number }} totals
@@ -79,6 +83,7 @@ export function buildManifest(gallery, config, { version, generatedAt = new Date
   return {
     version,
     generatedAt,
+    sourceSha256: galleryFingerprint(gallery),
     site: { domain: config.site.domain },
     images: { hosts: [...config.images.hosts], prefix: config.images.prefix },
     totals: { ...gallery.totals },

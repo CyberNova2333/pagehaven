@@ -37,9 +37,9 @@ export function assertNoReservedIds(gallery) {
 }
 
 /** @param {import('@gallery/platform').SiteConfig} config */
-export async function writeSiteConfigJson(config) {
+export async function writeSiteConfigJson(config, { preview = false } = {}) {
   await mkdir(SITE_GENERATED_DIR, { recursive: true });
-  await writeFile(SITE_CONFIG_JSON, JSON.stringify(config, null, 2) + '\n');
+  await writeFile(SITE_CONFIG_JSON, JSON.stringify({ ...config, preview }, null, 2) + '\n');
   return SITE_CONFIG_JSON;
 }
 
@@ -48,7 +48,7 @@ export async function writeSiteConfigJson(config) {
  * 序列化会写两遍）。页面需要摊平列表时自己 flatMap，几万条也只是毫秒级。
  * @param {import('@gallery/core').Gallery} gallery
  */
-export function galleryStructure(gallery) {
+export function galleryStructure(gallery, { searchDb = null } = {}) {
   return {
     series: gallery.series.map((s) => ({
       id: s.id,
@@ -87,6 +87,7 @@ export function galleryStructure(gallery) {
       })),
     })),
     totals: gallery.totals,
+    searchDb,
   };
 }
 
@@ -109,10 +110,10 @@ export function chapterTextFile(chapter) {
  * @param {import('@gallery/core').Gallery} gallery
  * @returns {Promise<{galleryFile: string, textFiles: string[]}>}
  */
-export async function writeSiteGalleryJson(gallery) {
+export async function writeSiteGalleryJson(gallery, options = {}) {
   assertNoReservedIds(gallery);
   await mkdir(SITE_GENERATED_DIR, { recursive: true });
-  await writeFile(SITE_GALLERY_JSON, JSON.stringify(galleryStructure(gallery)) + '\n');
+  await writeFile(SITE_GALLERY_JSON, JSON.stringify(galleryStructure(gallery, options)) + '\n');
   await rm(SITE_TEXT_DIR, { recursive: true, force: true });
   // 0 话时也建空目录：让「目录在不在」不成为 glob 行为的变量
   await mkdir(SITE_TEXT_DIR, { recursive: true });

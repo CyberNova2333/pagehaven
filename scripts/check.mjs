@@ -180,7 +180,7 @@ await section('流水线：main 的 push 只跑检查，发布只手动，没有
         for (const needle of ['npm run check', 'npm test', 'npm run build']) {
           if (!text.includes(needle)) problems.push(`${branch}.push：检查流水线里没有 \`${needle}\`——push 触发的流水线只能是检查类`);
         }
-        if (/publish:r2|deploy:(cloudflare|edgeone|github)/.test(text)) {
+        if (/publish:r2|release:activate|deploy:(cloudflare|edgeone|github)/.test(text)) {
           problems.push(`${branch}.push：出现发布/部署步骤——发布只能手动（铁律 6）`);
         }
         continue;

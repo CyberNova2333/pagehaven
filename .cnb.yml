@@ -3,19 +3,18 @@
 # 三条流水线，与 CLAUDE.md 铁律 6 一一对应：
 #   · main 的 push        → 检查：check / test / 全量 build 空跑，通过后移动 last-green
 #   · web_trigger_check   → 同一套检查的手动入口（原 workflow_dispatch 的等价物）
-#   · web_trigger_release → 发布：ingest → build → 核对 → 发布到对象存储 → 部署 → STATUS → 搜索推送
+#   · web_trigger_release → 发布：ingest → build → 核对 → 上传 → 部署 → 启用 → STATUS → 搜索推送
 #   · web_trigger_archive → 归档：打 archive/<分支> tag、核对，然后才删分支
 #
 # 发布与部署只能手动（web_trigger），不许 push 触发，不许 crontab。
 # `npm run check` 的第 4 节会解析本文件，把这两条变成硬拦截（铁律 6）。
 #
-# 凭据只从密钥仓库来（铁律 7）。按密钥仓库的目录规范（目录名 = 下游仓库名逐字，
-# 文件名 = 操作名），本项目对应 comics-gallery/ 下的三份文件：
-#   publish.yml —— 对象存储写凭据（verify:manifest / publish:r2 / status）
-#   deploy.yml  —— 站点部署凭据（cloudflare / edgeone / github）
-#   notify.yml  —— 失败邮件凭据（各流水线的 failStages）
+# 凭据只从密钥仓库来（铁律 7），文件地址由手动发布参数提供，不绑定特定组织或仓库：
+#   publish_secrets_url —— 对象存储写凭据（verify:manifest / publish:r2 / status），必填
+#   deploy_secrets_url  —— 站点部署凭据（cloudflare / edgeone / github），选择部署目标时必填
+# 检查与归档不导入外部密钥；失败信息保留在构建日志中。
 # SEO 不需要密钥文件：只走 IndexNow，key 按协议公开在 site.config.yaml 的 seo.indexnow_key。
-# 三份都由**脚本任务**读取，所以文件里不能写 allow_images（平台规则：写了就只能被
+# 密钥都由**脚本任务**读取，所以文件里不能写 allow_images（平台规则：写了就只能被
 # 插件任务引用，脚本任务读到的是空变量）。收紧改用 allow_slugs + allow_branches。
 # 引用是逐字匹配的：路径差一个字，准备阶段就报 GetFileContent: not found。
 
@@ -92,21 +91,9 @@ main:
             repo_url="https://cnb:${CNB_TOKEN}@${base#*://}/${CNB_REPO_SLUG}"
             git push --force "$repo_url" "HEAD:refs/tags/last-green"
       failStages:
-        # 失败通知走组织内共用的标准脚本（tools/notify-mail.sh，与兄弟仓库逐字节相同）。
-        # 只发失败；发信失败会让这一步变红，不静默吞掉。
-        - name: 失败通知
-          imports:
-            - ${notify_secrets_url}
+        - name: 记录失败详情
           script: |
-            TITLE="🔴 画廊检查流水线失败（main）" \
-            MSG="失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}
-            失败原因：${CNB_BUILD_FAILED_MSG}
-
-            分支：${CNB_BRANCH}
-            提交：${CNB_COMMIT_SHORT} — ${CNB_COMMIT_MESSAGE_TITLE}
-            触发人：${CNB_BUILD_USER}
-            日志：${CNB_BUILD_WEB_URL}" \
-            bash tools/notify-mail.sh
+            printf '%s\n' "失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}" "失败原因：${CNB_BUILD_FAILED_MSG}" "构建日志：${CNB_BUILD_WEB_URL}"
 
         - name: 🔴 main 红灯
           script: |
@@ -164,19 +151,9 @@ main:
             export OUT_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-out"
             npm run build && npm run check
       failStages:
-        - name: 失败通知
-          imports:
-            - ${notify_secrets_url}
+        - name: 记录失败详情
           script: |
-            TITLE="🔴 画廊手动检查失败" \
-            MSG="失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}
-            失败原因：${CNB_BUILD_FAILED_MSG}
-
-            分支：${CNB_BRANCH}
-            提交：${CNB_COMMIT_SHORT} — ${CNB_COMMIT_MESSAGE_TITLE}
-            触发人：${CNB_BUILD_USER}
-            日志：${CNB_BUILD_WEB_URL}" \
-            bash tools/notify-mail.sh
+            printf '%s\n' "失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}" "失败原因：${CNB_BUILD_FAILED_MSG}" "构建日志：${CNB_BUILD_WEB_URL}"
 
   # ── 发布：只手动（web_trigger_release），绝不接受 push 触发 ──────────────────
   web_trigger_release:
@@ -194,17 +171,24 @@ main:
 
         # 版本号进文件名与对象 key（gallery-<v>.sqlite、site-<v>.tar.zst），且带一年 immutable 缓存，
         # 所以同一版本号只能发布一次：缺省用「UTC 日期.构建号」，同一天再发也不会撞 key。
-        - name: 版本号
+        - name: 发布参数与版本号
           script: |
             set -eu
+            export DEPLOY_TARGET="${target:-none}"
+            export DEPLOY_ENV="${deploy_env:-production}"
             v="${version:-$(date -u +%Y-%m-%d).$CNB_BUILD_ID}"
+            RELEASE_VERSION="$v" npm run release:check -- --require-secret-imports
             started="$(date -u +%FT%TZ)"
             echo "版本 $v"
             echo "##[set-output version=$v]"
             echo "##[set-output started_at=$started]"
+            echo "##[set-output deploy_target=$DEPLOY_TARGET]"
+            echo "##[set-output deploy_environment=$DEPLOY_ENV]"
           exports:
             version: RELEASE_VERSION
             started_at: RELEASE_STARTED_AT
+            deploy_target: DEPLOY_TARGET
+            deploy_environment: DEPLOY_ENV
 
         - name: ingest:labelplus
           if: '[ -n "${chapters:-}" ]'
@@ -266,52 +250,54 @@ main:
           imports: &publish_secrets ${publish_secrets_url}
           script: npm run verify:manifest
 
+        - name: 准备发布基线
+          imports: *publish_secrets
+          script: npm run release:prepare
+
         # 写凭据只在这里出现，且只来自密钥仓库（铁律 7）。读永远走 CDN 域名。
         - name: publish:r2
           imports: *publish_secrets
           script: npm run publish:r2
 
         - name: deploy:cloudflare
-          if: '[ "$target" = "cloudflare" ] || [ "$target" = "all" ]'
+          if: '[ "$DEPLOY_TARGET" = "cloudflare" ] || [ "$DEPLOY_TARGET" = "all" ]'
           imports: &deploy_secrets ${deploy_secrets_url}
-          env:
-            DEPLOY_ENV: $deploy_env
           script: npm run deploy:cloudflare
 
         # EdgeOne 用 ID 定位：EDGEONE_PROJECT_ID 填项目 ID（makers-…），EDGEONE_PROJECT_NAME 只作
         # CLI 的 -n 参数；部署前会按 ID 核对名字与同名唯一性（EdgeOne 允许多个同名项目）。
         # 首次部署先选 deploy_env=preview，核对 CLI 输出的项目名与 URL，再切 production。
         - name: deploy:edgeone
-          if: '[ "$target" = "edgeone" ] || [ "$target" = "all" ]'
+          if: '[ "$DEPLOY_TARGET" = "edgeone" ] || [ "$DEPLOY_TARGET" = "all" ]'
           imports: *deploy_secrets
-          env:
-            DEPLOY_ENV: $deploy_env
           script: npm run deploy:edgeone
 
         # GitHub Pages 没有响应头、没有重定向、没有函数，是站点完整性的最小公分母（铁律 2）。
         # CNB 流水线在这里校验 dist 基线，并用密钥仓库里的 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN
         # 把 dist 推到该仓库的 gh-pages 分支；两者没配就是配置错误（见 scripts/deploy.mjs）。
         - name: deploy:github（校验基线 → 推 gh-pages）
-          if: '[ "$target" = "github" ] || [ "$target" = "all" ]'
+          if: '[ "$DEPLOY_TARGET" = "github" ] || [ "$DEPLOY_TARGET" = "all" ]'
           imports: *deploy_secrets
           script: npm run deploy:github
 
-        - name: 写 STATUS.md
+        - name: 启用生产版本
+          if: '[ "$DEPLOY_ENV" = "production" ] && [ "$DEPLOY_TARGET" != "none" ]'
           imports: *publish_secrets
-          # 不要在 env: 里写 $RELEASE_VERSION 之类的变量：CNB 不对该字段做变量替换，会把字面量
-          # 传进来（STATUS 里因此出现过 "$RELEASE_VERSION"）。exports 注入的三个变量在 script
-          # 环境里已经是正确值；DEPLOY_TARGET 用 web_trigger 的 target 输入。
-          script: |
-            export DEPLOY_TARGET="${target:-}"
-            npm run status
+          script: npm run release:activate
+
+        - name: 写 STATUS.md
+          if: '[ "$DEPLOY_ENV" = "production" ] && [ "$DEPLOY_TARGET" != "none" ]'
+          imports: *publish_secrets
+          # 版本、目标与环境统一由参数检查步骤经 exports 传入。
+          script: npm run status
 
         # 页面已经上线（部署步骤全部在前）才通知搜索引擎：只推本次新增的页面
-        # （publish:r2 存下的线上旧 manifest 与新 manifest 的差集）。只走 IndexNow：
+        # （release:prepare 存下的线上旧 manifest 与新 manifest 的差集）。只走 IndexNow：
         # key 在 site.config.yaml（协议要求公开放在站点根，build:sitemap 生成 key 文件），
         # 这一步不需要任何凭据，所以不 import 密钥仓库。不走百度；Google 没有普通页面的推送接口。
         # 失败单独标红、不判已完成的部署失败（allowFailure）。
         - name: 推送新页面给搜索引擎
-          if: '[ "$target" != "none" ]'
+          if: '[ "$DEPLOY_ENV" = "production" ] && [ "$DEPLOY_TARGET" != "none" ]'
           allowFailure: true
           script: |
             if [ "${push_all:-false}" = "true" ]; then
@@ -324,6 +310,7 @@ main:
         # 顶格独占一行的 [skip-hooks] 是记录在案的豁免——机器写的信息没有 Co-authored-by 可署。
         # 只在 stages 成功路径上执行；失败路径由 failStages 的「写回 data/text」兜住。
         - name: 提交 data/ 与 STATUS.md
+          if: '[ "$DEPLOY_ENV" = "production" ] && [ "$DEPLOY_TARGET" != "none" ]'
           script: |
             set -eu
             # 提交身份跟随触发者：pre-receive 会核对提交者邮箱是不是已注册的 CNB 账号
@@ -347,30 +334,21 @@ main:
             git pull --rebase origin main
             git push origin HEAD:main
       failStages:
-        - name: 失败通知
-          imports:
-            - ${notify_secrets_url}
+        - name: 记录失败详情
           script: |
-            TITLE="🔴 画廊发布流水线失败" \
-            MSG="失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}
-            失败原因：${CNB_BUILD_FAILED_MSG}
-
-            参数：target=${target} deploy_env=${deploy_env} version=${RELEASE_VERSION}
-            分支：${CNB_BRANCH}
-            提交：${CNB_COMMIT_SHORT} — ${CNB_COMMIT_MESSAGE_TITLE}
-            触发人：${CNB_BUILD_USER}
-            日志：${CNB_BUILD_WEB_URL}" \
-            bash tools/notify-mail.sh
+            printf '%s\n' "失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}" "失败原因：${CNB_BUILD_FAILED_MSG}" "构建日志：${CNB_BUILD_WEB_URL}"
 
         - name: 🔴 发布失败
           script: |
-            echo "🔴 发布失败：对象存储的版本指针只在全部核对通过后才切换，线上仍是上一版。"
-            echo "   STATUS.md 未写回仓库；ingest 产出的 data/text 由下一步尽力写回。"
+            echo "🔴 发布失败：请按失败阶段核对已部署的目标，部分站点可能已经更新。"
+            echo "   页面绑定各自的检索库；生产指针仅在所有目标部署成功后的启用阶段更新。"
+            echo "   若失败发生在启用之后，生产指针可能已更新，请同时核对发布状态。"
             echo "   构建日志：${CNB_BUILD_WEB_URL}"
 
         # 对应 GitHub Actions 时 always() 提交的那一半语义：稿已经 ingest 出来了，
         # 不能因为后面某一步失败就只留在构建容器里。提交失败不改变发布失败的状态。
         - name: 失败时也写回 ingest 产出的 data/text
+          if: '[ "${DEPLOY_ENV:-preview}" = "production" ] && [ "${DEPLOY_TARGET:-none}" != "none" ]'
           script: |
             set -eu
             # 提交身份跟随触发者：pre-receive 会核对提交者邮箱是不是已注册的 CNB 账号
@@ -431,17 +409,6 @@ main:
             echo "- 分支 \`$branch\` → tag \`$tag\`（\`$sha\`）"
             echo "- 分支已从远端删除；要找回：\`git checkout -b $branch $tag\`"
       failStages:
-        - name: 失败通知
-          imports:
-            - ${notify_secrets_url}
+        - name: 记录失败详情
           script: |
-            TITLE="🔴 画廊归档分支失败" \
-            MSG="失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}
-            失败原因：${CNB_BUILD_FAILED_MSG}
-
-            参数：branch=${branch}
-            分支：${CNB_BRANCH}
-            提交：${CNB_COMMIT_SHORT} — ${CNB_COMMIT_MESSAGE_TITLE}
-            触发人：${CNB_BUILD_USER}
-            日志：${CNB_BUILD_WEB_URL}" \
-            bash tools/notify-mail.sh
+            printf '%s\n' "失败阶段：${CNB_BUILD_FAILED_STAGE_NAME}" "失败原因：${CNB_BUILD_FAILED_MSG}" "构建日志：${CNB_BUILD_WEB_URL}"
