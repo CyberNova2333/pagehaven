@@ -1,5 +1,5 @@
 ---
-// 首页：hero（首个作品的封面 / 简介 / 标签 / 统计）+ 继续阅读 + 作品卡片（封面）+ 最近更新 + 随机。
+// 首页：hero（首个作品的封面 / 简介 / 标签 / 统计）+ 继续阅读 + 作品卡片（封面）+ 各作品最新一话 + 随机。
 import Base from '../layouts/Base.astro';
 import siteConfig from '../generated/site-config.json';
 import gallery from '../generated/gallery.json';
@@ -12,11 +12,13 @@ const seriesCount = gallery.series.length;
 const issueCount = gallery.series.reduce((n, s) => n + s.issues.length, 0);
 const chapterTotal = gallery.series.reduce((n, s) => n + chapterCount(s), 0);
 const featured = gallery.series[0] ?? null;
-const allChapters = gallery.series.flatMap((s) => s.issues.flatMap((iss) => iss.chapters));
+const allChapters = gallery.series.flatMap((s) => s.issues.flatMap((iss) => iss.chapters.map((c) => ({
+  url: c.url, title: c.title, series: s.title, issue: iss.title, pages: c.pages.length,
+}))));
 // 每个作品的最新一话（数组顺序即模型顺序：期按 number、话按 number）
 const latest = gallery.series
   .map((s) => {
-    const iss = s.issues[s.issues.length - 1];
+    const iss = s.issues.filter((issue) => issue.chapters.length > 0).at(-1);
     const ch = iss?.chapters[iss.chapters.length - 1];
     return ch ? { series: s, issue: iss, chapter: ch } : null;
   })
@@ -25,7 +27,7 @@ const latest = gallery.series
 
 <Base url="/">
   {
-    featured && (
+    featured ? (
       <section class="hero card">
         <a class="hero-cover" href={featured.url} aria-hidden="true">
           {cover(featured) ? (
@@ -55,6 +57,12 @@ const latest = gallery.series
           </dl>
         </div>
       </section>
+    ) : (
+      <section class="card card-pad">
+        <p class="eyebrow">A home for stories</p>
+        <h1>{site.title}</h1>
+        <p class="lede">还没有作品。内容发布后，会在这里显示作品目录。</p>
+      </section>
     )
   }
 
@@ -63,11 +71,9 @@ const latest = gallery.series
     <ul class="continue-list" id="continue-list"></ul>
   </section>
 
-  <h2 id="series">作品</h2>
+  {gallery.series.length > 0 && <h2 id="series">作品</h2>}
   {
-    gallery.series.length === 0 ? (
-      <p class="muted">还没有作品。</p>
-    ) : (
+    gallery.series.length > 0 && (
       <ul class="series-grid">
         {gallery.series.map((s) => (
           <li class="card">
@@ -96,7 +102,7 @@ const latest = gallery.series
   {
     latest.length > 0 && (
       <>
-        <h2>最近更新</h2>
+        <h2>各作品最新一话</h2>
         <ul class="list">
           {latest.map(({ series, issue, chapter }) => (
             <li>
@@ -112,13 +118,15 @@ const latest = gallery.series
     )
   }
 
-  <script type="application/json" id="random-pool" set:html={jsonForScript(allChapters.map((c) => c.url))} />
+  <script type="application/json" id="random-pool" set:html={jsonForScript(allChapters)} />
   <script is:inline>
     (function () {
+      var chapters = JSON.parse(document.getElementById('random-pool').textContent || '[]');
+      var pool = chapters.map(function (c) { return c.url; });
+      var currentChapters = new Map(chapters.map(function (c) { return [c.url, c]; }));
       var btn = document.getElementById('random-btn');
       if (btn) {
         btn.addEventListener('click', function () {
-          var pool = JSON.parse(document.getElementById('random-pool').textContent || '[]');
           if (pool.length) location.href = pool[Math.floor(Math.random() * pool.length)];
         });
       }
@@ -126,25 +134,38 @@ const latest = gallery.series
       var list = document.getElementById('continue-list');
       var wrap = document.getElementById('continue');
       if (!list || !wrap) return;
-      var items = [];
-      for (var i = 0; i < localStorage.length; i++) {
-        var k = localStorage.key(i);
-        if (!k || k.indexOf('gallery:progress:') !== 0) continue;
-        try {
-          var v = JSON.parse(localStorage.getItem(k));
-          if (v && v.url) items.push(v);
-        } catch (e) {
-          /* 坏数据跳过 */
+      var records = new Map();
+      try {
+        var storage = localStorage;
+        for (var i = 0; i < storage.length; i++) {
+          try {
+            var k = storage.key(i);
+            if (!k || k.indexOf('gallery:progress:') !== 0) continue;
+            var v = JSON.parse(storage.getItem(k));
+            if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+            var chapter = currentChapters.get(v.url);
+            if (!chapter) continue;
+            // URL、标题与页数以当前目录为准；旧页码只在现存页范围内恢复。
+            var n = Number.isSafeInteger(v.n) ? Math.max(1, Math.min(chapter.pages, v.n)) : 1;
+            var ts = Number.isFinite(v.ts) && v.ts >= 0 ? v.ts : 0;
+            var previous = records.get(chapter.url);
+            if (!previous || ts > previous.ts) records.set(chapter.url, { chapter: chapter, n: n, ts: ts });
+          } catch (e) {
+            /* 单条坏数据跳过 */
+          }
         }
+      } catch (e) {
+        /* 浏览器禁止访问存储时，仅省略继续阅读。 */
       }
+      var items = Array.from(records.values());
       items.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
       items.slice(0, 3).forEach(function (v) {
         var li = document.createElement('li');
         var a = document.createElement('a');
-        a.href = v.url + (v.n ? '#p' + v.n : '');
-        a.textContent = v.title || v.url;
+        a.href = v.chapter.url + '#p' + v.n;
+        a.textContent = v.chapter.title;
         var small = document.createElement('small');
-        small.textContent = [v.series, v.issue].filter(Boolean).join(' · ');
+        small.textContent = [v.chapter.series, v.chapter.issue].filter(Boolean).join(' · ');
         li.appendChild(a);
         li.appendChild(small);
         list.appendChild(li);
@@ -174,7 +195,7 @@ const latest = gallery.series
   .continue-list small { color: var(--text-dim); }
   .series-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.7rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
   .series-grid li { transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease; overflow: hidden; }
-  .series-grid li:hover { transform: translateY(-2px); border-color: var(--pink-soft); box-shadow: 0 14px 34px rgba(231, 95, 135, 0.16); }
+  .series-grid li:hover { transform: translateY(-2px); border-color: var(--pink-soft); box-shadow: var(--shadow); }
   .series-card { display: flex; gap: 0.8rem; padding: 0.8rem; color: var(--ink); align-items: flex-start; }
   .series-card:hover { color: var(--pink-deep); }
   .series-cover { flex: 0 0 5.2rem; width: 5.2rem; aspect-ratio: 600 / 879; border-radius: 10px; overflow: hidden; background: linear-gradient(135deg, rgba(255, 143, 171, 0.25), rgba(169, 139, 255, 0.2)); }
