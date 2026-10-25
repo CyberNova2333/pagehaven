@@ -44,7 +44,7 @@ branch:
               - { name: preview, value: preview }
           ocr:
             name: 缺稿跑 OCR
-            description: 只补没有 LabelPlus 稿的话；OCR 目前是占位
+            description: 必须指定话；生成待校对附件，人工确认导入后才进入检索
             type: select
             default: 'false'
             options:

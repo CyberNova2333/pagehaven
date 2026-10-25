@@ -1,15 +1,16 @@
 # data/raw —— 翻译产物的原始稿
 
-`data/text` 是生成物，不手改；这里放它的**来源**。目前只有一种：
+`data/text` 是生成物，不手改；这里放它的**来源**：
 
 ```
 data/raw/labelplus/<series>/<issue>/<chapter>.txt     LabelPlus 翻译稿（版本 1,0）
+data/raw/ocr/<series>/<issue>/<chapter>.json          人工校对后的 OCR 稿
 ```
 
 路径就是这一话的 key（与 `data/meta/<series>.yaml` 里的 id 对应，也与
 `data/text/<series>/<issue>/<chapter>.json` 同形）。在手机上交稿 = 用 GitHub 网页
 把 LabelPlus 导出的 txt 传到这个位置，然后在 CNB 的 main 分支详情页点「发布」按钮，`chapters` 填
-`<series>/<issue>/<chapter>`（多话逗号分隔）。扩展名 `.TXT` 也认；这个目录下除 README
+`<series>/<issue>/<chapter>`（多话逗号分隔）。扩展名 `.TXT` 也认；`data/raw/labelplus/` 下除 README
 与点文件之外的其它文件会被提示「不是 .txt」——不是稿就删掉。
 
 ## ingest 做什么
@@ -44,3 +45,46 @@ data/raw/labelplus/<series>/<issue>/<chapter>.txt     LabelPlus 翻译稿（版�
   对不上——用 `LABELPLUS_PAGES=sequence` 按顺序，前提是稿里的文件顺序 = 页顺序。
 
 解析器不猜：对不上就报错，宁可响也不哑。
+
+## 没有翻译稿时：可选 OCR 校对流程
+
+OCR 只补缺稿，**不会把未经校对的识别结果自动变成台词**。它使用可选的 Tesseract CLI，
+默认识别简体中文与英文（`chi_sim+eng`），采用稀疏文字模式。漫画中的手写字、竖排、特殊字体、
+阅读顺序与气泡边界仍可能识别错误；输出只能当草稿。已有 `data/text` 的章节会跳过，不覆盖。
+
+1. 在 CNB 手动发布表单开启 OCR，并在 `chapters` 中明确填写少量章节；或在 Codespaces 中运行下列命令。
+   OCR 不允许省略 `CHAPTERS`，不会隐式识别全库。Codespaces 若尚无引擎，可先安装
+   `tesseract-ocr`、`tesseract-ocr-chi-sim`、`tesseract-ocr-eng` 软件包；普通构建不需要它们。
+
+   ```bash
+   CHAPTERS=sample/v/c npm run ingest:ocr
+   ```
+
+2. 校对产物在 `out/ocr-review/`，通过 CNB 提交详情页的附件下载取得（以发布版本命名的压缩包）。每话包含：
+
+   ```text
+   <series>/<issue>/<chapter>.json          待校对的结构化台词
+   <series>/<issue>/<chapter>.html          框编号、页图与识别文字的对照预览
+   <series>/<issue>/<chapter>.images/       预览使用的页图
+   ```
+
+   目录根部的 `report.json` 与 `README.txt` 记录本次结果；所选章节全部已有文本时仍会生成报告，
+   明确说明本次没有新草稿。个别章节失败时报告会列出错误，成功章节的草稿会保留。
+
+   解压时保持相对路径；可在 Codespaces 预览 HTML、用手机网页编辑 JSON。核对并修正 `t`、
+   框的 `x/y/w/h`（0–1 比例）、漏字、漏框和阅读顺序；`i` 必须在同一页内唯一。
+   保留每一页，空白页写 `boxes: []`。`tn` 不必手算，接受时会根据修改后的 `t` 重算。
+   已存在的待校对 JSON 会保留，避免重跑 OCR 覆盖正在校对的内容。
+
+3. 校对完成后，把 JSON 放入 `data/raw/ocr/<series>/<issue>/<chapter>.json`，再明确接受：
+
+   ```bash
+   CHAPTERS=sample/v/c npm run ingest:ocr -- --accept-reviewed
+   ```
+
+   此步骤不需要 OCR 引擎或网络，校验 schema、章节、页码和坐标后才写 `data/text`，仍不覆盖已有文本。
+   `out/ocr-review` 中即使有草稿也不会被这一步自动采用。随后走正常检查与手动发布流程。
+
+图片只从配置的图片来源读取；单图上限 20 MiB、每来源下载时限 20 秒，失败会尝试下一来源，
+并核对图片内容摘要及图像尺寸。单页 OCR 时限 120 秒。空选择、缺引擎/语言包、下载失败、
+无效 TSV 都会报告失败；有效空白页会明确提示人工核对。默认模式的任何草稿均不纳入文字层或检索。

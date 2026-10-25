@@ -215,8 +215,29 @@ main:
         - name: ingest:ocr（只补缺稿）
           if: '[ "${ocr:-false}" = "true" ]'
           script: |
+            set -eu
+            test -n "${chapters:-}" || { echo 'OCR 必须显式选择要识别的话'; exit 1; }
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng
             export CHAPTERS="$chapters"
-            npm run ingest:ocr
+            ocr_result=0
+            npm run ingest:ocr || ocr_result=$?
+            mkdir -p out/ocr-review
+            tar -czf "out/ocr-review-${RELEASE_VERSION}.tar.gz" -C out ocr-review
+            echo "##[set-output exit_code=$ocr_result]"
+          exports:
+            exit_code: OCR_EXIT_CODE
+
+        - name: 保存待校对台词附件
+          if: '[ "${ocr:-false}" = "true" ]'
+          image: cnbcool/attachments:latest
+          settings:
+            commit: $CNB_COMMIT
+            attachments: 'out/ocr-review-*.tar.gz'
+
+        - name: 核对 OCR 结果（失败前先保留已完成草稿）
+          if: '[ "${ocr:-false}" = "true" ]'
+          script: 'test "$OCR_EXIT_CODE" = "0"'
 
         - name: build（config → manifest → db → site → index → sitemap）
           script: npm run build
