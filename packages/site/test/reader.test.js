@@ -148,6 +148,7 @@ function readerFixture({
     visible: () => pages.filter((page) => page.classList.contains('current')).map((page) => page.id),
     click: (id) => nodes.get(id).fire('click'),
     changeMode(value) { settings.fire('change', { target: { name: 'reader-mode', value } }); },
+    scrollTo(top) { scrollTo(top); flush(); },
     scrollToPage(n) { scrollTo(readerTop + (n - 1) * (pageHeight + pageGap)); flush(); },
     completeDocument(addedHeight = 0) {
       document.documentElement.scrollHeight += addedHeight;
@@ -445,4 +446,97 @@ test('长条：离开页面前保存尚未执行下一帧的滚动，文末记�
   r.window.fire('scroll');
   r.flush();
   assert.equal(r.progress().n, 6);
+});
+
+test('长条：判页标记到达页顶才换页，页间空隙归前页，首尾边界正确', () => {
+  const r = readerFixture({ mode: 'long', total: 4, readerTop: 500, pageHeight: 1000, pageGap: 100 });
+  r.flush();
+  const initialWrites = r.writes.length;
+  r.scrollTo(0);
+  assert.equal(r.current(), 1, '尚未滚到第一张图时仍是第一页');
+  assert.equal(r.writes.length, initialWrites);
+  // 第1页占文档500..1500，第2页从1600开始；判页标记位于视口顶部200px。
+  r.scrollTo(1350);
+  assert.equal(r.current(), 1, '标记落在1550px的页间空隙时保留前页');
+  r.scrollTo(1399);
+  assert.equal(r.current(), 1, '标记距第2页顶部还差1px');
+  assert.equal(r.writes.length, initialWrites, '同一页内滚动不重复写存储');
+  r.scrollTo(1400);
+  assert.equal(r.current(), 2, '页顶恰好达到标记时进入下一页');
+  assert.equal(r.progress().n, 2);
+  assert.equal(r.location.hash, '#p2');
+  assert.equal(r.writes.length, initialWrites + 1);
+  r.scrollTo(1399);
+  assert.equal(r.current(), 1, '向上跨回边界时恢复前页');
+  assert.equal(r.writes.length, initialWrites + 2);
+  r.scrollTo(3600);
+  assert.equal(r.current(), 4, '末页顶部达到标记时进入末页');
+  assert.equal(r.progress().n, 4);
+  assert.equal(r.location.hash, '#p4');
+});
+
+test('长条：单页章节无需查询页位置，滚动仍保持第一页', () => {
+  const r = readerFixture({ mode: 'long', total: 1 });
+  r.flush();
+  let reads = 0;
+  const measure = r.pages[0].getBoundingClientRect;
+  r.pages[0].getBoundingClientRect = () => { reads++; return measure(); };
+  const writes = r.writes.length;
+  r.scrollTo(200);
+  r.scrollTo(1000);
+  r.scrollTo(0);
+  assert.equal(reads, 0);
+  assert.equal(r.current(), 1);
+  assert.equal(r.progress().n, 1);
+  assert.equal(r.writes.length, writes);
+});
+
+test('长条：不同页高与布局变化后仍按实时位置判页', () => {
+  const r = readerFixture({ mode: 'long', total: 5 });
+  r.flush();
+  const tops = [100, 450, 2000, 2400, 4000];
+  r.pages.forEach((page, i) => {
+    page.getBoundingClientRect = () => ({ top: tops[i] - r.window.scrollY });
+  });
+  r.scrollTo(1800);
+  assert.equal(r.current(), 3);
+  tops[2] = 2300;
+  r.window.fire('resize');
+  r.flush();
+  assert.equal(r.current(), 2, '前页变高后不沿用陈旧坐标');
+  r.scrollTo(2100);
+  assert.equal(r.current(), 3);
+  r.scrollTo(3800);
+  assert.equal(r.current(), 5);
+});
+
+test('长条：1000页章节每次判页最多读取10个页位置，同页滚动不写存储', (t) => {
+  const r = readerFixture({ mode: 'long', total: 1000 });
+  r.flush();
+  let reads = 0;
+  for (const page of r.pages) {
+    const measure = page.getBoundingClientRect;
+    page.getBoundingClientRect = () => { reads++; return measure(); };
+  }
+  r.scrollToPage(900);
+  const firstReads = reads;
+  assert.equal(r.current(), 900);
+  assert.equal(r.progress().n, 900);
+  assert.ok(reads > 0 && reads <= 10, `第900页判页读取了${reads}次`);
+  const writes = r.writes.length;
+  reads = 0;
+  r.scrollTo(r.window.scrollY + 10);
+  const samePageReads = reads;
+  assert.equal(r.current(), 900);
+  assert.equal(r.writes.length, writes);
+  assert.equal(r.location.hash, '#p900');
+  assert.ok(reads > 0 && reads <= 10, `同页滚动读取了${reads}次`);
+  for (const n of [1, 500, 999, 1000]) {
+    reads = 0;
+    r.scrollToPage(n);
+    assert.equal(r.current(), n);
+    assert.ok(reads <= 10, `第${n}页判页读取了${reads}次`);
+  }
+  assert.ok(r.pages.every((page) => page.img.loading === 'lazy'));
+  t.diagnostic(`1000页夹具：第900页读取${firstReads}次；同页再滚10px读取${samePageReads}次`);
 });

@@ -277,9 +277,17 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
         // 以视口上部的阅读位置判定当前页，留出顶部导航的空间。
         var marker = Math.min(window.innerHeight / 3, 200);
         var n = 1;
-        for (var i = 1; i < total; i++) {
-          if (pages[i].getBoundingClientRect().top > marker) break;
-          n = i + 1;
+        // 长条页按 DOM 顺序纵向排列；二分找最后一个顶部已到达标记的页，避免逐帧扫描整章。
+        // 每次读取实时布局，不缓存坐标，图片加载或视口变化后仍按当前位置判页。
+        var low = 1;
+        var high = total - 1;
+        while (low <= high) {
+          var mid = Math.floor((low + high) / 2);
+          if (pages[mid].getBoundingClientRect().top > marker) high = mid - 1;
+          else {
+            n = mid + 1;
+            low = mid + 1;
+          }
         }
         if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) n = total;
         requestedPage = n;
