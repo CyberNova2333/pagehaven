@@ -3,7 +3,7 @@
 import Base from '../../layouts/Base.astro';
 import siteConfig from '../../generated/site-config.json';
 import gallery from '../../generated/gallery.json';
-import { chapterCount, imageUrl } from '../../lib/gallery.js';
+import { chapterCount, imageUrl, jsonForScript } from '../../lib/gallery.js';
 
 export function getStaticPaths() {
   return gallery.series.map((s) => ({ params: { series: s.id }, props: { series: s } }));
@@ -12,7 +12,10 @@ export function getStaticPaths() {
 const { series } = Astro.props;
 const { images } = siteConfig;
 const cover = series.coverKey ? imageUrl(images.hosts[0], series.coverKey) : null;
-const firstChapter = series.issues[0]?.chapters[0] ?? null;
+const chapters = series.issues.flatMap((issue) => issue.chapters.map((chapter) => ({
+  url: chapter.url, title: chapter.title, pages: chapter.pages.length,
+})));
+const firstChapter = chapters[0] ?? null;
 const STATUSB = { ongoing: '连载中', completed: '已完结', hiatus: '休载', cancelled: '已终止' };
 ---
 
@@ -63,24 +66,37 @@ const STATUSB = { ongoing: '连载中', completed: '已完结', hiatus: '休载'
     }
   </ul>
 
-  <script is:inline define:vars={{ seriesUrl: series.url, seriesTitle: series.title }}>
+  <script type="application/json" id="series-chapters" set:html={jsonForScript(chapters)} />
+  <script is:inline>
     (function () {
       var link = document.getElementById('start-reading');
       if (!link) return;
+      var chapters = JSON.parse(document.getElementById('series-chapters').textContent || '[]');
+      var currentChapters = new Map(chapters.map(function (chapter) { return [chapter.url, chapter]; }));
       var best = null;
-      for (var i = 0; i < localStorage.length; i++) {
-        var k = localStorage.key(i);
-        if (!k || k.indexOf('gallery:progress:') !== 0) continue;
-        try {
-          var v = JSON.parse(localStorage.getItem(k));
-          if (v && v.url && v.url.indexOf(seriesUrl) === 0 && (!best || (v.ts || 0) > (best.ts || 0))) best = v;
-        } catch (e) {
-          /* 坏数据跳过 */
+      try {
+        var storage = localStorage;
+        for (var i = 0; i < storage.length; i++) {
+          try {
+            var k = storage.key(i);
+            if (!k || k.indexOf('gallery:progress:') !== 0) continue;
+            var v = JSON.parse(storage.getItem(k));
+            if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+            var chapter = currentChapters.get(v.url);
+            if (!chapter) continue;
+            var n = Number.isSafeInteger(v.n) ? Math.max(1, Math.min(chapter.pages, v.n)) : 1;
+            var ts = Number.isFinite(v.ts) && v.ts >= 0 ? v.ts : 0;
+            if (!best || ts > best.ts) best = { chapter: chapter, n: n, ts: ts };
+          } catch (e) {
+            /* 单条坏数据或读取失败不影响其他章节。 */
+          }
         }
+      } catch (e) {
+        /* 浏览器禁止访问存储时保留默认的开始阅读链接。 */
       }
       if (best) {
-        link.href = best.url + (best.n ? '#p' + best.n : '');
-        link.textContent = '继续阅读：' + (best.title || best.url) + ' →';
+        link.href = best.chapter.url + '#p' + best.n;
+        link.textContent = '继续阅读：' + best.chapter.title + ' →';
       }
     })();
   </script>
