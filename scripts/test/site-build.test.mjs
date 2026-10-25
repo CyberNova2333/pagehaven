@@ -189,6 +189,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.ok(html.includes('ArrowLeft') && html.includes('ArrowRight'));
     // 图片失败切源的脚本读 data-hosts
     assert.deepEqual(jsonAttr(html, 'data-hosts'), config.images.hosts);
+    assert.equal((html.match(/class="image-feedback" hidden/g) ?? []).length, 3, '无 JS 时图片反馈隐藏，原生图片仍可读');
     // 外壳
     assert.ok(html.includes(`<html lang="${config.site.lang}">`));
     assert.ok(html.includes(`<link rel="canonical" href="${siteOrigin}/sample/vol01/c001/">`));
@@ -406,6 +407,9 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       assert.ok(html.includes('你好，世界！'), '上一个用例放回的分片应仍被取到，文字层完整');
       assert.ok(html.includes(`${imageOrigin}/${config.images.prefix}sample/vol01/c001/1-0123456789ab.webp`), '图片仍从第一条域名取');
       assert.ok(!html.includes('https://backup.example.org/'), '第二条域名只给切源脚本用，不该出现在图片 URL 里');
+      // 真实切源与逐页重试由 reader-images 行为测试覆盖，这里守住页面接线与构建后的模块。
+      assert.equal((html.match(/class="image-retry btn"/g) ?? []).length, 3, '每页提供独立重试入口');
+      assert.match(await readerChunks(out, html), /image-feedback/, '图片状态模块必须进入阅读器产物');
       const search = await readFile(join(out, 'search', 'index.html'), 'utf8');
       const m = /<script type="application\/json" id="search-config">(.*?)<\/script>/.exec(search);
       assert.deepEqual(JSON.parse(m[1]).images.hosts, [config.images.hosts[0], 'backup.example.org']);

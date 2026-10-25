@@ -76,29 +76,10 @@ const tocIssues = series.issues.map((iss) => ({
   </nav>
 
 
-  <script is:inline data-hosts={JSON.stringify(hosts)}>
-    (function () {
-      var hosts = JSON.parse(document.currentScript.dataset.hosts);
-      if (hosts.length < 2) return;
-      var swapHost = function (u) {
-        return u.replace('//' + hosts[0] + '/', '//' + hosts[1] + '/');
-      };
-      document.addEventListener(
-        'error',
-        function (e) {
-          var img = e.target;
-          if (!img || img.tagName !== 'IMG' || !img.closest('.page') || img.dataset.retried) return;
-          img.dataset.retried = '1';
-          img.src = swapHost(img.src);
-        },
-        true,
-      );
-    })();
-  </script>
-
   <div
     id="reader"
     class="reader"
+    data-hosts={JSON.stringify(hosts)}
     data-total={total}
     data-key={chapter.key}
     data-url={chapter.url}
@@ -168,6 +149,10 @@ const tocIssues = series.issues.map((iss) => ({
         return (
           <section class="page" id={`p${p.n}`} data-n={p.n}>
             <p class="page-num muted">第 {p.n} 页</p>
+            <div class="image-feedback" hidden>
+              <p class="image-message" role="status"></p>
+              <button class="image-retry btn" type="button" aria-label={`重试第 ${p.n} 页图片`} hidden>重试本页</button>
+            </div>
             <div class="frame" style={`aspect-ratio:${p.w}/${p.h}`}>
               <img
                 src={imageUrl(hosts[0], p.keys.webp)}
@@ -196,6 +181,12 @@ const tocIssues = series.issues.map((iss) => ({
     <a href={issue.url}>目录</a>
     {next ? <a rel="next" href={urlForKey(next.key)}>下一话：{next.title} →</a> : <span></span>}
   </nav>
+
+  <script>
+    import { mountReaderImages } from '../../../../lib/reader-images.js';
+    const reader = document.getElementById('reader');
+    if (reader) mountReaderImages(reader, { hosts: JSON.parse(reader.dataset.hosts || '[]') });
+  </script>
 
   <script is:inline>
     (function () {
@@ -691,6 +682,10 @@ const tocIssues = series.issues.map((iss) => ({
   .reader .page-num { font-size: 0.8rem; margin: 0 0 0.3rem 0.2rem; }
   .reader .frame { position: relative; container-type: inline-size; background: #14101f; border-radius: 12px; overflow: hidden; aspect-ratio: 1; }
   .reader .frame img { display: block; width: 100%; height: auto; }
+  .reader .image-feedback { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 3.5rem; padding: 0.35rem; color: var(--text-dim); }
+  .reader .image-feedback[hidden], .reader .image-retry[hidden] { display: none; }
+  .reader .image-message { margin: 0; font-size: 0.82rem; }
+  .reader .image-retry { flex-shrink: 0; padding: 0.4rem 0.7rem; font-size: 0.82rem; }
 
   .reader .text-layer { position: absolute; inset: 0; }
   .reader .box {
