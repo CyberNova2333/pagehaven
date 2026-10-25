@@ -10,6 +10,7 @@ import { buildGalleryDb, openGalleryDb, sha256Hex } from '@gallery/core';
 import { loadGallery } from '../../../scripts/lib/data.mjs';
 import { queryLines, ftsPhrase, likePattern } from '../src/query.js';
 import { loadGalleryDb } from '../src/load.js';
+import { mountSearch } from '../src/mount.js';
 
 const FIXTURES = fileURLToPath(new URL('../../core/test/fixtures/data', import.meta.url));
 const gallery = await loadGallery({ dataDir: FIXTURES });
@@ -18,6 +19,9 @@ const gallery = await loadGallery({ dataDir: FIXTURES });
 const DB_BYTES = await buildGalleryDb(gallery, { pageSize: 4096 });
 const DB_META = { key: 'db/gallery-test.sqlite', size: DB_BYTES.byteLength, sha256: await sha256Hex(DB_BYTES) };
 const BASE_CONFIG = { images: { hosts: ['img.example.org'] }, db: { prefix: 'db/' } };
+const serveDb = (meta = DB_META, bytes = DB_BYTES) => async (url) => url.endsWith('manifest.json')
+  ? Response.json({ db: meta })
+  : new Response(bytes);
 
 async function withDb(fn) {
   const db = await openGalleryDb(DB_BYTES);
@@ -179,6 +183,52 @@ test('loadGalleryDb：第一个主机挂了换第二个，最终用能用的那�
   }
 });
 
+test('queryLines：两字永远走 LIKE，不受旧 minMatchLength 参数影响', async () => {
+  await withDb((db) => {
+    for (const minMatchLength of [1, 2, 3]) {
+      const result = queryLines(db, '契约', { minMatchLength });
+      assert.equal(result.mode, 'like');
+      assert.equal(result.rows.length, 1);
+    }
+  });
+});
+
+async function dbWithManyMatches() {
+  const db = await openGalleryDb(DB_BYTES);
+  const page = db.selectValue("SELECT p.id FROM pages p JOIN chapters c ON c.id = p.chapter_id WHERE c.id LIKE 'sample/%' LIMIT 1");
+  const otherPage = db.selectValue("SELECT p.id FROM pages p JOIN chapters c ON c.id = p.chapter_id WHERE c.id LIKE 'zeta/%' LIMIT 1");
+  db.transaction(() => {
+    for (let n = 0; n < 55; n++) {
+      db.exec({ sql: "INSERT INTO lines(page_id, ord, text, text_norm) VALUES (?, ?, '共同台词', '共同台词')", bind: [page, n + 100] });
+    }
+    db.exec({ sql: "INSERT INTO lines(page_id, ord, text, text_norm) VALUES (?, 100, '共同台词', '共同台词')", bind: [otherPage] });
+    db.exec("INSERT INTO lines_fts(lines_fts) VALUES('rebuild')");
+  });
+  return db;
+}
+
+test('queryLines：作品过滤与分页不漏后续命中，hasMore 不把 50 条当总数', async () => {
+  const db = await dbWithManyMatches();
+  try {
+    for (const query of ['共同', '共同台词']) {
+      const first = queryLines(db, query, { seriesId: 'sample' });
+      const last = queryLines(db, query, { seriesId: 'sample', offset: 50 });
+      assert.equal(first.rows.length, 50);
+      assert.equal(first.hasMore, true);
+      assert.equal(last.rows.length, 5);
+      assert.equal(last.hasMore, false);
+      assert.equal(new Set([...first.rows, ...last.rows].map((row) => row.url)).size, 55);
+      assert.ok(first.rows.every((row) => row.seriesId === 'sample'));
+      assert.equal(queryLines(db, query, { seriesId: 'zeta' }).rows.length, 1);
+      assert.equal(queryLines(db, query, { seriesId: "sample' OR 1=1 --" }).rows.length, 0);
+    }
+    assert.throws(() => queryLines(db, '共同', { offset: -1 }), /offset/);
+    assert.throws(() => queryLines(db, '共同', { limit: 0 }), /limit/);
+  } finally {
+    db.close();
+  }
+});
+
 test('loadGalleryDb：固定版本只请求固定 key，不读取或回退当前 manifest', async () => {
   const config = { ...BASE_CONFIG, db: { ...BASE_CONFIG.db, release: DB_META } };
   const calls = [];
@@ -281,3 +331,110 @@ test('loadGalleryDb：响应头宣布超限时不读 body，尺寸撒谎或摘�
 });
 
 /** 只实现搜索接线需要的 DOM，验证读者看到的状态与实际网络请求。 */
+function searchDom(config) {
+  class Element {
+    children = [];
+    listeners = new Map();
+    textContent = '';
+    value = '';
+    hidden = false;
+    disabled = false;
+    get firstChild() { return this.children[0] ?? null; }
+    append(...items) { this.children.push(...items); }
+    removeChild(item) { this.children.splice(this.children.indexOf(item), 1); }
+    addEventListener(name, fn) { this.listeners.set(name, fn); }
+    removeEventListener(name, fn) { if (this.listeners.get(name) === fn) this.listeners.delete(name); }
+  }
+  const elements = new Map(['config', 'form', 'input', 'status', 'results', 'more', 'series', 'coverage'].map((name) => [`search-${name}`, new Element()]));
+  elements.get('search-config').textContent = JSON.stringify(config);
+  return {
+    elements,
+    document: { getElementById: (id) => elements.get(id), createElement: () => new Element() },
+    location: { href: 'https://gallery.example/search/', search: '' },
+  };
+}
+
+test('mountSearch：空台词覆盖率和归一化后不足两字时都不下载数据库', async () => {
+  let calls = 0;
+  const fetchImpl = async () => { calls++; throw new Error('不应发起请求'); };
+  const empty = searchDom({ ...BASE_CONFIG, coverage: { chapters: 12, withText: 0, boxes: 0 } });
+  const emptySearch = mountSearch({ ...empty, fetchImpl });
+  assert.match(empty.elements.get('search-status').textContent, /尚未收录/);
+  assert.match(empty.elements.get('search-coverage').textContent, /0 \/ 12/);
+  await emptySearch.run('漫画作者');
+  assert.match(empty.elements.get('search-status').textContent, /尚未收录/);
+  emptySearch.destroy();
+  const active = searchDom(BASE_CONFIG);
+  const activeSearch = mountSearch({ ...active, fetchImpl });
+  for (const query of ['魔', '  ，。', '𠀀']) {
+    await activeSearch.run(query);
+    assert.match(active.elements.get('search-status').textContent, /至少输入 2 个字/);
+  }
+  activeSearch.destroy();
+  assert.equal(calls, 0);
+});
+
+test('mountSearch：50 条只是首批，加载更多后显示完整数量，换作品清除旧结果', async () => {
+  const db = await dbWithManyMatches();
+  const { initSqlite } = await import('@gallery/core');
+  const sqlite3 = await initSqlite();
+  const bytes = sqlite3.capi.sqlite3_js_db_export(db.pointer);
+  db.close();
+  const meta = { ...DB_META, size: bytes.length, sha256: await sha256Hex(bytes) };
+  const dom = searchDom({ ...BASE_CONFIG, db: { ...BASE_CONFIG.db, release: meta } });
+  const search = mountSearch({ ...dom, fetchImpl: serveDb(meta, bytes) });
+  const results = dom.elements.get('search-results');
+  const status = dom.elements.get('search-status');
+  const more = dom.elements.get('search-more');
+  dom.elements.get('search-series').value = 'sample';
+  await search.run('共同');
+  assert.equal(results.children.length, 50);
+  assert.match(status.textContent, /已显示 50.*还有更多/);
+  assert.equal(more.hidden, false);
+  await more.listeners.get('click')();
+  assert.equal(results.children.length, 55);
+  assert.equal(status.textContent, '找到 55 条台词');
+  assert.equal(more.hidden, true);
+  dom.elements.get('search-series').value = 'zeta';
+  await search.run('共同');
+  assert.equal(results.children.length, 1);
+  assert.equal(status.textContent, '找到 1 条台词');
+  search.destroy();
+  assert.equal(dom.elements.get('search-form').listeners.size, 0);
+});
+
+test('mountSearch：加载中改词只显示最新结果，销毁会取消请求且不换源', async () => {
+  const config = { ...BASE_CONFIG, db: { ...BASE_CONFIG.db, release: DB_META } };
+  const dom = searchDom(config);
+  let finish;
+  let calls = 0;
+  const search = mountSearch({ ...dom, fetchImpl: async () => {
+    calls++;
+    return new Promise((resolve) => { finish = resolve; });
+  } });
+  const first = search.run('漫画作者');
+  const second = search.run('再见');
+  finish(new Response(DB_BYTES));
+  const [oldRows, latestRows] = await Promise.all([first, second]);
+  assert.deepEqual(oldRows, []);
+  assert.equal(latestRows.length, 1);
+  assert.equal(latestRows[0].text, '再见。');
+  assert.equal(dom.elements.get('search-results').children.length, 1);
+  assert.equal(calls, 1);
+  search.destroy();
+
+  const pendingDom = searchDom({ ...config, images: { hosts: ['first.example', 'second.example'] } });
+  let signal;
+  let pendingCalls = 0;
+  const pendingSearch = mountSearch({ ...pendingDom, fetchImpl: async (_url, init) => {
+    pendingCalls++;
+    signal = init.signal;
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  } });
+  const pending = pendingSearch.run('漫画作者');
+  pendingSearch.destroy();
+  assert.deepEqual(await pending, []);
+  assert.equal(signal.aborted, true);
+  assert.equal(pendingCalls, 1);
+  assert.equal(pendingDom.elements.get('search-results').children.length, 0);
+});

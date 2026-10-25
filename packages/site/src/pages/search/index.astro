@@ -7,11 +7,20 @@ import gallery from '../../generated/gallery.json';
 import { jsonForScript } from '../../lib/gallery.js';
 
 const { images, db, search, features } = siteConfig;
+const chapters = gallery.series.flatMap((s) => s.issues.flatMap((issue) => issue.chapters));
+const coverage = {
+  chapters: chapters.length,
+  withText: chapters.filter((chapter) => chapter.hasText).length,
+  boxes: gallery.totals.boxes,
+};
+const noText = coverage.withText === 0 || coverage.boxes === 0;
+const noContent = coverage.chapters === 0;
 const searchConfig = {
   images: { hosts: images.hosts },
   db: { page_size: db.page_size, chunk_size: db.chunk_size, prefix: db.prefix, whole_download_max_bytes: db.whole_download_max_bytes, release: gallery.searchDb ?? null },
   search: { request_chunk_size: search.request_chunk_size, min_match_length: search.min_match_length, api_path: search.api_path },
   features: { search_function: features.search_function },
+  coverage,
 };
 ---
 
@@ -20,10 +29,10 @@ const searchConfig = {
     <p class="eyebrow">Titles</p>
     <h1>搜索</h1>
     <form id="meta-form" role="search">
-      <input id="meta-q" type="search" placeholder="作品名 / 作者 / 标签" autocomplete="off" />
+      <input id="meta-q" type="search" aria-label="作品名、作者或标签" placeholder="作品名 / 作者 / 标签" autocomplete="off" />
       <button class="btn" type="submit">过滤</button>
     </form>
-    <p id="meta-status" class="muted" aria-live="polite"></p>
+    <p id="meta-status" class="muted" aria-live="polite">{noContent ? '当前还没有作品，内容发布后即可检索。' : ''}</p>
     <ul id="meta-results" class="list"></ul>
   </section>
 
@@ -31,18 +40,23 @@ const searchConfig = {
     <p class="eyebrow">Lines</p>
     <h2>搜索台词</h2>
     <form id="search-form" role="search" action="/search/" method="get">
-      <input id="search-input" name="q" type="search" placeholder="输入台词片段，例如「希望」" autocomplete="off" />
+      <input id="search-input" name="q" type="search" aria-label="台词片段" placeholder="输入台词片段，例如「希望」" autocomplete="off" />
+      <select id="search-series" name="series" aria-label="限定作品">
+        <option value="">全部作品</option>
+        {gallery.series.map((series) => <option value={series.id}>{series.title}</option>)}
+      </select>
       <button class="btn btn-primary" type="submit">搜索</button>
     </form>
-    <p id="search-status" class="muted" aria-live="polite">输入台词片段开始检索</p>
+    <p id="search-coverage" class="muted">台词稿覆盖 {coverage.withText} / {coverage.chapters} 话，共 {coverage.boxes} 个文本框。</p>
+    <p id="search-status" class="muted" aria-live="polite">{noContent ? '当前还没有作品，内容发布后即可检索。' : noText ? '当前尚未收录可检索的台词，作品和漫画仍可正常浏览。' : '输入至少 2 个字开始检索。'}</p>
     <p class="muted note">
-      至少输入 {search.min_match_length} 个字。检索库经 CDN 整份下载并在浏览器里校验，
-      首次加载需要几秒；长时间停在「加载中」或提示不可用，说明检索库暂不可用，
-      作品与话页面不受影响。
+      仅检索已经收录的台词稿；尚未录入文字的漫画不会出现在台词结果中。
+      至少输入 2 个字，可选择作品缩小范围。首次搜索需要加载数据。
     </p>
   </section>
 
   <ol id="search-results"></ol>
+  <button id="search-more" class="btn" type="button" hidden>加载更多台词</button>
   <noscript>
     <p class="muted">检索在浏览器里完成，需要 JavaScript。作品与话页面不受影响。</p>
   </noscript>
@@ -71,7 +85,7 @@ const searchConfig = {
         }
         return cache;
       }
-      function render(items) {
+      function render(items, hasCatalog) {
         list.textContent = '';
         items.forEach(function (s) {
           var li = document.createElement('li');
@@ -85,16 +99,16 @@ const searchConfig = {
           li.appendChild(small);
           list.appendChild(li);
         });
-        status.textContent = items.length ? '' : '没有匹配的作品';
+        status.textContent = items.length ? '' : hasCatalog ? '没有匹配的作品' : '当前还没有作品，内容发布后即可检索。';
       }
       function filter(q) {
         var kw = String(q || '').trim().toLowerCase();
         load().then(function (items) {
-          if (!kw) return render(items);
+          if (!kw) return render(items, items.length > 0);
           render(items.filter(function (s) {
             var hay = [s.title, s.description].concat(s.authors || [], s.artists || [], s.tags || []).join(' ').toLowerCase();
             return hay.indexOf(kw) !== -1;
-          }));
+          }), items.length > 0);
         });
       }
       form.addEventListener('submit', function (e) { e.preventDefault(); filter(input.value); });
@@ -107,20 +121,23 @@ const searchConfig = {
 <style>
   .meta-head { margin-bottom: 1.2rem; }
   #meta-form, #search-form { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.8rem 0 0.7rem; }
-  #meta-q, #search-input {
+  #meta-q, #search-input, #search-series {
     flex: 1;
     min-width: 12rem;
     padding: 0.62rem 1rem;
     font: inherit;
     color: var(--ink);
-    background: rgba(255, 255, 255, 0.75);
+    background: #fff;
     border: 1px solid var(--line);
     border-radius: 999px;
     outline: none;
     transition: border-color 0.16s ease, box-shadow 0.16s ease;
   }
   #meta-q::placeholder, #search-input::placeholder { color: var(--text-dim); }
-  #meta-q:focus, #search-input:focus { border-color: var(--pink); box-shadow: 0 0 0 3px rgba(255, 143, 171, 0.18); }
+  #meta-q:focus, #search-input:focus, #search-series:focus-visible { border-color: var(--pink); box-shadow: 0 0 0 3px rgba(255, 143, 171, 0.2); }
+  #search-series { flex: 0 1 auto; min-width: 8rem; }
+  #search-more { margin-top: 1rem; }
+  #search-more[hidden] { display: none; }
   #meta-status, #search-status { margin: 0.2rem 0 0.8rem; }
   .note { font-size: 0.82rem; line-height: 1.65; margin: 0; }
   #search-results { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.55rem; }
@@ -134,12 +151,12 @@ const searchConfig = {
     background: var(--glass);
     border: 1px solid var(--line);
     border-radius: 14px;
-    box-shadow: 0 6px 20px rgba(123, 94, 167, 0.07);
+    box-shadow: var(--shadow);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
   }
-  #search-results li:hover { transform: translateY(-1px); border-color: var(--pink-soft); box-shadow: 0 10px 28px rgba(231, 95, 135, 0.14); }
+  #search-results li:hover { transform: translateY(-1px); border-color: var(--pink-soft); box-shadow: var(--shadow); }
   #search-results li a { color: var(--ink); font-weight: 500; }
   #search-results li a:hover { color: var(--pink-deep); }
   #search-results li small { color: var(--text-dim); font-size: 0.8rem; }

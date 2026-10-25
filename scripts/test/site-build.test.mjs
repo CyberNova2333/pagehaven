@@ -14,6 +14,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SiteConfigSchema } from '@gallery/platform';
 import { loadSiteConfig } from '../lib/config.mjs';
 import { loadGallery } from '../lib/data.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
@@ -60,6 +61,16 @@ async function walk(dir, out = []) {
   }
   return out;
 }
+
+test('站点配置：trigram 最短 MATCH 长度固定为 3，拒绝会漏掉两字结果的设置', () => {
+  assert.equal(SiteConfigSchema.safeParse(config).success, true);
+  assert.equal(config.search.min_match_length, 3);
+  for (const min_match_length of [1, 2, 4]) {
+    const result = SiteConfigSchema.safeParse({ ...config, search: { ...config.search, min_match_length } });
+    assert.equal(result.success, false);
+    assert.ok(result.error.issues.some((issue) => issue.path.join('.') === 'search.min_match_length'));
+  }
+});
 
 test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，守卫通过', { timeout: 120_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-site-'));
@@ -174,7 +185,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     const issue2 = await readFile(join(DIST, 'sample', 'vol02', 'index.html'), 'utf8');
     assert.ok(!issue2.includes('有台词'), '没有台词稿的话不标');
     const search = await readFile(join(DIST, 'search', 'index.html'), 'utf8');
-    for (const id of ['search-form', 'search-input', 'search-results', 'search-status', 'search-config']) {
+    for (const id of ['search-form', 'search-input', 'search-results', 'search-status', 'search-config', 'search-series', 'search-more', 'search-coverage']) {
       assert.ok(search.includes(`id="${id}"`), `搜索页缺 #${id}`);
     }
     const m = /<script type="application\/json" id="search-config">(.*?)<\/script>/.exec(search);
@@ -183,6 +194,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.deepEqual(cfg.images.hosts, config.images.hosts);
     assert.equal(cfg.search.request_chunk_size, cfg.db.page_size);
     assert.deepEqual(cfg.db.release, manifest.db, '页面固定绑定同次构建的检索库');
+    assert.deepEqual(cfg.coverage, { chapters: 4, withText: 3, boxes: 5 });
     const notFound = await readFile(join(DIST, '404.html'), 'utf8');
     assert.ok(notFound.includes('<meta name="robots" content="noindex">'));
     assert.ok(!notFound.includes('rel="canonical"'));
@@ -371,6 +383,9 @@ test('0 话也能建：空 data/ 目录下首页、搜索页、404、索引总�
   const search = await readFile(join(DIST, 'search', 'index.html'), 'utf8');
   const searchConfig = JSON.parse(/<script type="application\/json" id="search-config">(.*?)<\/script>/.exec(search)[1]);
   assert.equal(searchConfig.db.release, null);
+  assert.deepEqual(searchConfig.coverage, { chapters: 0, withText: 0, boxes: 0 });
+  assert.ok(search.includes('当前还没有作品'));
+  assert.ok(!search.includes('作品和漫画仍可正常浏览'));
   assert.equal(((await readFile(join(DIST, 'sitemap.xml'), 'utf8')).match(/<url>/g) ?? []).length, 2);
   assert.equal(run('check.mjs', env).status, 0);
 });
