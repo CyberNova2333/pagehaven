@@ -6,7 +6,8 @@
 //   1. site.config.yaml 合法，且 DB 的 page_size == 检索端 requestChunkSize（铁律 4）
 //   2. _headers / _redirects / edgeone.json 与 site.config.yaml 同步（铁律 5）
 //   3. packages/{core,site,search} 只用 Web 标准 API：无 node: 导入、无 Node 内置模块、
-//      无原生依赖、不出现对象存储直连域名（铁律 1、7）
+//      无原生依赖、不出现对象存储直连域名（铁律 1、7）；
+//      依赖树里没有 sharp/libvips（LGPL）、站点图片服务仍是 noop（CONTRIBUTING §二之三）
 //   4. 流水线（CNB .cnb.yml）：没有 crontab，只有 main 的 push 跑检查，发布只 web_trigger（铁律 6）
 //   5. data/ 合法：meta 与 text 过 schema、互相对得上（铁律 8：数据唯一来源是 R2 + data/）
 //   6. dist：文件数 ≤ 18 000、单文件 ≤ 20 MB、没有图片和 DB、每话恰好一个 HTML（铁律 4）；
@@ -138,6 +139,33 @@ await section('packages/{core,site,search} 无 Node 内置模块 / 原生依赖'
         problems.push(`packages/${pkg} 的依赖 ${dep} 带原生构建（binding.gyp）（铁律 1）`);
       }
     }
+  }
+  return problems;
+});
+
+// ── 3b. 依赖树的许可证底线（CONTRIBUTING §二之三）─────────────────────
+await section('依赖树：非宽松许可证只许出现在构建期工具链里', async () => {
+  const problems = [];
+  const lock = JSON.parse(await readFile(join(ROOT, 'package-lock.json'), 'utf8'));
+  const entries = lock.packages ?? {};
+
+  // sharp 是 `astro` 的可选依赖，跟着默认图片服务一起进来，带一批 LGPL 的 libvips 二进制。
+  // 站点不做构建期图像处理（图片全走 CDN），所以它不该出现在树里：换 noop 服务 + 从 lock 里摘掉。
+  // 按许可证判定，不按包名：@img/colour 挂在同一个 scope 下但它是 MIT，不算。
+  const sharpish = Object.entries(entries).filter(
+    ([k, v]) => v?.license && /LGPL/i.test(v.license) && (k === 'node_modules/sharp' || k.startsWith('node_modules/@img/')),
+  );
+  if (sharpish.length > 0) {
+    problems.push(
+      `lock 里有 ${sharpish.length} 个 sharp/libvips 条目（LGPL）：站点不做构建期图像处理，` +
+        `图片服务必须是 astro/assets/services/noop，且 sharp 不该在 lock 里（CONTRIBUTING §二之三）`,
+    );
+  }
+
+  // 图片服务一旦改回默认（sharp），下一个人 npm ci 就把 LGPL 装回来了。
+  const astroConfig = await readFile(join(ROOT, 'packages', 'site', 'astro.config.mjs'), 'utf8');
+  if (!astroConfig.includes('astro/assets/services/noop')) {
+    problems.push('packages/site/astro.config.mjs 没把 image.service 指向 noop：默认的 sharp 会带 LGPL 的 libvips 进树');
   }
   return problems;
 });
