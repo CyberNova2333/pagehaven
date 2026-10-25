@@ -598,14 +598,14 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     padding: 0.35rem 0.85rem;
     border-radius: 999px;
     border: 1px solid var(--line);
-    background: var(--glass);
-    color: var(--purple);
+    background: var(--surface-raised);
+    color: var(--accent-alt);
     transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
   }
-  .chapter-nav a:hover { color: var(--pink-deep); border-color: var(--pink-soft); background: #fff; }
+  .chapter-nav a:hover { color: var(--accent-strong); border-color: var(--accent-soft); background: var(--surface); }
   .reader { margin: 0.6rem 0 1rem; }
-  .reader .progress { position: sticky; top: 0; z-index: 5; height: 3px; background: var(--pink-soft); border-radius: 999px; overflow: hidden; }
-  .reader .progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--pink), var(--purple)); transition: width 0.15s linear; }
+  .reader .progress { position: sticky; top: 0; z-index: 5; height: 3px; background: var(--accent-soft); border-radius: 999px; overflow: hidden; }
+  .reader .progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-alt)); transition: width 0.15s linear; }
   .reader .pager {
     display: none;
     justify-content: center;
@@ -616,30 +616,30 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     margin: 0.6rem auto 1rem;
     padding: 0.35rem 0.9rem;
     color: var(--text-dim);
-    background: var(--glass);
+    background: var(--surface-raised);
     border: 1px solid var(--line);
     border-radius: 999px;
     box-shadow: var(--shadow);
   }
-  .reader .pager a { color: var(--purple); text-decoration: none; }
+  .reader .pager a { color: var(--accent-alt); text-decoration: none; }
   .reader .page-indicator { display: inline-flex; align-items: center; gap: 0.3rem; }
-  .reader #page-input { width: 3.4rem; padding: 0.12rem 0.3rem; font: inherit; text-align: center; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 8px; }
-  .reader .icon-btn { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--purple); font-size: 0.95rem; cursor: pointer; }
-  .reader .icon-btn:hover { border-color: var(--pink-soft); color: var(--pink-deep); background: #fff; }
+  .reader #page-input { width: 3.4rem; padding: 0.12rem 0.3rem; font: inherit; text-align: center; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  .reader .icon-btn { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--accent-alt); font-size: 0.95rem; cursor: pointer; }
+  .reader .icon-btn:hover { border-color: var(--accent-soft); color: var(--accent-strong); background: var(--surface); }
   .reader .text-toggle { cursor: pointer; user-select: none; }
   .reader .resume-tip { text-align: center; font-size: 0.82rem; margin: 0 0 0.6rem; }
   .reader .toc, .reader .settings {
     position: fixed; right: clamp(1rem, 4vw, 3rem); top: 4.2rem; z-index: 30;
     width: min(22rem, calc(100% - 2rem)); max-height: 70vh; overflow: auto;
-    padding: 0.8rem 1rem; box-shadow: var(--shadow);
-    background: var(--glass);
+    padding: 0.8rem 1rem; box-shadow: var(--shadow-hover);
+    background: var(--surface-raised);
   }
   .reader .toc-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
   .reader .toc nav { display: grid; gap: 0.4rem; }
   .reader .toc details summary { cursor: pointer; color: var(--ink); font-weight: 500; padding: 0.2rem 0; }
   .reader .toc ol { list-style: none; margin: 0.2rem 0 0.4rem; padding: 0 0 0 0.8rem; display: grid; gap: 0.15rem; max-height: 20rem; overflow: auto; }
   .reader .toc a { color: var(--text); font-size: 0.88rem; }
-  .reader .toc a.current { color: var(--pink-deep); font-weight: 600; }
+  .reader .toc a.current { color: var(--accent-strong); font-weight: 600; }
   .reader .settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin: 0.35rem 0; font-size: 0.9rem; }
   .reader .settings-row > span { color: var(--text-dim); min-width: 2.4rem; }
   .reader .settings-row label { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--text); cursor: pointer; }
@@ -648,7 +648,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     scroll-margin-top: 4rem;
     margin: 0 0 1.25rem;
     padding: 0.55rem;
-    background: var(--glass);
+    background: var(--surface-raised);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
@@ -656,7 +656,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     -webkit-backdrop-filter: blur(12px);
   }
   .reader .page-num { font-size: 0.8rem; margin: 0 0 0.3rem 0.2rem; }
-  .reader .frame { position: relative; container-type: inline-size; background: #14101f; border-radius: 12px; overflow: hidden; aspect-ratio: 1; }
+  .reader .frame { position: relative; container-type: inline-size; background: var(--reader-bg); border-radius: 12px; overflow: hidden; aspect-ratio: 1; }
   .reader .frame img { display: block; width: 100%; height: auto; }
   .reader .image-feedback { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 3.5rem; padding: 0.35rem; color: var(--text-dim); }
   .reader .image-feedback[hidden], .reader .image-retry[hidden] { display: none; }
@@ -678,7 +678,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     user-select: text;
     -webkit-user-select: text;
   }
-  .reader .box::selection { background: var(--pink-deep); color: #fff; text-shadow: none; }
+  .reader .box::selection { background: var(--accent-strong); color: var(--surface); text-shadow: none; }
   .reader .box.dot { overflow: visible; white-space: nowrap; }
   .reader .box.dot::before {
     content: '';
@@ -688,15 +688,15 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     width: 0.6em;
     height: 0.6em;
     border-radius: 50%;
-    background: var(--gold);
-    box-shadow: 0 0 0 2px #14101f, 0 0 10px rgba(201, 154, 63, 0.6);
+    background: var(--highlight);
+    box-shadow: 0 0 0 2px var(--reader-bg), 0 0 10px var(--highlight-ring);
   }
   .reader .box.hl, .reader:not(.js) .box:target {
-    outline: 2px solid var(--pink);
-    background: rgba(255, 143, 171, 0.28);
+    outline: 2px solid var(--accent);
+    background: var(--selection);
     border-radius: 2px;
   }
-  .reader.show-text .box { color: #fff; background: rgba(46, 35, 80, 0.82); text-shadow: 0 0 2px #14101f; border-radius: 2px; }
+  .reader.show-text .box { color: var(--surface); background: var(--text-overlay); text-shadow: 0 0 2px var(--reader-bg); border-radius: 2px; }
 
   /* JS 接管后：单页 / 双页 / 长条 */
   .reader.js .pager { display: flex; }

@@ -1,5 +1,5 @@
 {
-  "name": "comics-gallery",
+  "name": "pagehaven",
   "private": true,
   "type": "module",
   "engines": {
@@ -24,15 +24,15 @@
     "lint": "eslint .",
     "test": "node --test --test-concurrency=1",
     "publish:r2": "node scripts/publish-r2.mjs",
+    "release:check": "node scripts/release.mjs check",
+    "release:prepare": "node scripts/release.mjs prepare",
+    "release:activate": "node scripts/release.mjs activate",
     "deploy:cloudflare": "node scripts/deploy.mjs cloudflare",
     "deploy:edgeone": "node scripts/deploy.mjs edgeone",
     "deploy:github": "node scripts/deploy.mjs github",
     "purge": "node scripts/purge.mjs",
     "push:search": "node scripts/seo-push.mjs",
-    "status": "node scripts/write-status.mjs",
-    "release:check": "node scripts/release.mjs check",
-    "release:prepare": "node scripts/release.mjs prepare",
-    "release:activate": "node scripts/release.mjs activate"
+    "status": "node scripts/write-status.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

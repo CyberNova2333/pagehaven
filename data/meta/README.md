@@ -1,5 +1,8 @@
 # data/meta —— 作品元数据（人工维护）
 
+[返回「页间 · Pagehaven」项目说明](../../README.md)
+
+默认模板不附带作品；发布自己的漫画时，先在这里添加对应元数据。
 每个作品一个 `<series>.yaml`，`<series>` 同时是 URL 段与图片 key 的一段。
 schema 由 `@gallery/core` 定义（ARCHITECTURE §4），`npm run check` / `npm test` 校验。
 
@@ -18,7 +21,7 @@ issues:
         title: 第十二话
         pages:
           - n: 1
-            img: 0123456789ab   # 内容 sha256 前 12 位；key = img/<series>/<issue>/<chapter>/<n>-<img>.avif（另出同名 .webp）
+            img: 0123456789ab   # 内容 sha256 前 12 位；key = img/<series>/<issue>/<chapter>/<n>-<img>.webp
             w: 1200
             h: 1700
 ```

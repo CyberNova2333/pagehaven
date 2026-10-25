@@ -39,10 +39,10 @@ const { series, issue, chapter } = Astro.props;
   .reader .toc .toc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
   .reader .toc .toc-tools[hidden], .reader .toc [data-toc-retry][hidden] { display: none; }
   .reader .toc .toc-tools label { width: 100%; font-size: 0.85rem; }
-  .reader .toc .toc-tools input { flex: 1; min-width: 8rem; max-width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; }
+  .reader .toc .toc-tools input { flex: 1; min-width: 8rem; max-width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
   .reader .toc .toc-chapters { margin: 0.6rem 0 0; padding: 0; list-style: none; max-height: min(20rem, 45vh); overflow: auto; overscroll-behavior: contain; }
   .reader .toc .toc-chapters li { display: grid; gap: 0.1rem; padding: 0.4rem 0.2rem; }
   .reader .toc .toc-chapters a { overflow-wrap: anywhere; }
   .reader .toc .toc-chapters small { color: var(--text-dim); font-size: 0.75rem; }
-  .reader .toc .toc-chapters a[aria-current="page"] { color: var(--pink-deep); font-weight: 700; }
+  .reader .toc .toc-chapters a[aria-current="page"] { color: var(--accent-strong); font-weight: 700; }
 </style>

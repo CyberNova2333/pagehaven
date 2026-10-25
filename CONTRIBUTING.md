@@ -1,5 +1,7 @@
 # CONTRIBUTING.md — 协作方案（主干开发定制版）
 
+[返回「页间 · Pagehaven」项目说明](README.md)
+
 > 本文件是「怎么一起干活」的约定；技术档案与决策看
 > [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，Agent 硬约束看
 > [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md)。

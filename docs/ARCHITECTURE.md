@@ -1,12 +1,14 @@
 # ARCHITECTURE.md — 技术档案与决策
 
+[返回「页间 · Pagehaven」项目说明](../README.md)
+
 > 本文件记录**是什么、为什么**。规范（必须怎么做）在 `CLAUDE.md` / `AGENTS.md`，
 > 改了这里的决策要同步改那边的规则，反之亦然。
 > 每节末尾的「决策记录」按时间追加，不删旧条目。
 
 ## 0. 目标与约束
 
-**公开的漫画画廊**：作品 / 期 / 话 / 页浏览；期数等元数据检索；台词
+**页间 · Pagehaven** 是通用的公开静态漫画站点：作品 / 期 / 话 / 页浏览；期数等元数据检索；台词
 （画面文字）**子串级**全文检索；自动 sitemap；台词以可选中的文字层叠在图片上，
 同时对爬虫可见。
 
@@ -26,10 +28,10 @@
 ## 1. 架构
 
 ```
-本地翻译产物 (LabelPlus txt / PSD 文字层 / OCR JSON)
-        │  ingest（发布流水线里跑；OCR 仅在缺稿时）
+原始稿 (LabelPlus txt / 人工校对的 OCR JSON)
+        │  ingest（LabelPlus 可在发布流水线里导入；OCR 草稿须校对并显式接受）
         ▼
-data/meta/*.yaml + data/text/<series>/<chapter>.json        ← 仓库（公开）
+data/meta/*.yaml + data/text/<series>/<issue>/<chapter>.json ← 仓库（公开）
         │  build（CNB 云原生构建；Makers 构建机仅作纯静态构建备用）
         ▼
 dist/            静态 HTML(每话一文件，内嵌文字层) + 元数据索引 JSON 分片 + sitemap.xml
@@ -39,7 +41,7 @@ gallery.sqlite   FTS5 trigram 台词库；manifest.json；dist 归档
         └─ 图片/DB/归档 ──→ Cloudflare R2（私有桶，唯一持久数据源）
                                └─ 图片域名 img.<domain>：EdgeOne + ESA，CNAME 接入，
                                   以 S3 私有回源（SigV4）读 R2；所有读取都经这里
-浏览器端检索：sql.js-httpvfs 用 HTTP Range 经 CDN 读 gallery.sqlite，零服务端
+浏览器端检索：sqlite-wasm 经 CDN 整库下载并校验 sha256，零服务端（Range VFS 尚未接入）
 ```
 
 **R2 是唯一的真实数据源，且永远私有。** 读取一律经 CDN 域名——CDN 持有回源
@@ -64,14 +66,33 @@ Cloudflare Workers 或 Makers Cloud Functions，且永远可选。
 
 ## 3. 三平台矩阵
 
+发布环境约定：三个目标的页面都绑定构建时的检索库版本，上传只产生不可变资源。
+生产部署全部成功后才启用共享版本指针、写发布状态及通知搜索引擎；预览和仅上传不执行这些步骤。
+GitHub Pages 当前没有独立预览目标，`preview` 配合 `github` 或 `all` 必须在上传前拒绝。
+预览页面带 `noindex`，生产发布拒绝示例域名。平台适配变更仍须通过手动预览部署验收。
+GitHub Pages 推送后需通过 Pages API 确认本次提交构建成功，再记录部署成功；发布凭据需要
+Pages 读取权限，页面发布来源必须是 `gh-pages` 根目录。
+
 | | Cloudflare Pages | EdgeOne Makers | GitHub Pages |
 |---|---|---|---|
 | 部署 | `wrangler pages deploy dist` | `edgeone makers deploy`（上传 dist；`edgeone pages` 为兼容命令） | 流水线把 dist 推到 `gh-pages` 分支（`GITHUB_PAGES_REPO` / `GITHUB_PAGES_TOKEN`），Pages 发布源指到该分支 |
 | 配置生成物 | `dist/_headers`、`dist/_redirects` | `edgeone.json`（headers ≤ 30，redirects/rewrites ≤ 100） | 无；`.nojekyll`、`CNAME`、`404.html`，重定向用 `<meta http-equiv="refresh">` |
 | 函数入口 | `functions/`（Workers 运行时，`export default { fetch }`） | `edge-functions/`（isolate，`onRequest`）、`cloud-functions/`（真 Node） | 无 |
+| 可选增强分页 | 同源浏览器模块，纯静态可用 | 同左 | 同左；不依赖自定义响应头或函数 |
 | 切换动作 | 改站点域名 CNAME，TTL 300 | 同左 | 同左 |
 
-密钥（密钥仓库 `deployment-secrets/comics-gallery/`）：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID`
+`features.comimi_reader` 默认关闭；开启后只在阅读设置中提供“增强分页”选项，由用户手动启用。
+增强分页使用 Comimi 浏览器模块，三平台运行同一份静态产物，不增加函数、响应头或重定向规则，
+也不改变平台配置生成物。模块加载或初始化失败时回退现有阅读器，保留当前页。
+Comimi 原生仅支持单页与双页；条漫、文字层和 bbox 高亮继续由现有阅读器承担。
+页码桥接保留现有 `#p<n>` 链接、章节进度和首页继续阅读；`#p<n>b<i>` 台词深链仍交给现有阅读器。
+模块随站点打包为同源按需加载的脚本，不依赖外部脚本 CDN；未缓存时离线无法首次加载，
+此时沿用原阅读器。图片仍按既有方式加载，这项功能不提供整站离线阅读。
+
+仓库默认提供空内容模板与示例域名；三平台均需自行配置目标，生产发布拒绝示例站点及图片域名。
+发布按钮通过 `publish_secrets_url`、`deploy_secrets_url` 引用维护者自己的密钥文件；
+前者为上传必填，后者在选择部署目标时必填。检查与归档不再依赖外部邮件密钥。
+密钥变量：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID`
 `R2_SECRET_ACCESS_KEY` `R2_BUCKET` `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID` `EDGEONE_API_TOKEN`
 `EDGEONE_PROJECT_ID`（**项目 ID**，形如 `makers-…`，是权威定位）、`EDGEONE_PROJECT_NAME`（只作 CLI 的
 `-n` 参数）、`EDGEONE_API_REGION`（token 签发区域：`china` | `global`）。EdgeOne 允许多个同名项目，
@@ -83,9 +104,9 @@ SEO 只走 IndexNow：key 按协议公开在 `site.config.yaml` 的 `seo.indexno
 R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 
 代码分层：`packages/core`（schema、解析器、归一化、DB 构建）、`packages/site`
-（Astro）、`packages/search`（浏览器端检索 + 可选 Hono 函数）、`packages/platform`
-（deploy 脚本、配置生成器、函数入口壳）。业务代码不 import 平台 SDK；Hono 的
-入口壳分别是 Workers 的 `fetch(request, env)` 与 Makers 的 `onRequest({ request })`。
+（Astro）、`packages/search`（浏览器端检索）、`packages/platform`（配置 schema 与配置生成器）。
+涉及文件系统与部署命令的编排在 `scripts/`。业务代码不 import 平台 SDK；可选函数检索
+与对应平台入口壳尚未实现，`features.search_function` 目前只是预留配置。
 
 ## 4. 数据模型
 
@@ -96,7 +117,7 @@ R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 - **`data/meta/<series>.yaml`**：作品（`title`、`sort`，可选 `description`、`authors`、
   `artists`、`status`、`year`、`tags`、`altTitles`、`cover`）、期（`number`、`title`、
   `published`）、话（`number`、`title`）、页（`n`、`img`、`w`、`h`），人工维护。
-- **`data/text/<series>/<chapter>.json`**（每话一文件，控制文件数）：
+- **`data/text/<series>/<issue>/<chapter>.json`**（每话一文件，控制文件数）：
 
   ```json
   { "chapter": "sample/vol03/c012",
@@ -115,8 +136,8 @@ R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
   坐标已是 0–1 比例。页码：文件名第一段数字 = meta 的 `n`；任一文件名无数字则整份稿
   按文件出现顺序 1..N（逐文件混用会让 `cover.jpg` 与 `001.jpg` 静默并到同一页）。
   像分隔符但不完全匹配的行不改变解析结果，但作为提示报出来——真实导出若有固定偏差，
-  只改解析器顶部的两条正则。这是首选文本来源；OCR（BallonsOCR / PaddleOCR 输出转同一
-  schema）只补缺稿——自己汉化的成品没必要再 OCR 一遍。
+  只改解析器顶部的两条正则。这是首选文本来源；无稿时可用 Tesseract 生成 OCR 草稿，
+  人工校对后再导入同一 schema，不能直接把机器识别结果当成正式台词。
 - **`gallery.sqlite`**：
 
   ```sql
@@ -131,12 +152,14 @@ R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
   ```
 
   `page_size` 必须等于检索端 `requestChunkSize`。查询 ≥ 3 字走 `MATCH`；恰好
-  2 字走 `LIKE`（全表扫描，先按作品/期过滤）；1 字拒绝。结果带 bbox，阅读器据此
+  2 字走 `LIKE`（全表扫描，可按作品过滤）；1 字拒绝。结果带 bbox，阅读器据此
   高亮气泡。对象存储上用带版本的 key `db/gallery-<version>.sqlite`（`version` 缺省是
-  `<UTC 日期>.<运行序号>`，同一版本号只发布一次），`db/manifest.json` 指向当前版本
+  `<UTC 日期>.<运行序号>`，同一版本号只允许相同内容重试），`db/manifest.json` 指向已启用版本
   （`db: { version, key, size, sha256, pageSize, chunkSize, chunks }`，形状见
   `scripts/lib/manifest.mjs` 的 typedef），切换零缓存问题；DB 不进 dist、不进 Blob，
-  所以没有 25 MB 上限。构建期对导出字节跑一次 `PRAGMA quick_check`，浏览器端靠逐块 sha256。
+  所以没有 25 MB 托管上限。构建期对导出字节跑一次 `PRAGMA quick_check`，当前浏览器端校验整库
+  sha256，并在下载前和流读取中执行大小上限。每个站点在构建时绑定自己的 `db`，不随共享指针变化。
+  manifest 的 `sourceSha256` 覆盖元数据和完整台词内容；单独重建页面遇到陈旧库时要求重新完整构建。
 
 ## 5. 构建与发布
 
@@ -145,7 +168,8 @@ R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 ```
 ingest:labelplus   data/raw/labelplus/<series>/<issue>/<chapter>.txt → data/text（CHAPTERS 限定；
                    CHAPTERS 里没稿但 meta 有的话只提示不报错，给 ocr 留路；LABELPLUS_PAGES 选页码策略）
-ingest:ocr         缺稿卷 OCR → data/text（Python，只在发布流水线跑）
+ingest:ocr         显式 CHAPTERS → 缺稿话 OCR → out/ocr-review（JSON、页图与校对 HTML）
+                   人工校对后放入 data/raw/ocr，再用 --accept-reviewed 校验导入 data/text
 build:manifest     data/meta → out/manifest.json；有存储凭据时核对图片清单（缺 key 全列在
                    out/missing-images.txt）。发布流水线里凭据只给 verify:manifest 那一步
 build:db           → gallery.sqlite
@@ -156,10 +180,13 @@ build:sitemap      data/meta → dist/sitemap.xml（> 45 000 条时拆成 sitema
 build:config       site.config.yaml → _headers / _redirects / edgeone.json
 check              文件数、单文件、dist 无图片/DB、page_size、配置生成物同步、core 无 node: 导入、
                    sitemap 覆盖每一话（分片 ≤ 50 000 条）、IndexNow key 文件与配置一致
-publish:r2         先把线上旧 db/manifest.json 原样存成 out/manifest-previous.json（push:search 的基线），
-                   再上传 gallery-<v>.sqlite(+chunks.json) / archive/site-<v>.tar.zst / 新图片（IMAGES_DIR）
-                   → 逐 key 核对 → 最后才传 db/manifest.json（当前版本指针；中途失败线上仍指上一版）
+release:check      检查目标、环境与正式域名，拒绝 GitHub Pages 的 preview
+release:prepare    生产部署前保存当前指针原文、ETag 与发布身份；清理旧部署记录
+publish:r2         上传 gallery-<v>.sqlite(+chunks.json) / archive/site-<v>.tar.zst / 新图片
+                   → 逐 key 核对 → db/manifest-<v>.json；不可变 key 不得覆盖不同内容
 deploy:cloudflare  deploy:edgeone  deploy:github（DEPLOY_ENV=production|preview）
+                   核对 dist/release.json 与清单身份及构建环境，成功后保存本目标的部署记录
+release:activate   所选生产目标全部成功，且版本化清单一致后，用条件写入启用 db/manifest.json
 purge              可选救火：EdgeOne CreatePurgeTask（任一目标被拒即失败）；ESA 未实现
 push:search        部署之后（发布流水线写 STATUS 的那一步之后）主动把本次新增的页面推给搜索引擎：
                    IndexNow（seo.indexnow_key，Bing / Yandex / Naver / Seznam 共用）；不走百度。
@@ -173,16 +200,26 @@ status             写 STATUS.md（只由发布流水线调用）
 都不推——它兼作「站点已上线」的探针；推送失败在流水线里 `allowFailure`，单独标红、
 不判已完成的部署失败；页面集合与 sitemap 出自同一份 `scripts/lib/sitemap.mjs`。
 
-版本号、上传顺序、缓存头的约定：带版本号的 key（库、分块摘要、归档）一年 immutable，
+版本号、上传顺序、缓存头的约定：带版本号的 key（库、分块摘要、归档、版本清单）一年 immutable，
 `db/manifest.json` 只缓存 5 分钟；`chunks.json` 也按 `application/octet-stream` 上传，
 免得 CDN 智能压缩把 Range 语义搞坏（§7）；归档格式固定 tar.zst，工具缺失就失败不换 gzip。
+归档固定排序、时间、所有者和权限，重复构建同一内容能复用。创建不可变对象使用条件写入；
+冲突后核对已存在内容，版本清单只忽略生成时间。启用生产指针时匹配准备阶段的 ETag，
+并发更新会被拒绝；同次启用响应丢失可安全重试。部署步骤核对的是清单身份，正常流水线须
+连续使用同一份 dist；它不是对目录任意后续修改的逐文件签名。
 
 `.cnb.yml`：main 的 `push` 触发检查，手动按钮触发发布与归档（按钮在
 `.cnb/web_trigger.yml`）。检查步骤：提交信息（本次推送区间）→ check → test → build →
 再 check → 用测试样本全量空跑 → 分层提示 → 移动 `last-green`。发布输入 `chapters`、`target`
 （none | cloudflare | edgeone | github | all）、`ocr`、`deploy_env`（production | preview）、
-`version`（留空 = 日期.构建号）、`push_all`；步骤：ingest → build → check → verify:manifest →
-publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写回的 `data/text` 提交。
+`version`（留空 = 日期.构建号）、`push_all`；步骤：参数检查 → ingest → build → check → verify:manifest →
+release:prepare → publish:r2 → deploy → release:activate → 写 `STATUS.md` → push:search →
+连同 ingest 写回的 `data/text` 提交。预览与 `target=none` 在上传或部署后结束，不启用生产指针、
+不改生产状态、不推送搜索引擎。预览 HTML 带 `noindex`；GitHub Pages 没有独立预览环境，
+`preview + github/all` 在上传前拒绝。多平台部署失败时已完成的目标可能已更新，但各自页面
+绑定自己的检索库，生产指针保持原值；启用之后的状态记录失败不会撤回已上线页面。
+OCR 草稿通过提交附件保留，可在浏览器下载校对；发布不会自动导入草稿。默认模板不附带作品
+与台词稿，OCR 功能本身不代表已完成内容识别或校对。
 凭据经独立密钥仓库的 `imports` 注入，只有需要的步骤才拿得到；发布与归档只能手动触发，
 `crontab:` 被 `npm run check` 解析 `.cnb.yml` 拦住。
 
@@ -192,10 +229,14 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
 
 ## 6. 检索
 
-- **默认路径**：浏览器端 sqlite-wasm（`sql.js-httpvfs` 或官方
-  `@sqlite.org/sqlite-wasm` 自定义 VFS），通过 `https://img.<domain>/db/gallery-<date>.sqlite`
-  按 Range 分块读，一次查询只传几百 KB；无任何服务端。
-- **不信任 CDN 的 Range，用取块层兜住。** 取块层照搬翻译组多源分块下载框架
+- **已实现代码路径**：浏览器端 sqlite-wasm 经 CDN 整库下载，校验长度、上限和 sha256 后查询。
+  页面绑定构建版本；查询归一化后不足两字、或本版台词覆盖率为零时，不发起数据库下载。
+  空目录和已有作品但无台词稿分别显示提示。
+  三字及以上走 trigram，两字走 LIKE，按作品过滤；每批 50 条，可继续加载。
+  没有构建绑定的独立调用方仍可读取 manifest，逐源验证清单并在坏源时切换。
+- **后续接入路径**：现有取块层尚未接到 SQLite VFS；函数加速也未接通。
+  接入后按 Range 分块读取，减少首次下载量。
+- **取块层的已有能力与后续接线约定。** 取块层照搬翻译组多源分块下载框架
   （anabranch）的模型，因为它在 CDN 上踩过的坑就是我们要踩的：
   - 探测：先 HEAD，`Accept-Ranges: bytes` + `Content-Length` 才算；否则
     `GET Range: bytes=0-0`，**只有 206 + `Content-Range` 才算真支持**，200 就是
@@ -217,12 +258,13 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
     其余（超时、网络、4xx/5xx、短读）原地退避、连错三次才换，且换源也看该源的全局连败数；
     取块时才暴露「所有源都无视 Range」同样报 `needs-whole` 退化到整份下载；每块的重试
     次数上限按源数推导（≥ 源数 × 3），保证第三条源轮得到。
-  - 退化：探测结论是不支持 Range，或总长 ≤ 30 MB 且用户网络快——整份下载、验整份
-    sha256、载入内存。再退一级才是函数版检索，最后是"检索暂不可用"，页面照常。
+  - 后续接线的退化方案：探测结论是不支持 Range，或总长 ≤ 30 MB 且用户网络快——整份
+    下载、验整份 sha256、载入内存。函数版检索仍是规划；当前整库下载失败时提示
+    “检索暂不可用”，页面照常。
 - 取块层与 sqlite 无关，是 `packages/core` 里的纯 Web 标准模块（fetch + Web
-  Crypto），阅读器的图片加载共用它的多源与探测逻辑（图片不分块，只做域名切换）。
-- **可选加速**：Hono 函数经 CDN 拉库进 sql.js 内存，只部署在 Cloudflare Workers
-  或 Makers Cloud Functions；前端探测 `/api/search` 不可用时自动回退。
+  Crypto）。阅读器图片由内联错误处理切换备用域名，不使用取块层或 HEAD 探测。
+- **可选加速（规划）**：配置保留 `features.search_function` 与 `/api/search`，但函数入口
+  与前端探测尚未接通；当前检索始终在浏览器中执行。
 - **元数据检索**（期数、标题、话数）：纯前端过滤索引 JSON：`/index/series.json`
   （作品总表：id、title、url、期数、话数）与 `/index/<series>.json`（该作品的期与话：
   number、title、published、url、key、页数、hasText），按作品分片。
@@ -294,11 +336,12 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
 1. 仓库骨架与空跑：`packages/{core,site,search,platform}`、`data/{meta,text}`、
    `scripts/`、`site.config.yaml`、全部 scripts 占位、`.cnb.yml` /
    `.cnb/web_trigger.yml`、`README.md`、`STATUS.md`。
-2. `core`：schema（zod）、LabelPlus 解析器 + 测试样本、`tn` 归一化、manifest 生成。
-3. `site`：Astro，作品 / 期 / 话页面 + 阅读器（绝对定位透明 div 文字层，
+2. `core`：schema（zod）、LabelPlus 解析器 + 测试样本、`tn` 归一化、分块摘要清单；
+   发布 manifest 的编排在 `scripts/lib/manifest.mjs`。
+3. `site`：Astro，作品 / 期 / 话页面 + 阅读器（绝对定位透明 span 文字层，
    `#p12` 深链），sitemap，索引分片。
 4. `build:db` + 浏览器端检索页：整份下载 + sha256 校验 + sqlite-wasm（FTS5 trigram）查询
-   已落地；按 Range 分块的取块层与函数版加速仍待做，在 CDN 私有回源 + CORS 下
+   已落地，取块层也已实现；SQLite VFS 接线与函数版加速仍待做，在 CDN 私有回源 + CORS 下
    验证可用后把结果记入决策记录。
 5. `platform`：`build:config` 生成器、三套 deploy 脚本、Hono 函数壳（可选）。
 6. `publish:r2`、`check`、`STATUS.md` 自动更新；跑通 `target=all` 一次。
@@ -381,8 +424,7 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
   只按名字解析（源码里按 Name 过滤取第一个；EdgeOne 允许多个同名项目），没有按 ID 部署的参数。
   因此 `EDGEONE_PROJECT_ID` 填项目 ID，新增 `EDGEONE_PROJECT_NAME`（仅作 `-n`）与 `EDGEONE_API_REGION`
   （token 签发区域，决定 Pages API 端点）；`deploy:edgeone` 先用 DescribePagesProjects 按 ID 核对
-  名字、按名字核对同名唯一性，不一致就拒绝部署（一个字节都不传）。当前项目：ID
-  `example-project-id`、名 `comics-gallery`、Area global、token 区域 china。
+  名字、按名字核对同名唯一性，不一致就拒绝部署（一个字节都不传）。项目与区域由维护者配置。
 - 2026-10-20 SEO 只走 IndexNow，移除百度链接提交。百度要站点级 token、长期不推会被降权，
   且与 IndexNow 的公开 key 验证是两套模型。`push:search` 去掉百度分支与 `BAIDU_PUSH_TOKEN`，
   密钥仓库不再需要 `seo.yml`（IndexNow key 按协议公开在 `site.config.yaml`，不是凭据）。
@@ -391,19 +433,19 @@ publish:r2 → deploy → 写 `STATUS.md` → push:search → 连同 ingest 写�
   的 size / sha256 校验 → `openGalleryDb`（sqlite-wasm，FTS5 trigram）→ ≥ 3 字 MATCH、恰好 2 字
   LIKE、1 字拒绝，结果链到 `#p<n>b<i>`。这是 §6 的退化路径；按 Range 分块（自定义同步 VFS）
   与函数版加速尚未实现，接口不变。搜索页提示、README 与 §10 落地顺序同步更新。
-
-- 2026-10-25 构建环境明确要求 Node >=22.19.0、npm >=9.6.5，并更新锁定的构建工具依赖。运行时依赖约束和静态部署形态不变。
-
-- 2026-10-25 OCR 入口改为生成待校对草稿，只有明确选中的章节参与识别；附件先保存，再报告识别失败。人工确认后显式导入台词库，未校对结果不会进入正文或搜索。
-
-- 2026-10-25 发布按不可变上传、部署确认、条件启用三阶段执行；预览和仅上传不改变生产指针、状态与搜索推送。页面固定绑定同次构建的检索库并核对数据摘要，下载验证尺寸与摘要；预览输出 noindex，正式发布拒绝示例域名。密钥来源由发布参数显式给出，部署目标未配置时不执行真实发布。
-
-- 2026-10-25 台词检索先检查有效查询与台词覆盖率，固定三字 MATCH / 两字 LIKE 边界；支持作品过滤和结果分页，空站或无台词时不下载数据库。失败可以再次请求，销毁时取消下载并释放库。
-
-- 2026-10-25 引入默认关闭的增强分页选项，沿用原阅读器的页码与进度；条漫、文字层、台词深链或模块失败时回退标准阅读器。同步修复标准阅读器的 RTL、双页布局与长条进度恢复，面板快捷键不翻动背景页面，亮度仅影响阅读画面。组件随静态产物同源加载并附带许可证。
-
-- 2026-10-25 阅读图片分别显示加载状态，失败后依次尝试配置来源，耗尽后支持单页手动重试。反馈放在图片框外，不遮挡台词和高亮；保留页码、模式与原生懒加载，无脚本时隐藏交互反馈。
-
-- 2026-10-25 完整章节目录首次打开才读取作品索引，成功后在本页缓存，支持筛选、定位当前章节和加载重试；每话 HTML 只保留固定数量的目录入口。无脚本保留静态导航，避免全作品目录被重复嵌入每一话。
-
-- 2026-10-25 首页与作品页的继续阅读仅接受当前目录中的完整章节 URL，标题取自现有元数据，旧页码限制在有效范围；存储失败或损坏记录不影响浏览。首页最新列表按作品的期与话顺序取末章，名称改为“各作品最新一话”，不暗示更新时间。空站也保留明确入口与说明。
+- 2026-10-21 发布改为不可变上传、部署确认、条件启用三阶段，预览和仅上传不改生产指针。
+  搜索页绑定构建库版本，先校验查询与台词覆盖率，再进行有上限的下载；增加作品过滤和分页。
+  阅读器修复 RTL 翻页、双页布局和长条进度恢复，并补充行为测试。
+  OCR 从占位入口改为可选草稿生成与显式校对导入，现有台词覆盖仍需人工补齐。
+- 2026-10-24 增加默认关闭的 `features.comimi_reader`，允许用户选择浏览器端增强分页。
+  保留原阅读器作为条漫、文字层、台词深链与加载失败的回退路径；旧页码和进度格式不迁移。
+  增强模块随静态产物同源加载，三平台适配逻辑与配置生成物不变。
+- 2026-10-24 站点改为通用模板：移除预置实际作品，配置使用示例域名，发布密钥来源显式输入。
+  空站提供明确提示，继续阅读仅显示当前目录仍存在的章节；发布状态在首次真实发布前保持未发布。
+- 2026-10-25 阅读可靠性与目录规模化：阅读页仅保留常量数量的静态目录入口，完整章节列表在首次
+  打开侧栏时读取已有作品索引，支持筛选、当前章定位、失败重试与本页成功缓存；不增加平台配置。
+  图片状态提示放在框外，自动切换配置来源并支持逐页重试，保留台词层、懒加载和阅读进度。
+  首页与作品页继续阅读精确匹配现有章节并约束旧页码；“最近更新”改称“各作品最新一话”，
+  在没有章节发布时间字段时不暗示时间排序。对应行为与构建产物纳入测试。
+- 2026-10-25 构建环境明确要求 Node >=22.19.0、npm >=9.6.5，并更新锁定的构建工具依赖。
+  运行时依赖约束和纯静态部署形态不变。

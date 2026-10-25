@@ -1,6 +1,8 @@
 # @gallery/search
 
-浏览器端台词检索：sqlite-wasm 读取版本化检索库，零服务端。
+[返回「页间 · Pagehaven」项目说明](../../README.md)
+
+页间 · Pagehaven 的浏览器端台词检索：sqlite-wasm 读取版本化检索库，零服务端。
 
 - `loadGalleryDb`：优先使用 `config.db.release` 指定的构建版本，经 CDN 整份下载，按
   size / sha256 校验后在内存打开。`release: null` 表示此站点版本尚未构建检索库，

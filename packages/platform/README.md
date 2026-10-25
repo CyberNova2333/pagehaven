@@ -1,6 +1,8 @@
 # @gallery/platform
 
-平台绑定层（CLAUDE.md 铁律 2）：`site.config.yaml` 的 schema、三平台配置生成器
+[返回「页间 · Pagehaven」项目说明](../../README.md)
+
+页间 · Pagehaven 的平台绑定层（CLAUDE.md 铁律 2）：`site.config.yaml` 的 schema、三平台配置生成器
 （Cloudflare `_headers` / `_redirects`、EdgeOne `edgeone.json`）、将来的函数入口壳。
 全是纯函数；碰文件系统与跑部署命令的在 `scripts/`。
 

@@ -459,6 +459,7 @@ test('0 话也能建：空 data/ 目录下首页、搜索页、404、索引总�
   }
   const home = await readFile(join(DIST, 'index.html'), 'utf8');
   assert.ok(home.includes('还没有作品'));
+  assert.equal(/<h1[^>]*>(.*?)<\/h1>/.exec(home)?.[1], config.site.title);
   assert.deepEqual(JSON.parse(await readFile(join(DIST, 'index', 'series.json'), 'utf8')), []);
   const generated = JSON.parse(await readFile(join(GENERATED, 'gallery.json'), 'utf8'));
   assert.equal(generated.searchDb, null, '未建检索库不能沿用上次构建的版本');
