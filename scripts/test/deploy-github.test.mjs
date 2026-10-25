@@ -4,21 +4,31 @@
 // CNB 流水线把 dist 推到 GITHUB_PAGES_REPO 的 gh-pages 分支；这里用 DEPLOY_DRY_RUN=1
 // 只走基线校验，把「dist 拿去就能当一个完整站点」这件事守住：.nojekyll、404.html、
 // index.html 齐全，CNAME 等于 site.domain。
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import yaml from 'js-yaml';
 import { loadSiteConfig } from '../lib/config.mjs';
+import { releaseFingerprint } from '../lib/release.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const SCRIPT = join(ROOT, 'scripts', 'deploy.mjs');
 const config = await loadSiteConfig();
+config.site.domain = 'gallery.unit-fixture.org';
+config.images.hosts = ['images.unit-fixture.org'];
+const configDir = await mkdtemp(join(tmpdir(), 'gallery-github-config-'));
+const configFile = join(configDir, 'site.config.yaml');
+await writeFile(configFile, yaml.dump(config));
+after(() => rm(configDir, { recursive: true, force: true }));
 
 function run(env) {
-  const r = spawnSync(process.execPath, [SCRIPT, 'github'], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, ...env } });
+  const clean = { ...process.env };
+  for (const key of Object.keys(clean)) if (/^(GITHUB_PAGES_|DEPLOY_|DIST_DIR$|OUT_DIR$|RELEASE_VERSION$|CONFIG_FILE$)/.test(key)) delete clean[key];
+  const r = spawnSync(process.execPath, [SCRIPT, 'github'], { cwd: ROOT, encoding: 'utf8', env: { ...clean, CONFIG_FILE: configFile, ...env } });
   return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
 
@@ -38,7 +48,7 @@ const GOOD = { '.nojekyll': '', '404.html': '<!doctype html><title>404</title>',
 test('deploy:github：基线文件齐全、CNAME 等于 site.domain + DEPLOY_DRY_RUN=1 → 退 0，只校验不上传', async (t) => {
   const r = run({ DIST_DIR: await dist(t, GOOD), DEPLOY_DRY_RUN: '1' });
   assert.equal(r.status, 0, r.out);
-  assert.match(r.out, /基线文件齐全：\.nojekyll、404\.html、index\.html、CNAME=gallery\.example\.org/);
+  assert.ok(r.out.includes(`基线文件齐全：.nojekyll、404.html、index.html、CNAME=${config.site.domain}`));
   assert.match(r.out, /DEPLOY_DRY_RUN=1：只校验基线，不推 gh-pages/);
 });
 
@@ -61,11 +71,31 @@ test('deploy:github：缺 404.html 与 .nojekyll → 退 1，逐条点名，其�
 test('deploy:github：CNAME 写错域名 → 退 1；index.html 是空文件 → 退 1', async (t) => {
   const wrong = run({ DIST_DIR: await dist(t, { ...GOOD, CNAME: 'wrong.example.org\n' }) });
   assert.equal(wrong.status, 1, wrong.out);
-  assert.match(wrong.out, /dist\/CNAME 内容是 "wrong\.example\.org"，应等于 site\.domain（gallery\.example\.org）/);
+  assert.ok(wrong.out.includes(`dist/CNAME 内容是 "wrong.example.org"，应等于 site.domain（${config.site.domain}）`));
 
   const empty = run({ DIST_DIR: await dist(t, { ...GOOD, 'index.html': '' }) });
   assert.equal(empty.status, 1, empty.out);
   assert.match(empty.out, /dist\/index\.html 是空文件/);
+});
+
+test('deploy:github：预览目标在任何上传前拒绝；生产缺少发布清单也不能推送', async (t) => {
+  const dir = await dist(t, GOOD);
+  const outDir = join(dir, '..', 'out');
+  const preview = run({ DIST_DIR: dir, OUT_DIR: outDir, DEPLOY_ENV: 'preview', DEPLOY_DRY_RUN: '1' });
+  assert.equal(preview.status, 1, preview.out);
+  assert.match(preview.out, /尚未配置独立预览目标/);
+  const missing = run({ DIST_DIR: dir, OUT_DIR: outDir, GITHUB_PAGES_REPO: 'fixture/fixture', GITHUB_PAGES_TOKEN: 'fixture-token' });
+  assert.equal(missing.status, 1, missing.out);
+  assert.match(missing.out, /缺少本次完整构建的发布清单/);
+  assert.doesNotMatch(missing.out, /fixture-token/);
+  const manifest = { version: 'preview-test', db: { key: 'db/gallery-preview-test.sqlite' } };
+  await mkdir(outDir, { recursive: true });
+  await writeFile(join(outDir, 'manifest.json'), JSON.stringify(manifest));
+  await writeFile(join(dir, 'release.json'), JSON.stringify({ version: manifest.version, fingerprint: releaseFingerprint(manifest), environment: 'preview' }));
+  const previewArtifact = run({ DIST_DIR: dir, OUT_DIR: outDir, GITHUB_PAGES_REPO: 'fixture/fixture', GITHUB_PAGES_TOKEN: 'fixture-token' });
+  assert.equal(previewArtifact.status, 1, previewArtifact.out);
+  assert.match(previewArtifact.out, /dist 与发布清单|环境/);
+  assert.doesNotMatch(previewArtifact.out, /fixture-token/);
 });
 
 test('deploy:github：dist 不存在 → 退 1 并提示先 build，不打栈', async (t) => {

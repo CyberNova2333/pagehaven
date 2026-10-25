@@ -9,7 +9,7 @@
 // 签名算法，而 SDK 拖进来 23 个包，其中大半是永远用不到的凭据链（sso / login / ini / process /
 // web-identity / imds）。这里只依赖 node:crypto 与 fetch，算法与官方「Signature Version 4」
 // 一致：规范请求 → 待签串 → 派生密钥（日期 → 区域 → 服务 → aws4_request）→ 签名。
-// 请求头只签 host 与 x-amz-content-sha256、x-amz-date 这一组，与 S3 兼容实现的最小要求一致。
+// 条件头、对象元数据与 host / x-amz-content-sha256 / x-amz-date 一起签名，防止写入约束被改动。
 //
 // 封装层的约定（三处脚本共用的部分）：分页翻到底、404 → null、上传时的缓存头。所以函数只依赖
 // 「有一个 request(method, key, opts) 的对象」，测试可以塞假存储验分页与错误分支，不必真连外部服务。
@@ -73,13 +73,17 @@ function canonicalQuery(pairs) {
  * @param {string} input.date        ISO 时间（毫秒精度即可，会被截成秒）
  * @param {string} input.accessKeyId
  * @param {string} input.secretAccessKey
+ * @param {Record<string, string>} [input.headers] 要一并签名的条件头与对象元数据
  * @returns {{ authorization: string, amzDate: string }}
  */
-export function signV4({ method, canonicalUri, query, host, payloadHash, date, accessKeyId, secretAccessKey }) {
+export function signV4({ method, canonicalUri, query, host, payloadHash, date, accessKeyId, secretAccessKey, headers = {} }) {
   const amzDate = date.replace(/[-:]/g, '').replace(/\.\d{3}/, ''); // 20261020T024150Z
   const dateStamp = amzDate.slice(0, 8);
-  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
-  const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
+  const signed = Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), String(value).trim().replace(/\s+/g, ' ')]));
+  Object.assign(signed, { host, 'x-amz-content-sha256': payloadHash, 'x-amz-date': amzDate });
+  const names = Object.keys(signed).sort();
+  const signedHeaders = names.join(';');
+  const canonicalHeaders = names.map((name) => `${name}:${signed[name]}\n`).join('');
   const canonicalRequest = [
     method,
     canonicalUri,
@@ -146,6 +150,7 @@ export function createStorage({ endpoint, accessKeyId, secretAccessKey }) {
       date: new Date().toISOString(),
       accessKeyId,
       secretAccessKey,
+      headers,
     });
     const url = `${base.origin}${path}${query.length ? `?${canonicalQuery(query)}` : ''}`;
     const all = {
@@ -267,7 +272,25 @@ function isNotFound(e) {
 export async function headObject(client, bucket, key) {
   try {
     const res = await client.request('HEAD', bucket, key);
-    return { size: Number(res.headers.get('content-length') ?? 0), etag: res.headers.get('etag') ?? undefined };
+    const meta = { size: Number(res.headers.get('content-length') ?? 0), etag: res.headers.get('etag') ?? undefined };
+    const sha256 = res.headers.get('x-amz-meta-sha256');
+    if (sha256) meta.sha256 = sha256;
+    return meta;
+  } catch (e) {
+    if (isNotFound(e)) return null;
+    throw e;
+  }
+}
+
+/** 读取正文与同一次 GET 的 ETag，供版本核验和当前版本指针的条件更新使用。 */
+export async function getObject(client, bucket, key) {
+  try {
+    const res = await client.request('GET', bucket, key);
+    const body = Buffer.from(await res.arrayBuffer());
+    const object = { body, size: body.length, etag: res.headers.get('etag') ?? undefined };
+    const sha256 = res.headers.get('x-amz-meta-sha256');
+    if (sha256) object.sha256 = sha256;
+    return object;
   } catch (e) {
     if (isNotFound(e)) return null;
     throw e;
@@ -299,13 +322,46 @@ export async function getObjectText(client, bucket, key) {
  * @param {string} bucket
  * @param {string} key
  * @param {Uint8Array|string|import('node:stream').Readable} body
- * @param {{ contentType?: string, cacheControl?: string }} [meta]
+ * @param {{ contentType?: string, cacheControl?: string, ifMatch?: string, ifNoneMatch?: string, sha256?: string }} [meta]
  * @returns {Promise<{ etag: string|undefined }>}
  */
-export async function putObject(client, bucket, key, body, { contentType, cacheControl } = {}) {
+export async function putObject(client, bucket, key, body, { contentType, cacheControl, ifMatch, ifNoneMatch, sha256 } = {}) {
+  if (ifMatch !== undefined && ifNoneMatch !== undefined) throw new Error('条件写入不能同时指定 ifMatch 与 ifNoneMatch');
+  for (const value of [ifMatch, ifNoneMatch]) {
+    if (value !== undefined && (typeof value !== 'string' || value.trim() === '')) throw new Error('条件写入需要非空 ETag 或 *');
+  }
+  if (sha256 !== undefined && !/^[a-f0-9]{64}$/.test(sha256)) throw new Error('sha256 元数据必须是 64 位小写十六进制');
   const headers = {};
   if (contentType) headers['content-type'] = contentType;
   if (cacheControl) headers['cache-control'] = cacheControl;
+  if (ifMatch !== undefined) headers['if-match'] = ifMatch;
+  if (ifNoneMatch !== undefined) headers['if-none-match'] = ifNoneMatch;
+  if (sha256 !== undefined) headers['x-amz-meta-sha256'] = sha256;
   const res = await client.request('PUT', bucket, key, { body, headers });
   return { etag: res.headers.get('etag') ?? undefined };
+}
+
+/**
+ * 不可变对象：同字节重试不重写，不同内容拒绝。首次创建使用条件 PUT，避免 GET 后有人抢先写入。
+ * 412 后只读胜出的对象并核对；任何未知写入结果都交给调用者重试，绝不降级成无条件覆盖。
+ * equivalent 只供版本 manifest 忽略生成时间；返回 body 始终保留存储中已存在的原文字节。
+ */
+export async function putImmutableObject(client, bucket, key, body, { equivalent, ...meta } = {}) {
+  const { bytes, hash } = await readBody(body);
+  const same = equivalent ?? ((old, next) => Buffer.from(old).equals(Buffer.from(next)));
+  const acceptExisting = (existing) => {
+    if (!existing || !same(existing.body, bytes)) {
+      throw new Error(`不可变对象 ${key} 已存在且内容不同；请使用新版本号，不允许覆盖`);
+    }
+    return { created: false, etag: existing.etag, body: existing.body };
+  };
+  const existing = await getObject(client, bucket, key);
+  if (existing) return acceptExisting(existing);
+  try {
+    const result = await putObject(client, bucket, key, bytes, { ...meta, sha256: hash, ifNoneMatch: '*' });
+    return { ...result, created: true, body: Buffer.from(bytes) };
+  } catch (e) {
+    if (e.status !== 412) throw e;
+    return acceptExisting(await getObject(client, bucket, key));
+  }
 }

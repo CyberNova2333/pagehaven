@@ -15,7 +15,8 @@
 import siteConfig from '../generated/site-config.json';
 
 const { site } = siteConfig;
-const { title = '', url = '/', crumbs = [], noindex = false, description = '' } = Astro.props;
+const { title = '', url = '/', crumbs = [], description = '' } = Astro.props;
+const noindex = Boolean(Astro.props.noindex || siteConfig.preview);
 const fullTitle = title ? `${title} · ${site.title}` : site.title;
 const canonical = `https://${site.domain}${url}`;
 ---

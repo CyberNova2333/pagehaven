@@ -29,7 +29,10 @@
     "deploy:github": "node scripts/deploy.mjs github",
     "purge": "node scripts/purge.mjs",
     "push:search": "node scripts/seo-push.mjs",
-    "status": "node scripts/write-status.mjs"
+    "status": "node scripts/write-status.mjs",
+    "release:check": "node scripts/release.mjs check",
+    "release:prepare": "node scripts/release.mjs prepare",
+    "release:activate": "node scripts/release.mjs activate"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

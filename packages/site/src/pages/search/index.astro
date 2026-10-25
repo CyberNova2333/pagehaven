@@ -3,12 +3,13 @@
 // 页面结构约定（别改）：#search-form / #search-input / #search-results / #search-status / #search-config。
 import Base from '../../layouts/Base.astro';
 import siteConfig from '../../generated/site-config.json';
+import gallery from '../../generated/gallery.json';
 import { jsonForScript } from '../../lib/gallery.js';
 
 const { images, db, search, features } = siteConfig;
 const searchConfig = {
   images: { hosts: images.hosts },
-  db: { page_size: db.page_size, chunk_size: db.chunk_size, prefix: db.prefix, whole_download_max_bytes: db.whole_download_max_bytes },
+  db: { page_size: db.page_size, chunk_size: db.chunk_size, prefix: db.prefix, whole_download_max_bytes: db.whole_download_max_bytes, release: gallery.searchDb ?? null },
   search: { request_chunk_size: search.request_chunk_size, min_match_length: search.min_match_length, api_path: search.api_path },
   features: { search_function: features.search_function },
 };

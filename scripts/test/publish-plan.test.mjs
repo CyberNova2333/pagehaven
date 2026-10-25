@@ -1,16 +1,12 @@
-// 上传计划的单测 + publish:r2 脚本的端到端。
-//
-// 计划是纯函数：key / Content-Type / Cache-Control / 顺序 / 图片取舍 / 各种对不上，直接比对。
-// 脚本那部分对着本地假 S3（只答 PUT、HEAD 与 GET，后两者可切成一律回 500）发真请求，验的是真上传时带的头、
-// 已存在的图片被跳过、缺图或存储报错时 manifest 不换指针、manifest 永远最后一个传、经符号链接挂进
-// IMAGES_DIR 的图片也会传、线上旧 manifest 在任何上传之前被原样存下。dist 归档要 tar --zstd：这台机器未必有 zstd，
-// 所以在 PATH 前面放一个直通的 zstd 替身（exec cat），tar 真被起、真打包、真上传；再用一个只有
-// tar 的 PATH 验「zstd 不可用就报错且一个字节都不传」。不连任何外部服务，不碰仓库根的 dist/ out/。
+// 上传计划的单测与发布脚本的端到端测试。
+// 使用本机假存储验证条件上传、同版重试、版本冲突、缺图与生产指针隔离。
+// 归档由真实 GNU tar 生成；POSIX 环境的 zstd 替身直通，Windows 使用 PATH 中的真实 zstd。
+// 临时产物全部位于系统临时目录，不访问外部服务，不碰仓库根 dist/out。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -20,6 +16,8 @@ import {
   planUploads,
   dbFileNames,
   archiveFileName,
+  releaseManifestFileName,
+  sameReleaseManifest,
   CACHE_IMMUTABLE_YEAR,
   CACHE_MANIFEST,
   CONTENT_TYPE_OCTET,
@@ -71,16 +69,16 @@ test('dbFileNames / archiveFileName：与 build:db、ARCHITECTURE §5 的命名�
   assert.equal(archiveFileName(VERSION), 'site-2026-09-03.tar.zst');
 });
 
-test('planUploads：key / Content-Type / Cache-Control；库与摘要 immutable 且 octet-stream，manifest 5 分钟且最后', async () => {
+test('planUploads：key / Content-Type / Cache-Control；库与摘要 immutable 且 octet-stream，版本 manifest 不可变且最后', async () => {
   const plan = planUploads({ version: VERSION, config, manifest: manifest(), files: FILES });
   assert.equal(plan.version, VERSION);
   assert.deepEqual(
     plan.uploads.map((u) => [u.kind, u.key, u.path, u.contentType, u.cacheControl, u.skipIfExists]),
     [
-      ['db', 'db/gallery-2026-09-03.sqlite', FILES.db[0], CONTENT_TYPE_OCTET, CACHE_IMMUTABLE_YEAR, false],
-      ['chunks', 'db/gallery-2026-09-03.sqlite.chunks.json', FILES.db[1], CONTENT_TYPE_OCTET, CACHE_IMMUTABLE_YEAR, false],
-      ['archive', 'archive/site-2026-09-03.tar.zst', FILES.distArchive, CONTENT_TYPE_ARCHIVE, CACHE_IMMUTABLE_YEAR, false],
-      ['manifest', 'db/manifest.json', FILES.manifest, CONTENT_TYPE_MANIFEST, CACHE_MANIFEST, false],
+      ['db', 'db/gallery-2026-09-03.sqlite', FILES.db[0], CONTENT_TYPE_OCTET, CACHE_IMMUTABLE_YEAR, true],
+      ['chunks', 'db/gallery-2026-09-03.sqlite.chunks.json', FILES.db[1], CONTENT_TYPE_OCTET, CACHE_IMMUTABLE_YEAR, true],
+      ['archive', 'archive/site-2026-09-03.tar.zst', FILES.distArchive, CONTENT_TYPE_ARCHIVE, CACHE_IMMUTABLE_YEAR, true],
+      ['manifest', 'db/manifest-2026-09-03.json', FILES.manifest, CONTENT_TYPE_MANIFEST, CACHE_IMMUTABLE_YEAR, true],
     ],
   );
   assert.equal(CACHE_IMMUTABLE_YEAR, 'public, max-age=31536000, immutable');
@@ -202,14 +200,16 @@ async function workspace(t) {
   const LINKED = join(tmp, 'linked', 'zeta', 'v1', 'ch1');
   await mkdir(LINKED, { recursive: true });
   await writeFile(join(LINKED, '1-6789abcdef01.webp'), Buffer.from('webp2-bytes'));
-  await symlink(join(tmp, 'linked', 'zeta'), join(IMAGES, 'zeta'), 'dir');
+  await symlink(join(tmp, 'linked', 'zeta'), join(IMAGES, 'zeta'), process.platform === 'win32' ? 'junction' : 'dir');
   // 一条指回祖先目录的链接：跟着符号链接走就得防转圈，它不该让脚本挂死，也不该往计划里塞重复项
-  await symlink(IMAGES, join(IMAGES, 'sample', 'loop'), 'dir');
+  await symlink(IMAGES, join(IMAGES, 'sample', 'loop'), process.platform === 'win32' ? 'junction' : 'dir');
   // zstd 替身：直通，让 tar --zstd 在没装 zstd 的机器上也能真跑
   const shim = join(tmp, 'bin');
   await mkdir(shim);
-  await writeFile(join(shim, 'zstd'), '#!/bin/sh\nexec cat\n');
-  await chmod(join(shim, 'zstd'), 0o755);
+  if (process.platform !== 'win32') {
+    await writeFile(join(shim, 'zstd'), '#!/bin/sh\nexec cat\n');
+    await chmod(join(shim, 'zstd'), 0o755);
+  }
   return {
     tmp,
     OUT,
@@ -242,7 +242,13 @@ async function fakeS3(seed = {}) {
         return;
       }
       if (req.method === 'PUT') {
-        objects.set(key, { body: Buffer.concat(chunks), contentType: req.headers['content-type'] ?? null, cacheControl: req.headers['cache-control'] ?? null });
+        assert.equal(req.headers['if-none-match'], '*', '每个版本化对象都必须条件创建');
+        if (objects.has(key)) {
+          res.writeHead(412);
+          res.end('<Error><Code>PreconditionFailed</Code></Error>');
+          return;
+        }
+        objects.set(key, { body: Buffer.concat(chunks), contentType: req.headers['content-type'] ?? null, cacheControl: req.headers['cache-control'] ?? null, sha256: req.headers['x-amz-meta-sha256'] });
         res.writeHead(200, { etag: '"put"' });
         res.end();
         return;
@@ -300,12 +306,12 @@ test('publish:r2：没凭据 → 退 1 并说明；PUBLISH_DRY_RUN=1 → 只打�
   const dry = await run({ ...ws.env, IMAGES_DIR: ws.IMAGES, PUBLISH_DRY_RUN: '1' });
   assert.equal(dry.status, 0, dry.out);
   assert.match(dry.out, /PUBLISH_DRY_RUN=1/);
-  assert.match(dry.out, /db\/gallery-2026-09-03\.sqlite {2}←.*\[application\/octet-stream; public, max-age=31536000, immutable\]/);
-  assert.match(dry.out, /db\/gallery-2026-09-03\.sqlite\.chunks\.json {2}←.*\[application\/octet-stream; public, max-age=31536000, immutable\]/);
-  assert.match(dry.out, /archive\/site-2026-09-03\.tar\.zst {2}←.*\[application\/zstd; public, max-age=31536000, immutable\]/);
-  assert.match(dry.out, /img\/sample\/vol01\/c001\/1-0123456789ab\.webp {2}←.*\[image\/webp; public, max-age=31536000, immutable; 已存在则跳过\]/);
-  assert.match(dry.out, /img\/zeta\/v1\/ch1\/1-6789abcdef01\.webp {2}←.*\[image\/webp; .*已存在则跳过\]/, '符号链接目录里的图片也在计划里');
-  assert.match(dry.out, /db\/manifest\.json {2}←.*\[application\/json; charset=utf-8; public, max-age=300\]/);
+  assert.match(dry.out, /db\/gallery-2026-09-03\.sqlite {2}←.*\[application\/octet-stream; public, max-age=31536000, immutable; 相同内容则跳过\]/);
+  assert.match(dry.out, /db\/gallery-2026-09-03\.sqlite\.chunks\.json {2}←.*\[application\/octet-stream; public, max-age=31536000, immutable; 相同内容则跳过\]/);
+  assert.match(dry.out, /archive\/site-2026-09-03\.tar\.zst {2}←.*\[application\/zstd; public, max-age=31536000, immutable; 相同内容则跳过\]/);
+  assert.match(dry.out, /img\/sample\/vol01\/c001\/1-0123456789ab\.webp {2}←.*\[image\/webp; public, max-age=31536000, immutable; 相同内容则跳过\]/);
+  assert.match(dry.out, /img\/zeta\/v1\/ch1\/1-6789abcdef01\.webp {2}←.*\[image\/webp; .*相同内容则跳过\]/, '符号链接目录里的图片也在计划里');
+  assert.match(dry.out, /db\/manifest-2026-09-03\.json {2}←.*\[application\/json; charset=utf-8; public, max-age=31536000, immutable; 相同内容则跳过\]/);
   assert.match(dry.out, /1 个文件 manifest 没引用，不传：unreferenced\.webp/, '指回祖先的链接没有让文件被重复列出');
   assert.equal(dry.out.match(/img\/sample\/vol01\/c001\/1-0123456789ab\.webp {2}←/g).length, 1, '同一张图只列一次');
   assert.match(dry.out, /归档工具可用：/, 'dry-run 也预检了 tar / zstd');
@@ -325,7 +331,7 @@ test('publish:r2：没凭据 → 退 1 并说明；PUBLISH_DRY_RUN=1 → 只打�
   // IMAGES_DIR 里有指向不存在目标的符号链接：说清楚是哪个，不打栈
   const dangling = join(ws.tmp, 'dangling-images');
   await mkdir(dangling);
-  await symlink(join(ws.tmp, 'nowhere'), join(dangling, 'ghost.webp'));
+  await symlink(join(ws.tmp, 'nowhere'), join(dangling, 'ghost.webp'), process.platform === 'win32' ? 'junction' : 'file');
   const ghost = await run({ ...ws.env, IMAGES_DIR: dangling, PUBLISH_DRY_RUN: '1' });
   assert.equal(ghost.status, 1, ghost.out);
   assert.match(ghost.out, /符号链接指向不存在的目标：ghost\.webp/);
@@ -348,185 +354,121 @@ test('publish:r2：没凭据 → 退 1 并说明；PUBLISH_DRY_RUN=1 → 只打�
   assert.match(noManifest.out, /manifest\.json 不存在/);
 });
 
-test('publish:r2：真传——缺图不换指针；齐了才传 manifest 且最后；已存在的图片跳过；头正确', { timeout: 30_000 }, async (t) => {
+
+test('manifest 版本命名与等价性：只忽略生成时间，结构或正文变化仍拒绝', () => {
+  assert.equal(releaseManifestFileName(VERSION), 'manifest-2026-09-03.json');
+  const previous = Buffer.from(JSON.stringify(manifest()));
+  assert.ok(sameReleaseManifest(previous, JSON.stringify(manifest({ generatedAt: '2027-01-01T00:00:00Z' }))));
+  assert.ok(!sameReleaseManifest(previous, JSON.stringify(manifest({ series: [{ title: '不同' }] }))));
+  assert.ok(!sameReleaseManifest(previous, 'null'));
+  assert.ok(!sameReleaseManifest(previous, 'invalid'));
+});
+
+test('publish:r2：缺图阻止版本 manifest，补图重试幂等，生产指针始终不变', { timeout: 60_000 }, async (t) => {
+  const ws = await workspace(t);
+  const old = '{"version":"previous"}';
+  const s3 = await fakeS3({ 'db/manifest.json': old });
+  t.after(s3.close);
+  const versionKey = 'db/manifest-2026-09-03.json';
+  await rm(join(ws.tmp, 'linked', 'zeta', 'v1', 'ch1', '1-6789abcdef01.webp'));
+  const missing = await run({ ...ws.env, ...s3.env, IMAGES_DIR: ws.IMAGES });
+  assert.equal(missing.status, 1, missing.out);
+  assert.match(missing.out, /manifest 引用了 1 个对象存储里不存在的图片 key/);
+  assert.ok(!s3.objects.has(versionKey));
+  assert.equal(s3.objects.get('db/manifest.json').body.toString(), old);
+  assert.equal(s3.objects.get('db/gallery-2026-09-03.sqlite').contentType, CONTENT_TYPE_OCTET);
+  assert.equal(s3.objects.get('db/gallery-2026-09-03.sqlite.chunks.json').cacheControl, CACHE_IMMUTABLE_YEAR);
+  const archive = Buffer.from(s3.objects.get('archive/site-2026-09-03.tar.zst').body);
+  assert.equal(s3.objects.get('archive/site-2026-09-03.tar.zst').contentType, CONTENT_TYPE_ARCHIVE);
+  const contents = spawnSync('tar', ['--force-local', '-tf', ws.archive], { encoding: 'utf8', env: { ...process.env, ...ws.env } });
+  assert.equal(contents.status, 0, contents.stderr);
+  assert.match(contents.stdout, /\.\/index\.html/);
+  assert.match(contents.stdout, /\.\/sample\/index\.html/);
+
+  await writeFile(join(ws.tmp, 'linked', 'zeta', 'v1', 'ch1', '1-6789abcdef01.webp'), Buffer.from('webp2-bytes'));
+  await utimes(join(ws.DIST, 'index.html'), new Date('2030-01-01'), new Date('2030-01-01'));
+  await chmod(join(ws.DIST, 'index.html'), 0o600);
+  s3.requests.length = 0;
+  const complete = await run({ ...ws.env, ...s3.env, IMAGES_DIR: ws.IMAGES });
+  assert.equal(complete.status, 0, complete.out);
+  assert.match(complete.out, /图片：新传 1 个，已存在跳过 1 个/);
+  assert.deepEqual(s3.requests.filter((r) => r.startsWith('PUT ')), [`PUT ${KEYS.webp2}`, `PUT ${versionKey}`]);
+  assert.deepEqual(await readFile(ws.archive), archive, '文件 mtime 改变不影响归档字节');
+  const published = s3.objects.get(versionKey);
+  assert.equal(published.contentType, CONTENT_TYPE_MANIFEST);
+  assert.equal(published.cacheControl, CACHE_IMMUTABLE_YEAR);
+  assert.equal(JSON.parse(published.body).db.key, 'db/gallery-2026-09-03.sqlite');
+  assert.equal(s3.objects.get('db/manifest.json').body.toString(), old);
+  assert.ok(!existsSync(join(ws.OUT, 'manifest-previous.json')));
+
+  const original = Buffer.from(published.body);
+  await writeFile(join(ws.OUT, 'manifest.json'), JSON.stringify(manifest({ generatedAt: '2031-01-01T00:00:00Z' })));
+  s3.requests.length = 0;
+  const retry = await run({ ...ws.env, ...s3.env });
+  assert.equal(retry.status, 0, retry.out);
+  assert.equal(s3.requests.filter((r) => r.startsWith('PUT ')).length, 0);
+  assert.deepEqual(s3.objects.get(versionKey).body, original, '保留初次生成时间和原文字节');
+  assert.ok(s3.requests.every((r) => !r.endsWith(' db/manifest.json')), '准备发布不访问共享指针');
+});
+
+test('publish:r2：归档工具缺失，dry-run 也拒绝且不访问存储', { timeout: 30_000 }, async (t) => {
   const ws = await workspace(t);
   const s3 = await fakeS3();
   t.after(s3.close);
-
-  await t.test('第一次：webp 不在存储里 → 传了库/摘要/归档/一个 webp，核对失败退 1，manifest 没传', async () => {
-    // 先拿掉 zeta 的 webp，模拟「IMAGES_DIR 缺一张」；第二次再补回来
-    await rm(join(ws.tmp, 'linked', 'zeta', 'v1', 'ch1', '1-6789abcdef01.webp'));
-    const r = await run({ ...ws.env, ...s3.env, IMAGES_DIR: ws.IMAGES });
-    assert.equal(r.status, 1, r.out);
-    assert.match(r.out, /manifest 引用了 1 个对象存储里不存在的图片 key/);
-    assert.match(r.out, new RegExp(`缺 ${KEYS.webp2.replace(/[./]/g, '\\$&')}`));
-    assert.doesNotMatch(r.out, new RegExp(`缺 ${KEYS.webp.replace(/[./]/g, '\\$&')}`), 'IMAGES_DIR 里的图已传，不该报缺');
-    assert.match(r.out, /线上仍指向上一版/);
-    assert.ok(!s3.objects.has('db/manifest.json'), 'manifest 不能在缺图时换指针');
-    assert.ok(s3.objects.has('db/gallery-2026-09-03.sqlite'));
-    assert.ok(s3.objects.has('db/gallery-2026-09-03.sqlite.chunks.json'));
-    assert.ok(s3.objects.has('archive/site-2026-09-03.tar.zst'));
-    assert.ok(s3.objects.has(KEYS.webp), 'IMAGES_DIR 里的 webp 已传');
-    assert.ok(!s3.objects.has(KEYS.webp2), '符号链接目录里还没有 zeta 的 webp');
-    assert.match(r.out, /图片：新传 1 个，已存在跳过 0 个/);
-    assert.ok(existsSync(ws.archive), '归档留在 out/ 里（release-out 产物会带走）');
-  });
-
-  await t.test('对象头：库与摘要 octet-stream + immutable；归档是 tar（替身直通）', async () => {
-    const db = s3.objects.get('db/gallery-2026-09-03.sqlite');
-    assert.equal(db.contentType, CONTENT_TYPE_OCTET);
-    assert.equal(db.cacheControl, CACHE_IMMUTABLE_YEAR);
-    assert.equal(db.body.length, 8192);
-    assert.equal(db.body.toString('latin1', 0, 16), 'SQLite format 3\0');
-    const chunks = s3.objects.get('db/gallery-2026-09-03.sqlite.chunks.json');
-    assert.equal(chunks.contentType, CONTENT_TYPE_OCTET, 'chunks.json 也用 octet-stream，逃过 CDN 智能压缩');
-    assert.equal(chunks.cacheControl, CACHE_IMMUTABLE_YEAR);
-    const archive = s3.objects.get('archive/site-2026-09-03.tar.zst');
-    assert.equal(archive.contentType, CONTENT_TYPE_ARCHIVE);
-    assert.equal(archive.cacheControl, CACHE_IMMUTABLE_YEAR);
-    // 替身不压缩，上传的就是 tar 本体：文件名与 ustar 魔数都在里面
-    assert.ok(archive.body.includes(Buffer.from('ustar')), 'tar 头');
-    assert.ok(archive.body.includes(Buffer.from('./index.html')), '含 dist 根的 index.html');
-    assert.ok(archive.body.includes(Buffer.from('./sample/index.html')), '含子目录');
-    const webp = s3.objects.get(KEYS.webp);
-    assert.equal(webp.contentType, 'image/webp');
-    assert.equal(webp.cacheControl, CACHE_IMMUTABLE_YEAR);
-    assert.equal(webp.body.toString(), 'webp-bytes');
-  });
-
-  await t.test('第二次：补上缺的图 → 核对通过，已存在的 webp 被跳过，manifest 最后一个传', async () => {
-    // 把 zeta 的 webp 补进经符号链接挂进来的目录
-    await writeFile(join(ws.tmp, 'linked', 'zeta', 'v1', 'ch1', '1-6789abcdef01.webp'), Buffer.from('webp2-bytes'));
-    s3.requests.length = 0;
-    const r = await run({ ...ws.env, ...s3.env, IMAGES_DIR: ws.IMAGES });
-    assert.equal(r.status, 0, r.out);
-    assert.match(r.out, /图片：新传 1 个，已存在跳过 1 个/);
-    assert.match(r.out, /核对通过：manifest 引用的 2 个图片 key 全部存在/);
-    assert.match(r.out, /当前版本指针已指向 db\/gallery-2026-09-03\.sqlite/);
-    const m = s3.objects.get('db/manifest.json');
-    assert.equal(m.contentType, CONTENT_TYPE_MANIFEST);
-    assert.equal(m.cacheControl, CACHE_MANIFEST);
-    assert.equal(JSON.parse(m.body.toString()).db.key, 'db/gallery-2026-09-03.sqlite');
-    // 顺序：库、摘要、归档、新图（zeta），manifest 最后
-    const puts = s3.requests.filter((x) => x.startsWith('PUT '));
-    assert.deepEqual(puts, ['PUT db/gallery-2026-09-03.sqlite', 'PUT db/gallery-2026-09-03.sqlite.chunks.json', 'PUT archive/site-2026-09-03.tar.zst', `PUT ${KEYS.webp2}`, 'PUT db/manifest.json']);
-    assert.equal(s3.requests.at(-1), 'PUT db/manifest.json');
-    const heads = s3.requests.filter((x) => x.startsWith('HEAD '));
-    assert.deepEqual(heads.sort(), [`HEAD ${KEYS.webp}`, `HEAD ${KEYS.webp2}`, `HEAD ${KEYS.webp}`, `HEAD ${KEYS.webp2}`].sort());
-  });
-
-  await t.test('没有 IMAGES_DIR：不传图，只核对；核对通过就换指针', async () => {
-    s3.requests.length = 0;
-    const r = await run({ ...ws.env, ...s3.env });
-    assert.equal(r.status, 0, r.out);
-    assert.match(r.out, /IMAGES_DIR 未设置/);
-    assert.doesNotMatch(r.out, /图片：新传/);
-    assert.equal(s3.requests.filter((x) => x.startsWith('PUT ')).length, 4);
-  });
-
-  await t.test('PUT 回 404（桶不存在）→ 抛错、退 1，日志带状态码', async () => {
-    // 桶名对不上，假服务器对一切路径回 404：第一个 PUT（库）就是真错误，必须抛，不能当「不存在」
-    s3.requests.length = 0;
-    const r = await run({ ...ws.env, ...s3.env, R2_BUCKET: 'other-bucket' });
-    assert.equal(r.status, 1, r.out);
-    assert.match(r.out, /对象存储回 HTTP 404/);
-    assert.doesNotMatch(r.out, /核对通过/);
-    assert.equal(s3.requests.filter((x) => x.startsWith('PUT ')).length, 1, '第一个 PUT 失败就停');
-  });
-
-  await t.test('核对阶段存储回 500（非 404）→ 抛错退 1、日志带状态码、manifest 不换指针', async () => {
-    s3.objects.delete('db/manifest.json');
-    s3.headStatus = 500;
-    s3.requests.length = 0;
-    const r = await run({ ...ws.env, ...s3.env });
-    s3.headStatus = null;
-    assert.equal(r.status, 1, r.out);
-    assert.match(r.out, /对象存储回 HTTP 500/);
-    assert.match(r.out, /线上仍指向上一版/);
-    assert.doesNotMatch(r.out, /核对通过/);
-    assert.doesNotMatch(r.out, /缺 img\//, '500 不是「不存在」，不能报成缺 key');
-    assert.ok(!s3.objects.has('db/manifest.json'), '核对没过就不能换指针');
-    assert.ok(s3.requests.some((x) => x.startsWith('HEAD ')), '确实走到了核对');
-  });
-});
-
-test('publish:r2：zstd 不可用 → 报错退 1，不换 gzip，一个对象都不传', { timeout: 30_000 }, async (t) => {
-  const ws = await workspace(t);
-  const s3 = await fakeS3();
-  t.after(s3.close);
-  // 只有 tar 的 PATH：tar 找得到，zstd 找不到
-  const tarPath = spawnSync('sh', ['-c', 'command -v tar'], { encoding: 'utf8' }).stdout.trim();
-  assert.ok(tarPath, '这台机器得有 tar');
-  const onlyTar = join(ws.tmp, 'only-tar');
-  await mkdir(onlyTar);
-  await symlink(tarPath, join(onlyTar, 'tar'));
-  const r = await run({ ...ws.env, ...s3.env, PATH: onlyTar });
-  assert.equal(r.status, 1, r.out);
-  assert.match(r.out, /zstd 不可用/);
-  assert.match(r.out, /不换 gzip/);
-  assert.equal(s3.requests.length, 0, '归档失败时一个请求都没发');
-  assert.ok(!existsSync(ws.archive));
-  // dry-run 也要发现：预检只跑 --version，无副作用，没理由跳过
-  const dry = await run({ ...ws.env, PATH: onlyTar, PUBLISH_DRY_RUN: '1' });
-  assert.equal(dry.status, 1, dry.out);
-  assert.match(dry.out, /zstd 不可用/);
-  assert.doesNotMatch(dry.out, /PUBLISH_DRY_RUN=1：只打印计划/);
-});
-
-test('publish:r2：线上旧 manifest 原样存为 out/manifest-previous.json；没有 → 首次发布不写；读失败 → 退 1 且一个对象都不传', { timeout: 30_000 }, async (t) => {
-  const ws = await workspace(t);
-  const previousFile = join(ws.OUT, 'manifest-previous.json');
-  // 三张图都已在存储里：不给 IMAGES_DIR 也能核对通过、走到换指针
-  const s3 = await fakeS3({ [KEYS.webp]: 'a', [KEYS.webp]: 'b', [KEYS.webp2]: 'c' });
-  t.after(s3.close);
-  // 故意带多字节字符、尾部空白与非 2 空格缩进：验的是逐字节原样，不是「解析后再序列化」
-  const OLD = '{\n    "version": "2026-08-01.3",\n  "site": {"domain": "旧域名.example.org"},\n  "db": {"key": "db/gallery-2026-08-01.3.sqlite"}\n}\n  \n';
-
-  await t.test('dry-run 不读存储', async () => {
-    const r = await run({ ...ws.env, ...s3.env, PUBLISH_DRY_RUN: '1' });
-    assert.equal(r.status, 0, r.out);
+  const emptyPath = join(ws.tmp, 'empty-path');
+  await mkdir(emptyPath);
+  for (const dry of ['0', '1']) {
+    const result = await run({ ...ws.env, ...s3.env, PATH: emptyPath, PUBLISH_DRY_RUN: dry });
+    assert.equal(result.status, 1, result.out);
+    assert.match(result.out, /zstd 不可用/);
+    assert.doesNotMatch(result.out, /PUBLISH_DRY_RUN=1：只打印计划/);
     assert.equal(s3.requests.length, 0);
-    assert.ok(!existsSync(previousFile));
-  });
+    assert.ok(!existsSync(ws.archive));
+  }
+});
 
-  await t.test('没有旧 manifest：提示首次发布，文件不存在，脚本仍成功；GET 在任何 PUT 之前', async () => {
-    // 上次跑剩下的旧文件要被清掉，不能留给 push:search 当基线
-    await writeFile(previousFile, '{"version":"stale"}');
-    const r = await run({ ...ws.env, ...s3.env });
-    assert.equal(r.status, 0, r.out);
-    assert.match(r.out, /首次发布，不写 .*manifest-previous\.json/);
-    assert.ok(!existsSync(previousFile), '首次发布不该留下 manifest-previous.json');
-    assert.equal(s3.requests[0], 'GET db/manifest.json', '第一个请求就是读旧 manifest');
-    assert.equal(s3.requests.filter((x) => x === 'GET db/manifest.json').length, 1);
-    assert.equal(s3.requests.at(-1), 'PUT db/manifest.json', '指针照常换');
-    assert.ok(s3.objects.has('db/manifest.json'));
-  });
+test('publish:r2：同版本不同内容拒绝，已有对象与生产指针不覆盖', { timeout: 60_000 }, async (t) => {
+  const ws = await workspace(t);
+  const s3 = await fakeS3({ [KEYS.webp]: 'webp-bytes', [KEYS.webp2]: 'webp2-bytes', 'db/manifest.json': '{"version":"previous"}' });
+  t.after(s3.close);
+  const first = await run({ ...ws.env, ...s3.env });
+  assert.equal(first.status, 0, first.out);
+  const snapshots = new Map([...s3.objects].map(([k, v]) => [k, Buffer.from(v.body)]));
+  for (const [name, path, replacement] of [
+    ['库', join(ws.OUT, 'db', 'gallery-2026-09-03.sqlite'), Buffer.alloc(8192, 1)],
+    ['摘要', join(ws.OUT, 'db', 'gallery-2026-09-03.sqlite.chunks.json'), '{"version":2}'],
+    ['归档', join(ws.DIST, 'index.html'), '<!doctype html><title>已改变</title>'],
+    ['版本清单', join(ws.OUT, 'manifest.json'), JSON.stringify(manifest({ series: [{ title: '已改变' }] }))],
+  ]) {
+    await t.test(name, async () => {
+      const original = await readFile(path);
+      await writeFile(path, replacement);
+      s3.requests.length = 0;
+      const result = await run({ ...ws.env, ...s3.env });
+      await writeFile(path, original);
+      assert.equal(result.status, 1, result.out);
+      assert.match(result.out, /不可变对象.*内容不同/);
+      assert.equal(s3.requests.filter((r) => r.startsWith('PUT ')).length, 0);
+      for (const [key, body] of snapshots) assert.deepEqual(s3.objects.get(key).body, body);
+    });
+  }
+});
 
-  await t.test('有旧 manifest：内容逐字节一致，日志带旧版本号；之后指针才换成新的', async () => {
-    s3.objects.set('db/manifest.json', { body: Buffer.from(OLD), contentType: CONTENT_TYPE_MANIFEST, cacheControl: CACHE_MANIFEST });
-    s3.requests.length = 0;
-    const r = await run({ ...ws.env, ...s3.env });
-    assert.equal(r.status, 0, r.out);
-    assert.match(r.out, /线上旧 manifest（版本 2026-08-01\.3）已存为 .*manifest-previous\.json/);
-    assert.deepEqual(await readFile(previousFile), Buffer.from(OLD), '逐字节原样');
-    assert.equal(s3.requests[0], 'GET db/manifest.json');
-    assert.equal(s3.requests.at(-1), 'PUT db/manifest.json');
-    assert.equal(JSON.parse(s3.objects.get('db/manifest.json').body.toString()).version, VERSION, '线上已是新 manifest');
-  });
-
-  await t.test('GET 回 500（不是 404）：退 1、日志带状态码与原因，一个对象都没传、指针没换', async () => {
-    s3.objects.set('db/manifest.json', { body: Buffer.from(OLD), contentType: CONTENT_TYPE_MANIFEST, cacheControl: CACHE_MANIFEST });
-    s3.getStatus = 500;
-    s3.requests.length = 0;
-    await rm(ws.archive, { force: true }); // 上面两次成功的运行留下的归档
-    const r = await run({ ...ws.env, ...s3.env });
-    s3.getStatus = null;
-    assert.equal(r.status, 1, r.out);
-    assert.match(r.out, /对象存储回 HTTP 500/);
-    assert.match(r.out, /读线上旧 db\/manifest\.json 失败，不知道线上是哪一版就不能换指针/);
-    assert.match(r.out, /manifest\.json 未更新，线上仍指向上一版/);
-    assert.equal(s3.requests.filter((x) => x.startsWith('PUT ')).length, 0, '读旧 manifest 失败时一个字节都不传');
-    assert.equal(s3.objects.get('db/manifest.json').body.toString(), OLD, '线上指针未动');
-    assert.ok(!existsSync(ws.archive), '连归档都没开始');
-  });
+test('publish:r2：读取既存对象失败即停止，HEAD 失败不能当缺图', { timeout: 60_000 }, async (t) => {
+  const ws = await workspace(t);
+  const s3 = await fakeS3({ [KEYS.webp]: 'a', [KEYS.webp2]: 'b' });
+  t.after(s3.close);
+  s3.getStatus = 500;
+  const readFailed = await run({ ...ws.env, ...s3.env });
+  assert.equal(readFailed.status, 1, readFailed.out);
+  assert.match(readFailed.out, /对象存储回 HTTP 500/);
+  assert.equal(s3.requests.filter((r) => r.startsWith('PUT ')).length, 0);
+  s3.getStatus = null;
+  s3.headStatus = 500;
+  const verifyFailed = await run({ ...ws.env, ...s3.env });
+  assert.equal(verifyFailed.status, 1, verifyFailed.out);
+  assert.match(verifyFailed.out, /对象存储回 HTTP 500/);
+  assert.doesNotMatch(verifyFailed.out, /缺 img\//);
+  assert.ok(!s3.objects.has('db/manifest-2026-09-03.json'));
+  assert.ok(!s3.objects.has('db/manifest.json'));
 });

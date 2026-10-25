@@ -1,4 +1,4 @@
-// 站点构建的端到端测试：拿测试样本真跑 build:config → build:site（astro build）→ build:index →
+// 站点构建的端到端测试：拿测试样本真跑 build:config → build:db → build:site（astro build）→ build:index →
 // build:sitemap，再让 check 守卫过一遍产物。不 mock 任何一步——每话恰好一个 HTML、台词在 HTML 里、
 // 索引与 sitemap 的形状，这些只有真构建出来才算数。
 //
@@ -14,15 +14,24 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadSiteConfig } from '../lib/config.mjs';
+import { loadGallery } from '../lib/data.mjs';
+import { buildManifest } from '../lib/manifest.mjs';
+import { releaseFingerprint } from '../lib/release.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const FIXTURES = join(ROOT, 'packages', 'core', 'test', 'fixtures', 'data');
 const SITE_DIR = join(ROOT, 'packages', 'site');
 /** 站点生成物目录：build:site 写、astro build 读；下面有几个用例会动它里面的文件再直接跑 astro。 */
 const GENERATED = join(SITE_DIR, 'src', 'generated');
+const config = await loadSiteConfig();
+const siteOrigin = `https://${config.site.domain}`;
+const imageOrigin = `https://${config.images.hosts[0]}`;
 
 function run(script, env) {
-  const r = spawnSync(process.execPath, [join(ROOT, 'scripts', script)], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, ...env } });
+  const clean = { ...process.env };
+  for (const key of ['DATA_DIR', 'DIST_DIR', 'OUT_DIR', 'DEPLOY_ENV', 'RELEASE_VERSION']) delete clean[key];
+  const r = spawnSync(process.execPath, [join(ROOT, 'scripts', script)], { cwd: ROOT, encoding: 'utf8', env: { ...clean, ...env } });
   return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
 
@@ -55,8 +64,11 @@ async function walk(dir, out = []) {
 test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，守卫通过', { timeout: 120_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-site-'));
   const DIST = join(tmp, 'dist');
-  const env = { DATA_DIR: FIXTURES, DIST_DIR: DIST, OUT_DIR: join(tmp, 'out') };
+  const env = { DATA_DIR: FIXTURES, DIST_DIR: DIST, OUT_DIR: join(tmp, 'out'), RELEASE_VERSION: 'site-build-test' };
   t.after(() => rm(tmp, { recursive: true, force: true }));
+  const model = await loadGallery({ dataDir: FIXTURES, imagePrefix: config.images.prefix });
+  await mkdir(env.OUT_DIR, { recursive: true });
+  await writeFile(join(env.OUT_DIR, 'manifest.json'), JSON.stringify(buildManifest(model, config, { version: env.RELEASE_VERSION })));
 
   // 预先放一份「上次构建留下、如今已从 data/ 撤掉的话」的分片：build:site 声称 text/ 先整个删掉再写，
   // 构建完它必须不在——否则撤掉的话还能被 glob 到。
@@ -64,10 +76,12 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
   await mkdir(dirname(staleShard), { recursive: true });
   await writeFile(staleShard, '{"chapter":"stale/v/c","pages":[]}\n');
 
-  for (const script of ['build-config.mjs', 'build-site.mjs', 'build-index.mjs', 'build-sitemap.mjs']) {
+  for (const script of ['build-config.mjs', 'build-db.mjs', 'build-site.mjs', 'build-index.mjs', 'build-sitemap.mjs']) {
     const r = run(script, env);
     assert.equal(r.status, 0, `${script} 失败：\n${r.out}`);
   }
+
+  const manifest = JSON.parse(await readFile(join(env.OUT_DIR, 'manifest.json'), 'utf8'));
 
   await t.test('每话恰好一个 HTML，且是该目录下唯一的 HTML', async () => {
     for (const key of ['sample/vol01/c001', 'sample/vol01/c002', 'sample/vol02/c003', 'zeta/v1/ch1']) {
@@ -105,13 +119,14 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.match(html, /class="box dot[^"]*"[^>]*id="p2b0"/, 'w=h=0 的框应带 dot 类');
     // 三页的 <img src=webp>，域名取 images.hosts[0]
     for (const [n, hash] of [[1, '0123456789ab'], [2, '123456789abc'], [3, '23456789abcd']]) {
-      assert.ok(html.includes(`https://images.example.org/img/sample/vol01/c001/${n}-${hash}.webp`), `第 ${n} 页 webp URL`);
-      assert.ok(!html.includes(`https://images.example.org/img/sample/vol01/c001/${n}-${hash}.avif`), `第 ${n} 页不该再有 avif`);
+      assert.ok(html.includes(`${imageOrigin}/${config.images.prefix}sample/vol01/c001/${n}-${hash}.webp`), `第 ${n} 页 webp URL`);
+      assert.ok(!html.includes(`${imageOrigin}/${config.images.prefix}sample/vol01/c001/${n}-${hash}.avif`), `第 ${n} 页不该再有 avif`);
       assert.ok(html.includes(`id="p${n}"`), `第 ${n} 页的锚点`);
     }
-    assert.equal((html.match(/<img[^>]+src="https:\/\/images\.example\.org\//g) ?? []).length, 3, '三页都在这一份 HTML 里');
+    const imageTags = html.match(/<img\b[^>]*>/g) ?? [];
+    assert.equal(imageTags.filter((tag) => tag.includes(`src="${imageOrigin}/`)).length, 3, '三页都在这一份 HTML 里');
     assert.doesNotMatch(html, /<source type="image\/avif"/);
-    assert.match(html, /<img[^>]+src="https:\/\/images\.example\.org\/[^"]+\.webp"/);
+    assert.ok(imageTags.some((tag) => tag.includes(`src="${imageOrigin}/`) && /\.webp"/.test(tag)));
     assert.match(html, /loading="lazy"/);
     assert.match(html, /width="1200" height="1700"/);
     assert.ok(html.includes('aspect-ratio:2400/1700'), '宽页的纵横比');
@@ -124,11 +139,11 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.ok(html.includes('replaceState'));
     assert.ok(html.includes('ArrowLeft') && html.includes('ArrowRight'));
     // 图片失败切源的脚本读 data-hosts
-    assert.deepEqual(jsonAttr(html, 'data-hosts'), ['images.example.org']);
+    assert.deepEqual(jsonAttr(html, 'data-hosts'), config.images.hosts);
     // 外壳
-    assert.ok(html.includes('<html lang="zh-CN">'));
-    assert.ok(html.includes('<link rel="canonical" href="https://gallery.example.org/sample/vol01/c001/">'));
-    assert.match(html, /<meta property="og:title" content="第一话 开端 · 第一卷 · 示例作品 · 漫画画廊">/);
+    assert.ok(html.includes(`<html lang="${config.site.lang}">`));
+    assert.ok(html.includes(`<link rel="canonical" href="${siteOrigin}/sample/vol01/c001/">`));
+    assert.ok(html.includes(`<meta property="og:title" content="第一话 开端 · 第一卷 · 示例作品 · ${config.site.title}">`));
 
     // 跨期的上一话：c003（第二卷）的上一话是 c002（第一卷）
     const html3 = await readFile(join(DIST, 'sample', 'vol02', 'c003', 'index.html'), 'utf8');
@@ -138,7 +153,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
 
   await t.test('没有台词稿的话：页面正常、没有文字层', async () => {
     const html = await readFile(join(DIST, 'sample', 'vol02', 'c003', 'index.html'), 'utf8');
-    assert.ok(html.includes('https://images.example.org/img/sample/vol02/c003/1-56789abcdef0.webp'));
+    assert.ok(html.includes(`${imageOrigin}/${config.images.prefix}sample/vol02/c003/1-56789abcdef0.webp`));
     assert.ok(!html.includes('class="text-layer'), '不该有文字层');
     assert.ok(!/id="p\d+b\d+"/.test(html), '不该有框');
     assert.ok(html.includes('id="p1"'));
@@ -165,8 +180,9 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     const m = /<script type="application\/json" id="search-config">(.*?)<\/script>/.exec(search);
     assert.ok(m, 'search-config JSON');
     const cfg = JSON.parse(m[1]);
-    assert.deepEqual(cfg.images.hosts, ['images.example.org']);
+    assert.deepEqual(cfg.images.hosts, config.images.hosts);
     assert.equal(cfg.search.request_chunk_size, cfg.db.page_size);
+    assert.deepEqual(cfg.db.release, manifest.db, '页面固定绑定同次构建的检索库');
     const notFound = await readFile(join(DIST, '404.html'), 'utf8');
     assert.ok(notFound.includes('<meta name="robots" content="noindex">'));
     assert.ok(!notFound.includes('rel="canonical"'));
@@ -203,23 +219,25 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
   await t.test('sitemap.xml 与 robots.txt', async () => {
     const xml = await readFile(join(DIST, 'sitemap.xml'), 'utf8');
     assert.ok(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'));
-    assert.ok(xml.includes('<loc>https://gallery.example.org/</loc>'));
-    assert.ok(xml.includes('<loc>https://gallery.example.org/search/</loc>'));
-    assert.ok(xml.includes('<loc>https://gallery.example.org/sample/</loc>'));
-    assert.ok(xml.includes('<url><loc>https://gallery.example.org/sample/vol01/</loc><lastmod>2026-01-01</lastmod></url>'));
-    assert.ok(xml.includes('<url><loc>https://gallery.example.org/sample/vol01/c001/</loc><lastmod>2026-01-01</lastmod></url>'));
-    assert.ok(xml.includes('<url><loc>https://gallery.example.org/sample/vol02/c003/</loc><lastmod>2026-06-01</lastmod></url>'));
-    assert.ok(xml.includes('<url><loc>https://gallery.example.org/zeta/v1/ch1/</loc></url>'), '没有 published 的期不出 lastmod');
+    assert.ok(xml.includes(`<loc>${siteOrigin}/</loc>`));
+    assert.ok(xml.includes(`<loc>${siteOrigin}/search/</loc>`));
+    assert.ok(xml.includes(`<loc>${siteOrigin}/sample/</loc>`));
+    assert.ok(xml.includes(`<url><loc>${siteOrigin}/sample/vol01/</loc><lastmod>2026-01-01</lastmod></url>`));
+    assert.ok(xml.includes(`<url><loc>${siteOrigin}/sample/vol01/c001/</loc><lastmod>2026-01-01</lastmod></url>`));
+    assert.ok(xml.includes(`<url><loc>${siteOrigin}/sample/vol02/c003/</loc><lastmod>2026-06-01</lastmod></url>`));
+    assert.ok(xml.includes(`<url><loc>${siteOrigin}/zeta/v1/ch1/</loc></url>`), '没有 published 的期不出 lastmod');
     // 2 固定 + 2 作品 + 3 期 + 4 话
     assert.equal((xml.match(/<url>/g) ?? []).length, 11);
     const robots = await readFile(join(DIST, 'robots.txt'), 'utf8');
-    assert.equal(robots, 'User-agent: *\nAllow: /\n\nSitemap: https://gallery.example.org/sitemap.xml\n');
+    assert.equal(robots, `User-agent: *\nAllow: /\n\nSitemap: ${siteOrigin}/sitemap.xml\n`);
   });
 
   await t.test('站点生成物：gallery.json 不含台词，text/ 按话分片，过期分片被清掉', async () => {
     const gen = GENERATED;
     const gallery = JSON.parse(await readFile(join(gen, 'gallery.json'), 'utf8'));
     assert.deepEqual(gallery.totals, { series: 2, issues: 3, chapters: 4, pages: 8, boxes: 5 });
+    assert.deepEqual(gallery.searchDb, manifest.db);
+    assert.deepEqual(JSON.parse(await readFile(join(DIST, 'release.json'), 'utf8')), { version: manifest.version, fingerprint: releaseFingerprint(manifest), environment: 'production' });
     const pagesInGallery = gallery.series.flatMap((s) => s.issues.flatMap((i) => i.chapters.flatMap((c) => c.pages)));
     assert.equal(pagesInGallery.length, 8);
     assert.ok(pagesInGallery.every((pg) => !('boxes' in pg) && pg.keys.webp), 'gallery.json 的页只有结构与图片 key，不含 boxes');
@@ -237,7 +255,40 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.equal(r.status, 0, r.out);
   });
 
-  // 下面两个用例改动 src/generated/ 里的文件再直接跑 astro build，跑完原样放回：
+  await t.test('输入数据摘要不符时拒绝搭配旧检索库，保留已有 dist', async () => {
+    const outDir = join(tmp, 'out-stale');
+    const rejectedDist = join(tmp, 'dist-stale');
+    await mkdir(outDir);
+    await mkdir(rejectedDist);
+    await writeFile(join(rejectedDist, 'keep.txt'), 'existing');
+    await writeFile(join(outDir, 'manifest.json'), JSON.stringify({ ...manifest, sourceSha256: '0'.repeat(64) }));
+    const r = run('build-site.mjs', { ...env, OUT_DIR: outDir, DIST_DIR: rejectedDist });
+    assert.notEqual(r.status, 0, r.out);
+    assert.match(r.out, /站点数据与检索库构建清单不一致/);
+    assert.equal(await readFile(join(rejectedDist, 'keep.txt'), 'utf8'), 'existing');
+  });
+
+  await t.test('预览构建：所有普通页面 noindex，不输出生产 canonical 与 og:url', async () => {
+    const cfgFile = join(GENERATED, 'site-config.json');
+    const saved = await readFile(cfgFile);
+    try {
+      const out = join(tmp, 'dist-preview');
+      const r = run('build-site.mjs', { ...env, DIST_DIR: out, DEPLOY_ENV: 'preview' });
+      assert.equal(r.status, 0, r.out);
+      assert.equal(JSON.parse(await readFile(cfgFile, 'utf8')).preview, true);
+      for (const page of ['index.html', 'search/index.html', 'sample/index.html', 'sample/vol01/c001/index.html']) {
+        const html = await readFile(join(out, page), 'utf8');
+        assert.ok(html.includes('<meta name="robots" content="noindex">'), `${page} 缺少 noindex`);
+        assert.ok(!html.includes('rel="canonical"'), `${page} 不该声明生产 canonical`);
+        assert.ok(!html.includes('property="og:url"'), `${page} 不该声明生产 og:url`);
+      }
+      assert.deepEqual(JSON.parse(await readFile(join(out, 'release.json'), 'utf8')), { version: manifest.version, fingerprint: releaseFingerprint(manifest), environment: 'preview' });
+    } finally {
+      await writeFile(cfgFile, saved);
+    }
+  });
+
+  // 下面的用例改动 src/generated/ 里的文件再直接跑 astro build，跑完原样放回：
   // 这个目录是共享的构建中间态，不能留下与 gallery.json 对不上的东西。
 
   await t.test('hasText 但分片缺失：astro build 报错退出、信息含该话 key，而不是静默丢掉文字层', async () => {
@@ -258,22 +309,20 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     const cfgFile = join(GENERATED, 'site-config.json');
     const saved = await readFile(cfgFile, 'utf8');
     const cfg = JSON.parse(saved);
-    cfg.images.hosts = ['images.example.org', 'img2.images.example.org'];
+    cfg.images.hosts = [config.images.hosts[0], 'backup.example.org'];
     await writeFile(cfgFile, JSON.stringify(cfg));
     try {
       const out = join(tmp, 'dist-two-hosts');
       const r = astroBuild(out);
       assert.equal(r.status, 0, r.out);
       const html = await readFile(join(out, 'sample', 'vol01', 'c001', 'index.html'), 'utf8');
-      assert.deepEqual(jsonAttr(html, 'data-hosts'), ['images.example.org', 'img2.images.example.org']);
+      assert.deepEqual(jsonAttr(html, 'data-hosts'), [config.images.hosts[0], 'backup.example.org']);
       assert.ok(html.includes('你好，世界！'), '上一个用例放回的分片应仍被取到，文字层完整');
-      assert.ok(html.includes('https://images.example.org/img/sample/vol01/c001/1-0123456789ab.webp'), '图片仍从第一条域名取');
-      assert.ok(!html.includes('https://img2.images.example.org/'), '第二条域名只给切源脚本用，不该出现在图片 URL 里');
-      // 内联脚本里的替换规则与 lib/gallery.js 的 swapHost 是同一条（那边有单测）：这里只钉它没被改成别的形状
-      assert.ok(html.includes("u.replace('//'+hosts[0]+'/','//'+hosts[1]+'/')") || html.includes("u.replace('//' + hosts[0] + '/', '//' + hosts[1] + '/')"), '切源脚本的替换规则');
+      assert.ok(html.includes(`${imageOrigin}/${config.images.prefix}sample/vol01/c001/1-0123456789ab.webp`), '图片仍从第一条域名取');
+      assert.ok(!html.includes('https://backup.example.org/'), '第二条域名只给切源脚本用，不该出现在图片 URL 里');
       const search = await readFile(join(out, 'search', 'index.html'), 'utf8');
       const m = /<script type="application\/json" id="search-config">(.*?)<\/script>/.exec(search);
-      assert.deepEqual(JSON.parse(m[1]).images.hosts, ['images.example.org', 'img2.images.example.org']);
+      assert.deepEqual(JSON.parse(m[1]).images.hosts, [config.images.hosts[0], 'backup.example.org']);
     } finally {
       await writeFile(cfgFile, saved);
     }
@@ -313,8 +362,15 @@ test('0 话也能建：空 data/ 目录下首页、搜索页、404、索引总�
   for (const p of ['index.html', '404.html', 'search/index.html', 'index/series.json', 'sitemap.xml', 'robots.txt']) {
     assert.ok(existsSync(join(DIST, p)), `${p} 不存在`);
   }
-  assert.ok((await readFile(join(DIST, 'index.html'), 'utf8')).includes('还没有作品'));
+  const home = await readFile(join(DIST, 'index.html'), 'utf8');
+  assert.ok(home.includes('还没有作品'));
   assert.deepEqual(JSON.parse(await readFile(join(DIST, 'index', 'series.json'), 'utf8')), []);
+  const generated = JSON.parse(await readFile(join(GENERATED, 'gallery.json'), 'utf8'));
+  assert.equal(generated.searchDb, null, '未建检索库不能沿用上次构建的版本');
+  assert.ok(!existsSync(join(DIST, 'release.json')));
+  const search = await readFile(join(DIST, 'search', 'index.html'), 'utf8');
+  const searchConfig = JSON.parse(/<script type="application\/json" id="search-config">(.*?)<\/script>/.exec(search)[1]);
+  assert.equal(searchConfig.db.release, null);
   assert.equal(((await readFile(join(DIST, 'sitemap.xml'), 'utf8')).match(/<url>/g) ?? []).length, 2);
   assert.equal(run('check.mjs', env).status, 0);
 });

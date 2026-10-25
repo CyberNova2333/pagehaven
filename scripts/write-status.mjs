@@ -70,6 +70,10 @@ function describeStorageError(e, r2) {
 }
 
 step('status');
+if (process.env.DEPLOY_ENV === 'preview' || process.env.DEPLOY_TARGET === 'none') {
+  note('预览或仅上传不更新生产 STATUS.md');
+  process.exit(0);
+}
 try {
   const manifest = await readManifest(OUT_DIR);
   if (!manifest) {

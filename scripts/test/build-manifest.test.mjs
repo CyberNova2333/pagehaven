@@ -124,7 +124,7 @@ test('build:manifest：样本 → manifest.json，形状与键顺序稳定；无
   const m = JSON.parse(text);
   assert.deepEqual(
     Object.keys(m),
-    ['version', 'generatedAt', 'site', 'images', 'totals', 'series', 'imageKeys', 'db'],
+    ['version', 'generatedAt', 'sourceSha256', 'site', 'images', 'totals', 'series', 'imageKeys', 'db'],
     '顶层键顺序',
   );
   assert.equal(m.version, '2026-09-03');
