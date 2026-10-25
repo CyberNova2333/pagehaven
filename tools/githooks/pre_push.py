@@ -60,6 +60,7 @@ push 构建（「🟢 全量回归 + last-green」迁到 CNB 后由它产生）�
 用它意味着你**明确知道自己在跳过什么**，并且准备好向维护者解释。
 """
 
+import csv
 import os
 import re
 import subprocess
@@ -210,6 +211,77 @@ def repo_slug():
     return m.group(1) if m else None
 
 
+def main_redlight_from_output(output):
+    """从 cnb 的文本输出判断最近一次有成败结论的构建，不把纯取消算成失败。
+
+    CLI 的 pipelines 是带 CSV 行的表格（字段内可能有逗号），不是普通 YAML。
+    只有完整表格确认全部取消时，才忽略顶层 error；缺失或异常的表格不消除红灯。
+    """
+    if not re.search(r"^status:\s*200\b", output, re.M):
+        return None, "cnb 查询失败（未登录、无权限或网络问题）"
+    builds, cur, table = [], None, None
+    for line in output.splitlines():
+        m = re.match(r"(\s*)- sn:\s*(\S+)", line)
+        if m:
+            cur = {"sn": m.group(2), "indent": len(m.group(1)), "pipelines": []}
+            builds.append(cur)
+            table = None
+            continue
+        if cur is None or not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        if table is not None:
+            if indent > table["indent"]:
+                try:
+                    row = next(csv.reader([line.strip()], strict=True))
+                    if len(row) != len(table["fields"]):
+                        raise ValueError("不完整的流水线行")
+                    cur["pipelines"].append(row[table["fields"].index("status")].strip())
+                except (csv.Error, ValueError):
+                    cur["invalid_pipelines"] = True
+                continue
+            table = None
+        if indent != cur["indent"] + 2:
+            continue
+        m = re.match(r"\s*status:\s*(\S+)", line)
+        if m:
+            cur["status"] = m.group(1)
+            continue
+        m = re.match(r"\s*pipelineTotalCount:\s*(\d+)\s*$", line)
+        if m:
+            cur["pipeline_total"] = int(m.group(1))
+            continue
+        m = re.match(r"\s*pipelines\[(\d+)\]\{([^}]+)\}:\s*$", line)
+        if m:
+            cur["pipeline_count"] = int(m.group(1))
+            table = {"indent": indent, "fields": [f.strip() for f in m.group(2).split(",")]}
+    if not builds:
+        return None, "CNB 上 main 还没有构建记录（全量回归流水线尚未迁到 CNB）"
+    for build in builds:
+        status = build.get("status")
+        if status not in ("success", "error", "cancel"):
+            continue
+        pipelines = build["pipelines"]
+        if status == "cancel":
+            # 不让混合取消/失败的构建遮住真实失败。
+            if "error" in pipelines:
+                return True, ""
+            continue
+        if status == "error":
+            count = build.get("pipeline_count")
+            all_cancelled = (
+                count is not None and count > 0 and len(pipelines) == count
+                and build.get("pipeline_total", count) == count
+                and not build.get("invalid_pipelines")
+                and all(value == "cancel" for value in pipelines)
+            )
+            if all_cancelled:
+                continue
+            return True, ""
+        return False, ""
+    return None, "main 上最近的构建尚未完成或均已取消，没有可判定成败的记录"
+
+
 def remote_main_is_red():
     """main 最近一次已跑完的 push 构建是不是红灯。返回 (结论, 查不到的原因)，结论 None = 查不到。
 
@@ -229,24 +301,9 @@ def remote_main_is_red():
                            timeout=REDLIGHT_TIMEOUT)
     except Exception as e:
         return None, "调用 cnb 失败（%s）" % type(e).__name__
-    if r.returncode != 0 or not re.search(r"^status:\s*200\b", r.stdout, re.M):
+    if r.returncode != 0:
         return None, "cnb 查询失败（未登录、无权限或网络问题）"
-    builds, cur = [], None
-    for line in r.stdout.splitlines():
-        m = re.match(r"\s*- sn:\s*(\S+)", line)
-        if m:
-            cur = {"sn": m.group(1)}
-            builds.append(cur)
-            continue
-        m = re.match(r"\s+status:\s*(\S+)", line)
-        if m and cur is not None and "status" not in cur:
-            cur["status"] = m.group(1)
-    if not builds:
-        return None, "CNB 上 main 还没有构建记录（全量回归流水线尚未迁到 CNB）"
-    done = [b for b in builds if b.get("status") in ("success", "error", "cancel")]
-    if not done:
-        return None, "main 上最近的构建都还没跑完"
-    return done[0]["status"] == "error", ""
+    return main_redlight_from_output(r.stdout)
 
 
 def check_redlight(refs):
