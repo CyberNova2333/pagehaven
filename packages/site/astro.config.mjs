@@ -3,6 +3,11 @@ import { defineConfig } from 'astro/config';
 import siteConfig from './src/generated/site-config.json' with { type: 'json' };
 
 export default defineConfig({
+  // 图片一律经 CDN 直出，站点里没有 <Image>/<Picture>，构建期不需要任何图像处理。
+  // 默认服务是 astro/assets/services/sharp，它会把 sharp（含 LGPL 的 libvips 二进制）
+  // 拖进依赖树；换成 Astro 自带的 noop 服务（transform 原样返回）就没有这个负担。
+  // 代价：以后真要写 <Image> 时不会做转码/缩放，得先换回 sharp 或另配服务。
+  image: { service: { entrypoint: 'astro/assets/services/noop' } },
   site: `https://${siteConfig.site.domain}`,
   output: 'static',
   // dist 在仓库根：check 守卫、三套 deploy 都只认这一个目录

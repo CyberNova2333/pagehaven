@@ -65,13 +65,22 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
 > MPL-2.0、LGPL-3.0、GPL-3.0 这类，**只允许出现在构建期工具链里**，且不得被
 > `packages/` 引用进产物。
 
-现在树里的非宽松许可证全部来自工具链、且都不进分发物，**不需要逐个删包**：
+树里现存的非宽松许可证只有一类，且不进分发物：
 
 | 依赖 | 许可证 | 谁拖进来的 | 判定 |
 |---|---|---|---|
-| `lightningcss`（含各平台二进制） | MPL-2.0 | `astro` → `vite` 的直接依赖 | 文件级 copyleft；只当工具跑，不分发不修改，无义务。**不 fork 它的源码连着发布** |
-| `@img/sharp-libvips-*` | LGPL-3.0-or-later | `astro` 的可选依赖（图片管线） | 站点图片走 CDN，本地不处理图片；`--omit=optional` 会把 `rolldown` 的 wasm 兜底一起砍掉导致构建挂，代价大于收益 |
+| `lightningcss`（含各平台二进制） | MPL-2.0 | `astro` → `vite` 的**硬依赖** | 文件级 copyleft；只当工具跑，不分发不修改，无义务。**不 fork 它的源码连着发布** |
 | `mdn-data` | CC0-1.0 | `astro` → `svgo` / `unifont` → `css-tree` | 最宽松的一档（公共领域捐献），**无需处理** |
+
+`astro` 的可选依赖 `sharp`（连带一批 LGPL-3.0 的 `@img/sharp-libvips-*`）**已经摘掉**，
+因为它根本不是必需的：站点图片全走 CDN，没有一处 `<Image>` / `<Picture>`。做法是
+`packages/site/astro.config.mjs` 把 `image.service` 指向 Astro 自带的
+`astro/assets/services/noop`（transform 原样返回），再从 `package-lock.json` 里删掉
+那 27 个条目。`npm run check` 会盯着这两件事——改回默认服务、或者 lock 里又出现
+LGPL 的 `sharp` 条目，都会被拦下。
+
+> 别用 `npm ci --omit=optional` 代替这一步：`rolldown` 的原生 binding 也是可选依赖，
+> 一起砍掉之后构建直接挂在 `Cannot find native binding`（wasm 兜底包默认没装）。
 
 新增依赖时按这条自查：
 
