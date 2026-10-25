@@ -1,21 +1,10 @@
-// 搜索页接线：读 #search-config、按需加载检索库、把结果渲染进约定的 #search-results。
-//
-// 页面结构是约定（packages/site/README「搜索页的约定 id」），这里只认 id，不重建 DOM：
-//   #search-form / #search-input / #search-status / #search-results / #search-config
-// 首次搜索才加载库（30 MB 以内整份下载）；加载失败只影响检索，作品与话页面照常。
-// 函数版检索（features.search_function、/api/search）尚未实现：探测不到就走浏览器端这条，
-// 等函数真的有了再在这里加「先探函数、失败回退」的分支。
-
+// 搜索页接线：输入与文本覆盖率先校验，再按需加载构建时固定的检索库。
+// 每批结果最多 50 条，用 hasMore 显示后续入口；失败不影响漫画浏览。
 import { loadGalleryDb } from './load.js';
-import { queryLines } from './query.js';
-
-const DEFAULT_MIN = 3;
+import { prepareQuery, queryLines } from './query.js';
 
 /**
- * @param {{
- *   document?: Document, location?: Location, history?: History, fetchImpl?: typeof fetch,
- * }} [deps]  全部可注入，方便在没有 DOM 的环境里验纯逻辑之外的接线
- * @returns {{ run: (q: string) => Promise<object[]>, destroy: () => void } | null}
+ * @param {{document?: Document, location?: Location, history?: History, fetchImpl?: typeof fetch}} [deps]
  */
 export function mountSearch({ document: doc = globalThis.document, location = globalThis.location, history = globalThis.history, fetchImpl = fetch } = {}) {
   const configEl = doc?.getElementById?.('search-config');
@@ -25,30 +14,39 @@ export function mountSearch({ document: doc = globalThis.document, location = gl
   const list = doc?.getElementById?.('search-results');
   if (!configEl || !form || !input || !status || !list) return null;
 
+  const more = doc.getElementById('search-more');
+  const series = doc.getElementById('search-series');
+  const coverageEl = doc.getElementById('search-coverage');
   const config = JSON.parse(configEl.textContent);
-  const minMatchLength = Number(config.search?.min_match_length) || DEFAULT_MIN;
-  const setStatus = (text) => {
-    status.textContent = text;
-  };
+  const coverage = config.coverage;
+  const noText = coverage && (coverage.withText === 0 || coverage.boxes === 0);
+  const emptyMessage = coverage?.chapters === 0
+    ? '当前还没有作品，内容发布后即可检索。'
+    : '当前尚未收录可检索的台词，作品和漫画仍可正常浏览。';
+  const prompt = '输入至少 2 个字开始检索；可先选择作品缩小范围。';
+  if (coverageEl && coverage) coverageEl.textContent = `台词稿覆盖 ${coverage.withText} / ${coverage.chapters} 话，共 ${coverage.boxes} 个文本框。`;
+  const setStatus = (text) => { status.textContent = text; };
   const clear = () => {
     while (list.firstChild) list.removeChild(list.firstChild);
   };
 
-  /** @type {Promise<import('@sqlite.org/sqlite-wasm').Database> | null} */
   let dbPromise = null;
   let db = null;
-  // 每次搜索递增：库加载慢、用户又改了词时，旧请求的结果不许盖掉新的
   let sequence = 0;
+  let destroyed = false;
+  let activeQuery = '';
+  let activeSeries = '';
+  let shown = 0;
+  const controller = new AbortController();
 
   function getDb() {
     if (!dbPromise) {
-      dbPromise = loadGalleryDb({ config, fetchImpl })
+      dbPromise = loadGalleryDb({ config, fetchImpl, signal: controller.signal })
         .then(({ db: opened }) => {
           db = opened;
           return opened;
         })
         .catch((e) => {
-          // 加载失败允许下次重试（CDN 抖一下不该让整页永远不可用）
           dbPromise = null;
           throw e;
         });
@@ -69,58 +67,96 @@ export function mountSearch({ document: doc = globalThis.document, location = gl
     }
   }
 
-  async function run(rawQuery) {
-    const query = String(rawQuery ?? '');
+  async function searchPage(append) {
+    if (destroyed) return [];
     const seq = ++sequence;
-    clear();
-    if (!query.trim()) {
-      setStatus(minMatchLength >= 3 ? `输入台词片段开始检索（至少 ${minMatchLength} 个字）` : '输入台词片段开始检索');
+    const query = activeQuery;
+    const seriesId = activeSeries;
+    const offset = append ? shown : 0;
+    if (!append) {
+      clear();
+      shown = 0;
+      if (more) more.hidden = true;
+    }
+    if (noText) {
+      setStatus(emptyMessage);
       return [];
     }
-    setStatus('检索库加载中……（首次需要几秒）');
+    if (!query.trim()) {
+      setStatus(prompt);
+      return [];
+    }
+    if (prepareQuery(query).mode === 'too-short') {
+      setStatus('请至少输入 2 个字（空格和标点不计入）。');
+      return [];
+    }
+    if (more) more.disabled = true;
+    setStatus(db ? '正在检索……' : '正在加载台词检索……');
     try {
       const conn = await getDb();
-      if (seq !== sequence) return [];
-      const { mode, rows } = queryLines(conn, query, { minMatchLength });
-      if (seq !== sequence) return [];
-      if (mode === 'too-short') {
-        setStatus('至少输入 3 个字：1 个字不检索，2 个字按 LIKE 全表扫');
-        return [];
-      }
+      if (seq !== sequence || destroyed) return [];
+      const { rows, hasMore } = queryLines(conn, query, { seriesId, offset });
       render(rows);
-      setStatus(rows.length ? `找到 ${rows.length} 条台词` : '没有找到台词');
+      shown += rows.length;
+      if (more) more.hidden = !hasMore;
+      setStatus(hasMore ? `已显示 ${shown} 条台词，还有更多结果。` : shown ? `找到 ${shown} 条台词` : '已收录的台词中没有匹配结果。');
       return rows;
     } catch (e) {
-      if (seq !== sequence) return [];
-      setStatus(`检索暂不可用：${e.message}。作品与话页面不受影响。`);
+      if (seq !== sequence || destroyed) return [];
+      setStatus(`检索暂不可用：${e.message}。`);
       return [];
+    } finally {
+      if (seq === sequence && more) more.disabled = false;
     }
+  }
+
+  function run(rawQuery) {
+    activeQuery = String(rawQuery ?? '');
+    activeSeries = series?.value ?? '';
+    return searchPage(false);
   }
 
   function submit(event) {
     event?.preventDefault?.();
     const q = input.value;
-    // q 留在 URL 里：刷新、分享、从结果页返回都能复现这次搜索
     try {
       const url = new URL(location.href);
       if (q) url.searchParams.set('q', q);
       else url.searchParams.delete('q');
+      if (series?.value) url.searchParams.set('series', series.value);
+      else url.searchParams.delete('series');
       history.replaceState(null, '', url);
     } catch {
-      /* 没有 history / location 的环境（测试）忽略 */
+      // 没有 history / location 的环境忽略。
     }
-    run(q);
+    return run(q);
+  }
+
+  function loadMore() {
+    if (more?.disabled || more?.hidden) return Promise.resolve([]);
+    return searchPage(true);
   }
 
   form.addEventListener('submit', submit);
-  const initial = new URLSearchParams(location?.search ?? '').get('q') ?? '';
+  more?.addEventListener('click', loadMore);
+  series?.addEventListener('change', submit);
+  const params = new URLSearchParams(location?.search ?? '');
+  const initial = params.get('q') ?? '';
   input.value = initial;
+  if (series) series.value = params.get('series') ?? '';
+  if (more) more.hidden = true;
   if (initial.trim()) run(initial);
-  else setStatus(minMatchLength >= 3 ? `输入台词片段开始检索（至少 ${minMatchLength} 个字）` : '输入台词片段开始检索');
+  else setStatus(noText ? emptyMessage : prompt);
 
   return {
     run,
     destroy() {
+      destroyed = true;
+      sequence += 1;
+      controller.abort();
+      form.removeEventListener('submit', submit);
+      more?.removeEventListener('click', loadMore);
+      series?.removeEventListener('change', submit);
       if (db) db.close();
       db = null;
       dbPromise = null;

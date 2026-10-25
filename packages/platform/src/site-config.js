@@ -32,7 +32,7 @@ export const SiteConfigSchema = z
     }),
     search: z.strictObject({
       request_chunk_size: z.number().int().positive(),
-      min_match_length: z.number().int().min(1).max(3).default(3),
+      min_match_length: z.literal(3).default(3),
       api_path: absPath.default('/api/search'),
     }),
     features: z.strictObject({

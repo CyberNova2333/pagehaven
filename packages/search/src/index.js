@@ -6,6 +6,6 @@
 // 可选的分块 Range 读取与函数版检索是后续优化，接口不变。
 export const SEARCH_VERSION = '0.1.0';
 
-export { queryLines, ftsPhrase, likePattern, RESULT_LIMIT } from './query.js';
+export { queryLines, prepareQuery, ftsPhrase, likePattern, RESULT_LIMIT } from './query.js';
 export { loadGalleryDb, FETCH_TIMEOUT_MS } from './load.js';
 export { mountSearch } from './mount.js';

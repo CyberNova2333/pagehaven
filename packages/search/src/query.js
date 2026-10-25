@@ -3,7 +3,7 @@
 // 与构建端的约定全部来自 ARCHITECTURE §4：
 //   · 查询串走与索引文本同一个 normalizeText（NFKC → 去符号 → OpenCC 繁→简 → 小写），
 //     否则「契約」敲不出来、全角字母也匹配不上；
-//   · ≥ min_match_length（3）走 FTS5 trigram 的 MATCH；恰好 2 字 MATCH 不命中（trigram 最少三个字），
+//   · ≥ 3 字走 FTS5 trigram 的 MATCH；恰好 2 字 MATCH 不命中（trigram 最少三个字），
 //     退回 LIKE 全表扫；1 字拒绝——它等于全表翻一遍，且几乎必然几千条结果；
 //   · 结果 join lines → pages → chapters → issues → series，链到 /<series>/<issue>/<chapter>/#p<n>b<i>，
 //     阅读器按这个 hash 高亮那个框（ARCHITECTURE §4 的「结果带 bbox」）。
@@ -12,7 +12,7 @@
 
 import { normalizeText } from '@gallery/core';
 
-/** 一条结果最多带多少行：够用户翻，也不至于把页面撑爆。 */
+/** 每批结果最多多少行；多取一条判断是否有下一批，不把截断长度当成总数。 */
 export const RESULT_LIMIT = 50;
 
 /** FTS5 短语：给整串加引号并转义内部双引号，用户输入的语法字符不会被当成查询语法。 */
@@ -26,7 +26,7 @@ export function likePattern(normalized) {
 }
 
 /**
- * 结果行的 SQL 骨架。MATCH 与 LIKE 共用同一段 join 与排序，只有 WHERE 不同。
+ * 结果行的 SQL 骨架。两字 LIKE 直接扫正文；MATCH 才连接 FTS 索引。
  * 排序按作品 / 期 / 话 / 页 / 框：同一句话在多话里出现时，读者的直觉顺序是书架顺序。
  */
 const SELECT_SQL = `
@@ -34,16 +34,21 @@ const SELECT_SQL = `
          i.id AS issue_id, i.title AS issue_title, i.number AS issue_number,
          c.id AS chapter_id, c.title AS chapter_title, c.number AS chapter_number, c.url AS chapter_url,
          p.n AS page_n, l.ord AS box_i, l.text AS text, l.x AS x, l.y AS y, l.w AS w, l.h AS h
-  FROM lines_fts
-  JOIN lines l ON l.id = lines_fts.rowid
+  FROM lines l
   JOIN pages p ON p.id = l.page_id
   JOIN chapters c ON c.id = p.chapter_id
   JOIN issues i ON i.id = c.issue_id
   JOIN series s ON s.id = i.series_id
 `;
 
-const MATCH_SQL = `${SELECT_SQL} WHERE lines_fts MATCH ? ORDER BY s.sort, i.number, c.number, p.n, l.ord LIMIT ?`;
-const LIKE_SQL = `${SELECT_SQL} WHERE l.text_norm LIKE ? ESCAPE '\\' ORDER BY s.sort, i.number, c.number, p.n, l.ord LIMIT ?`;
+const ORDER_SQL = ' ORDER BY s.sort, s.id, i.number, i.id, c.number, c.id, p.n, l.ord, l.id LIMIT ? OFFSET ?';
+
+/** 查询是否足够长与数据库无关，页面先判断，避免为单字或纯标点下载整库。 */
+export function prepareQuery(rawQuery) {
+  const normalized = normalizeText(String(rawQuery ?? ''));
+  const length = [...normalized].length;
+  return { normalized, mode: length < 2 ? 'too-short' : length >= 3 ? 'match' : 'like' };
+}
 
 /** 行 → 页面可直接用的结果对象。url 里的 hash 与阅读器约定一致：#p<n>b<i>。 */
 function toResult(row) {
@@ -72,17 +77,20 @@ function toResult(row) {
  * 查台词。
  * @param {import('@sqlite.org/sqlite-wasm').Database} db
  * @param {string} rawQuery  用户输入的原文（内部做 normalizeText）
- * @param {{ minMatchLength?: number, limit?: number }} [opts]
- * @returns {{ mode: 'match' | 'like' | 'too-short', normalized: string, rows: object[] }}
+ * @param {{ limit?: number, offset?: number, seriesId?: string }} [opts]
+ * @returns {{ mode: string, normalized: string, rows: object[], hasMore: boolean }}
  */
-export function queryLines(db, rawQuery, { minMatchLength = 3, limit = RESULT_LIMIT } = {}) {
-  const normalized = normalizeText(rawQuery ?? '');
-  // 按码点计长度：一个汉字是一个字符，而「𠀀」这类扩展 B 字在 UTF-16 里是两个码元
-  const length = [...normalized].length;
-  if (length < 2) return { mode: 'too-short', normalized, rows: [] };
-
-  const mode = length >= minMatchLength ? 'match' : 'like';
-  const bind = mode === 'match' ? [ftsPhrase(normalized), limit] : [likePattern(normalized), limit];
-  const rows = db.selectObjects(mode === 'match' ? MATCH_SQL : LIKE_SQL, bind).map(toResult);
-  return { mode, normalized, rows };
+export function queryLines(db, rawQuery, { limit = RESULT_LIMIT, offset = 0, seriesId = '' } = {}) {
+  const { normalized, mode } = prepareQuery(rawQuery);
+  if (mode === 'too-short') return { mode, normalized, rows: [], hasMore: false };
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > RESULT_LIMIT) throw new RangeError(`limit 必须在 1–${RESULT_LIMIT} 之间`);
+  if (!Number.isSafeInteger(offset) || offset < 0) throw new RangeError('offset 必须是非负整数');
+  const where = mode === 'match'
+    ? ' JOIN lines_fts ON lines_fts.rowid = l.id WHERE lines_fts MATCH ?'
+    : " WHERE l.text_norm LIKE ? ESCAPE '\\'";
+  const bind = [mode === 'match' ? ftsPhrase(normalized) : likePattern(normalized)];
+  if (seriesId) bind.push(seriesId);
+  bind.push(limit + 1, offset);
+  const rows = db.selectObjects(`${SELECT_SQL}${where}${seriesId ? ' AND s.id = ?' : ''}${ORDER_SQL}`, bind);
+  return { mode, normalized, rows: rows.slice(0, limit).map(toResult), hasMore: rows.length > limit };
 }
