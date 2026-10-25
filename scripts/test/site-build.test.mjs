@@ -189,6 +189,11 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.ok(html.includes('ArrowLeft') && html.includes('ArrowRight'));
     // 图片失败切源的脚本读 data-hosts
     assert.deepEqual(jsonAttr(html, 'data-hosts'), config.images.hosts);
+    // 阅读页保持固定数量导航，不再把其他期的完整目录重复塞进每一话。
+    assert.ok(!html.includes('href="/sample/vol02/c003/"'), '远端章节目录应在打开时读取索引');
+    assert.match(html, /data-series-id="sample"/);
+    assert.match(html, /data-chapter-key="sample\/vol01\/c001"/);
+    assert.match(html, /<noscript>[\s\S]*?href="\/sample\/"[\s\S]*?href="\/sample\/vol01\/"[\s\S]*?<\/noscript>/);
     assert.equal((html.match(/class="image-feedback" hidden/g) ?? []).length, 3, '无 JS 时图片反馈隐藏，原生图片仍可读');
     // 外壳
     assert.ok(html.includes(`<html lang="${config.site.lang}">`));
