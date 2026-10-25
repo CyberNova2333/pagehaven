@@ -2,8 +2,9 @@
 
 ## 这个仓库是什么
 
-汉化漫画的**公开静态画廊**：作品 / 期 / 话 / 页浏览，元数据检索，台词全文检索，
-sitemap。产物是纯静态文件，托管在 Cloudflare Pages / EdgeOne Makers / GitHub Pages
+**页间 · Pagehaven** 是通用的公开静态漫画站点：作品 / 期 / 话 / 页浏览，
+元数据检索，台词全文检索，sitemap。默认提供空内容模板；项目入口见 [README](README.md)。
+产物是纯静态文件，托管在 Cloudflare Pages / EdgeOne Makers / GitHub Pages
 三者之一，随时切换；图片与检索库在 R2，经 CDN 读取。
 
 本文件**只放规范**。架构、数据模型、平台差异、为什么这样设计，全在

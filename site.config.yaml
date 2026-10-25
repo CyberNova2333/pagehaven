@@ -6,14 +6,13 @@
 # 字段的含义与取值约束见 packages/platform/src/site-config.js（zod schema）。
 
 site:
-  title: 漫画画廊
-  # 站点域名（不含协议）。切换托管平台只改 DNS 的 CNAME，不改这里。
+  title: 页间 · Pagehaven
+  # 站点域名（不含协议）；正式发布前替换示例值。切换托管平台只改 DNS 的 CNAME。
   domain: gallery.example.org
   lang: zh-CN
 
 images:
-  # 图片域名：EdgeOne 加速域名 images.example.org，源站用 AWS_S3
-  # 私有回源直连 R2 的 comics-gallery 桶（S3 兼容，源站凭据在 EdgeOne 侧配置）。
+  # 图片 CDN 域名；正式发布前替换示例值，并配置对象存储私有回源。
   # 浏览器只见 CDN 域名，不直连存储（铁律 7）；换 CDN 只改这里。
   hosts:
     - images.example.org
@@ -27,7 +26,7 @@ db:
   chunk_size: 65536
   # 对象存储内 DB 的 key 前缀；带日期的版本化 key 见 ARCHITECTURE §4
   prefix: db/
-  # 总长不超过这个值且网络快时，整份下载而不是分块（§6 退化路径）
+  # 当前整库下载的硬上限；Range VFS 接入前超出此值不加载
   whole_download_max_bytes: 31457280
 
 search:
@@ -35,7 +34,7 @@ search:
   request_chunk_size: 4096
   # trigram：≥ 3 字走 MATCH；恰好 2 字走 LIKE；1 字拒绝
   min_match_length: 3
-  # 函数版检索（可选加速）的探测路径；探测不到就回退浏览器端（铁律 3）
+  # 预留给函数版检索的探测路径（尚未接通；当前始终在浏览器检索）
   api_path: /api/search
 
 features:
@@ -82,7 +81,7 @@ seo:
 deploy:
   cloudflare:
     # Pages 项目名（不是账号 ID；账号 ID 与 token 在 secrets）
-    project: comics-gallery
+    project: pagehaven
   edgeone:
     # 项目名在 secrets（EDGEONE_PROJECT_ID，值是 Makers 项目名）；这里只放部署形态
     functions_dir: edge-functions

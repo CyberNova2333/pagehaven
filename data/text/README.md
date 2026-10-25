@@ -1,5 +1,7 @@
 # data/text —— 台词（画面文字）层
 
+[返回「页间 · Pagehaven」项目说明](../../README.md)
+
 每话一个文件：`data/text/<series>/<issue>/<chapter>.json`，由 `npm run ingest:labelplus`
 （首选）生成，或显式指定 `CHAPTERS` 后，用 `npm run ingest:ocr -- --accept-reviewed`
 导入人工校对的 OCR 稿，不手改。

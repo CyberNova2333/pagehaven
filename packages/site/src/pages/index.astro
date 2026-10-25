@@ -37,7 +37,7 @@ const latest = gallery.series
           )}
         </a>
         <div class="hero-body">
-          <p class="eyebrow">Comics Archive · 漫画画廊</p>
+          <p class="eyebrow">精选故事 · {site.title}</p>
           <h1>{featured.title}</h1>
           {featured.description && <p class="lede">{featured.description}</p>}
           <div class="tag-row">
@@ -178,7 +178,7 @@ const latest = gallery.series
 <style>
   .hero { display: grid; grid-template-columns: minmax(12rem, 16rem) 1fr; gap: clamp(1rem, 3vw, 2rem); padding: clamp(1rem, 2.4vw, 1.5rem); margin-bottom: 2rem; }
   @media (max-width: 40rem) { .hero { grid-template-columns: 1fr; } }
-  .hero-cover { display: block; border-radius: 14px; overflow: hidden; background: linear-gradient(135deg, rgba(255, 143, 171, 0.25), rgba(169, 139, 255, 0.2)); aspect-ratio: 600 / 879; }
+  .hero-cover { display: block; border-radius: 14px; overflow: hidden; background: var(--cover-bg); aspect-ratio: 600 / 879; }
   .hero-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .hero-body { min-width: 0; }
   .hero-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1.1rem 0 1.4rem; }
@@ -190,17 +190,17 @@ const latest = gallery.series
   .continue { margin-bottom: 1.6rem; }
   .continue h2 { margin-top: 0; }
   .continue-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
-  .continue-list li { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.6rem 0.8rem; border-radius: 12px; background: rgba(255, 255, 255, 0.5); border: 1px solid var(--line); }
+  .continue-list li { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.6rem 0.8rem; border-radius: 12px; background: var(--surface-soft); border: 1px solid var(--line); }
   .continue-list a { color: var(--ink); font-weight: 500; }
   .continue-list small { color: var(--text-dim); }
   .series-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.7rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
   .series-grid li { transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease; overflow: hidden; }
-  .series-grid li:hover { transform: translateY(-2px); border-color: var(--pink-soft); box-shadow: var(--shadow); }
+  .series-grid li:hover { transform: translateY(-2px); border-color: var(--accent-soft); box-shadow: var(--shadow-hover); }
   .series-card { display: flex; gap: 0.8rem; padding: 0.8rem; color: var(--ink); align-items: flex-start; }
-  .series-card:hover { color: var(--pink-deep); }
-  .series-cover { flex: 0 0 5.2rem; width: 5.2rem; aspect-ratio: 600 / 879; border-radius: 10px; overflow: hidden; background: linear-gradient(135deg, rgba(255, 143, 171, 0.25), rgba(169, 139, 255, 0.2)); }
+  .series-card:hover { color: var(--accent-strong); }
+  .series-cover { flex: 0 0 5.2rem; width: 5.2rem; aspect-ratio: 600 / 879; border-radius: 10px; overflow: hidden; background: var(--cover-bg); }
   .series-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .cover-fallback { display: grid; place-items: center; width: 100%; height: 100%; color: var(--purple); font-family: var(--font-serif); font-size: 1.4rem; }
+  .cover-fallback { display: grid; place-items: center; width: 100%; height: 100%; color: var(--accent-alt); font-family: var(--font-serif); font-size: 1.4rem; }
   .series-info { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
   .series-title { font-family: var(--font-serif); font-size: 1.1rem; font-weight: 600; }
   .series-meta { color: var(--text-dim); font-size: 0.82rem; }

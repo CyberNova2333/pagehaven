@@ -1,11 +1,11 @@
 ---
-// 所有页面共用的外壳：lang / title / viewport / canonical / og:title、浅色粉紫主题、内联样式、
-// 玻璃导航与页脚。不用 UI 框架——站点要在三平台的纯静态基线上跑（铁律 2），每话一个 HTML 又
+// 所有页面共用的外壳：lang / title / viewport / canonical / og:title、纸白墨蓝主题、内联样式、
+// 导航与页脚。不用 UI 框架——站点要在三平台的纯静态基线上跑（铁律 2），每话一个 HTML 又
 // 有 18 000 份的量级（ARCHITECTURE §2），外壳越薄越好；样式随 inlineStylesheets=always 内联，
 // dist 里不多出一个文件。
 //
-// 视觉语言：粉紫渐变底、玻璃拟态卡片、18px 大圆角、
-// 衬线标题 + 无衬线正文、粉色 / 紫色 / 金色点缀。字体只用系统栈，不引外部字体请求（离线可用）。
+// 视觉语言：暖纸白底、墨蓝标题、青绿交互色与轻阴影卡片。
+// 衬线标题 + 无衬线正文。字体只用系统栈，不引外部字体请求（离线可用）。
 //
 // props：
 //   title    页面标题（不含站名；空则只用站名）
@@ -27,6 +27,8 @@ const canonical = `https://${site.domain}${url}`;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#203540" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{fullTitle}</title>
     {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
     <meta property="og:title" content={fullTitle} />
@@ -36,37 +38,45 @@ const canonical = `https://${site.domain}${url}`;
     {description && <meta name="description" content={description} />}
     <slot name="head" />
     <style is:global>
-      /* 设计 token：站点基础色板（粉 / 紫 / 金 / 青 + 墨色文字） */
+      /* 共享语义色：正文、交互、表面与阅读标注各自取同一组变量。 */
       :root {
         color-scheme: light;
-        --bg-top: #fdf3f7;
-        --bg-mid: #f3edfb;
-        --bg-low: #eef5fb;
-        --pink: #ff8fab;
-        --pink-deep: #e75f87;
-        --pink-soft: #ffc2d1;
-        --purple: #7b5ea7;
-        --purple-light: #a98bff;
-        --gold: #c99a3f;
-        --cyan: #4fb3c9;
-        --ink: #2e2350;
-        --text: #4a3f63;
-        --text-dim: #7a7093;
-        --line: rgba(123, 94, 167, 0.22);
-        --glass: rgba(255, 255, 255, 0.62);
-        --radius: 18px;
-        --shadow: 0 10px 34px rgba(123, 94, 167, 0.1);
-        --glow-pink: 0 10px 30px rgba(255, 143, 171, 0.28);
+        --bg-top: #faf8f1;
+        --bg-mid: #f4f1e9;
+        --bg-low: #edf2ed;
+        --accent: #28776e;
+        --accent-strong: #19574f;
+        --accent-soft: #dcece5;
+        --accent-alt: #355d72;
+        --highlight: #a47730;
+        --ink: #203540;
+        --text: #394d55;
+        --text-dim: #61706d;
+        --line: rgba(32, 53, 64, 0.16);
+        --surface: #fffdf7;
+        --surface-soft: #f4f0e6;
+        --surface-raised: rgba(255, 253, 247, 0.95);
+        --cover-bg: linear-gradient(135deg, #e2ece5, #e7e9df);
+        --selection: rgba(40, 119, 110, 0.24);
+        --focus-ring: rgba(40, 119, 110, 0.18);
+        --reader-bg: #192a33;
+        --text-overlay: rgba(25, 42, 51, 0.88);
+        --highlight-ring: rgba(164, 119, 48, 0.3);
+        --radius: 16px;
+        --shadow: 0 10px 34px rgba(32, 53, 64, 0.07);
+        --shadow-hover: 0 12px 30px rgba(32, 53, 64, 0.12);
         --font-serif: 'EB Garamond', 'Noto Serif SC', 'Songti SC', Georgia, serif;
         --font-sans: 'Inter', 'Noto Sans SC', system-ui, -apple-system, 'Segoe UI', sans-serif;
-        /* 旧页面沿用的变量名，全部指向新色板 */
+        /* 基础页面与检索组件共用的简写。 */
         --bg: var(--bg-mid);
         --fg: var(--ink);
         --muted: var(--text-dim);
-        --link: var(--pink-deep);
-        --accent: var(--gold);
+        --link: var(--accent-strong);
       }
       * { box-sizing: border-box; }
+      ::selection { background: var(--selection); color: var(--ink); }
+      :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+      input, select, button { accent-color: var(--accent); }
       html { background: var(--bg-mid); }
       body {
         margin: 0;
@@ -76,19 +86,19 @@ const canonical = `https://${site.domain}${url}`;
         font-size: 16px;
         line-height: 1.7;
         background:
-          radial-gradient(1100px 720px at 12% -8%, rgba(255, 143, 171, 0.3), transparent 62%),
-          radial-gradient(900px 620px at 92% 2%, rgba(169, 139, 255, 0.24), transparent 58%),
-          radial-gradient(1000px 700px at 50% 100%, rgba(79, 179, 201, 0.14), transparent 60%),
+          radial-gradient(1000px 700px at 10% -10%, rgba(201, 214, 193, 0.25), transparent 64%),
+          radial-gradient(900px 620px at 95% 0%, rgba(180, 205, 198, 0.2), transparent 60%),
+          radial-gradient(1000px 700px at 50% 100%, rgba(207, 213, 196, 0.16), transparent 60%),
           linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 46%, var(--bg-low) 100%);
         background-attachment: fixed;
       }
-      a { color: var(--pink-deep); text-decoration: none; transition: color 0.18s ease; }
-      a:hover { color: var(--purple); }
+      a { color: var(--accent-strong); text-decoration: none; transition: color 0.18s ease; }
+      a:hover { color: var(--accent-alt); }
       h1, h2, h3 { color: var(--ink); font-family: var(--font-serif); font-weight: 600; letter-spacing: 0.01em; }
       h1 { font-size: clamp(1.9rem, 4.6vw, 2.7rem); line-height: 1.25; margin: 0.4rem 0 0.9rem; }
       h2 { font-size: clamp(1.3rem, 2.6vw, 1.7rem); margin: 1.6rem 0 0.8rem; }
       .topbar, main, footer { max-width: 68rem; margin: 0 auto; padding-left: clamp(1rem, 3vw, 1.75rem); padding-right: clamp(1rem, 3vw, 1.75rem); }
-      /* 顶部：玻璃条 + 胶囊导航 */
+      /* 顶部：纸色导航与青绿交互。 */
       .topbar {
         position: sticky;
         top: 0;
@@ -96,30 +106,30 @@ const canonical = `https://${site.domain}${url}`;
         max-width: none;
         padding-top: 0.5rem;
         padding-bottom: 0.5rem;
-        background: rgba(255, 255, 255, 0.55);
+        background: var(--surface-raised);
         border-bottom: 1px solid var(--line);
         backdrop-filter: blur(14px) saturate(1.2);
         -webkit-backdrop-filter: blur(14px) saturate(1.2);
       }
       .topbar nav { display: flex; align-items: center; flex-wrap: wrap; gap: 0.55rem; max-width: 68rem; margin: 0 auto; font-size: 0.92rem; }
       .brand { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--ink); font-family: var(--font-serif); font-weight: 600; letter-spacing: 0.02em; }
-      .brand:hover { color: var(--pink-deep); }
+      .brand:hover { color: var(--accent-strong); }
       .brand .mark {
         display: inline-grid;
         place-items: center;
-        width: 1.9rem;
-        height: 1.9rem;
-        border-radius: 50%;
+        width: 2.15rem;
+        height: 2.15rem;
+        border-radius: 0.65rem;
         color: #fff;
         font-family: var(--font-sans);
         font-size: 0.7rem;
         letter-spacing: 0.04em;
-        background: linear-gradient(135deg, var(--pink), var(--purple-light));
-        box-shadow: var(--glow-pink);
+        background: var(--ink);
+        box-shadow: var(--shadow);
       }
       .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem; color: var(--text-dim); min-width: 0; }
       .crumbs a { color: var(--text-dim); }
-      .crumbs a:hover { color: var(--pink-deep); }
+      .crumbs a:hover { color: var(--accent-strong); }
       .crumbs span[aria-hidden] { opacity: 0.55; margin: 0 0.15rem; }
       .topbar .spacer { flex: 1; }
       .pill {
@@ -129,18 +139,18 @@ const canonical = `https://${site.domain}${url}`;
         padding: 0.28rem 0.8rem;
         border-radius: 999px;
         border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.5);
-        color: var(--purple);
+        background: var(--surface-soft);
+        color: var(--accent-alt);
         font-size: 0.85rem;
       }
-      .pill:hover { color: var(--pink-deep); border-color: var(--pink-soft); background: #fff; }
+      .pill:hover { color: var(--accent-strong); border-color: var(--accent-soft); background: var(--surface); }
       main { padding-top: clamp(1.2rem, 3vw, 2rem); padding-bottom: 3rem; }
       .muted { color: var(--text-dim); }
       .lede { color: var(--text-dim); max-width: 46rem; }
-      .eyebrow { margin: 0 0 0.35rem; color: var(--purple); font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; }
-      /* 玻璃卡片与按钮 */
+      .eyebrow { margin: 0 0 0.35rem; color: var(--accent-alt); font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; }
+      /* 纸色卡片与按钮。 */
       .card {
-        background: var(--glass);
+        background: var(--surface);
         border: 1px solid var(--line);
         border-radius: var(--radius);
         box-shadow: var(--shadow);
@@ -156,47 +166,48 @@ const canonical = `https://${site.domain}${url}`;
         padding: 0.62rem 1.2rem;
         border-radius: 999px;
         border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.6);
-        color: var(--purple);
+        background: var(--surface);
+        color: var(--accent-alt);
         font-family: inherit;
         font-size: 0.95rem;
         cursor: pointer;
         transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
       }
-      .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); color: var(--pink-deep); }
-      .btn-primary { color: #fff; border-color: transparent; background: linear-gradient(135deg, var(--pink) 0%, var(--purple-light) 100%); box-shadow: var(--glow-pink); }
-      .btn-primary:hover { color: #fff; filter: brightness(1.04); }
-      /* 列表：每行一张玻璃小卡 */
+      .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow); color: var(--accent-strong); }
+      .btn:disabled { cursor: not-allowed; color: var(--text-dim); background: var(--surface-soft); box-shadow: none; }
+      .btn-primary { color: #fff; border-color: transparent; background: var(--accent); box-shadow: var(--shadow); }
+      .btn-primary:hover:not(:disabled) { color: #fff; filter: brightness(1.04); }
+      /* 列表：每行一张轻阴影卡片。 */
       .list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.55rem; }
       .list li {
-        background: var(--glass);
+        background: var(--surface);
         border: 1px solid var(--line);
         border-radius: 14px;
-        box-shadow: 0 6px 20px rgba(123, 94, 167, 0.07);
+        box-shadow: var(--shadow);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
         transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
       }
-      .list li:hover { transform: translateY(-1px); border-color: var(--pink-soft); box-shadow: 0 10px 28px rgba(231, 95, 135, 0.14); }
+      .list li:hover { transform: translateY(-1px); border-color: var(--accent-soft); box-shadow: var(--shadow-hover); }
       .list li > a { display: flex; align-items: baseline; gap: 0.55rem; padding: 0.8rem 1rem; color: var(--ink); font-weight: 500; }
-      .list li > a:hover { color: var(--pink-deep); }
+      .list li > a:hover { color: var(--accent-strong); }
       .list small { color: var(--text-dim); margin-left: auto; font-weight: 400; white-space: nowrap; }
       .badge {
         display: inline-grid;
         place-items: center;
-        min-width: 1.9rem;
-        height: 1.9rem;
+        min-width: 2.15rem;
+        height: 2.15rem;
         padding: 0 0.45rem;
         border-radius: 0.6rem;
-        background: linear-gradient(135deg, rgba(255, 143, 171, 0.18), rgba(169, 139, 255, 0.18));
+        background: var(--accent-soft);
         border: 1px solid var(--line);
-        color: var(--purple);
+        color: var(--accent-alt);
         font-size: 0.82rem;
         font-variant-numeric: tabular-nums;
       }
       .tag { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; border: 1px solid var(--line); color: var(--text-dim); font-size: 0.75rem; }
       footer { padding-top: 1.6rem; padding-bottom: 2.2rem; margin-top: 2rem; border-top: 1px solid var(--line); color: var(--text-dim); font-size: 0.85rem; text-align: center; }
-      footer a { color: var(--pink-deep); }
+      footer a { color: var(--accent-strong); }
       footer .sep { margin: 0 0.5rem; opacity: 0.5; }
       @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     </style>
@@ -204,7 +215,14 @@ const canonical = `https://${site.domain}${url}`;
   <body>
     <div class="topbar">
       <nav aria-label="位置">
-        <a class="brand" href="/"><span class="mark">CG</span><span>{site.title}</span></a>
+        <a class="brand" href="/">
+          <span class="mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 6C9 4 6 4 3 5v14c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1Z" />
+              <path d="M12 6v14M6 8l3 1M15 9l3-1" />
+            </svg>
+          </span><span>{site.title}</span>
+        </a>
         {
           crumbs.length > 0 && (
             <div class="crumbs">
@@ -224,7 +242,7 @@ const canonical = `https://${site.domain}${url}`;
     </div>
     <main><slot /></main>
     <footer>
-      <a href="/">回首页</a><span class="sep">·</span><a href="/search/">搜索台词</a><span class="sep">·</span>纯静态画廊
+      <a href="/">回首页</a><span class="sep">·</span><a href="/search/">搜索台词</a><span class="sep">·</span>在页间，遇见好故事
     </footer>
   </body>
 </html>

@@ -127,14 +127,14 @@ const searchConfig = {
     padding: 0.62rem 1rem;
     font: inherit;
     color: var(--ink);
-    background: #fff;
+    background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 999px;
     outline: none;
     transition: border-color 0.16s ease, box-shadow 0.16s ease;
   }
   #meta-q::placeholder, #search-input::placeholder { color: var(--text-dim); }
-  #meta-q:focus, #search-input:focus, #search-series:focus-visible { border-color: var(--pink); box-shadow: 0 0 0 3px rgba(255, 143, 171, 0.2); }
+  #meta-q:focus, #search-input:focus, #search-series:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
   #search-series { flex: 0 1 auto; min-width: 8rem; }
   #search-more { margin-top: 1rem; }
   #search-more[hidden] { display: none; }
@@ -148,7 +148,7 @@ const searchConfig = {
     align-items: baseline;
     gap: 0.35rem 0.6rem;
     padding: 0.8rem 1rem;
-    background: var(--glass);
+    background: var(--surface-raised);
     border: 1px solid var(--line);
     border-radius: 14px;
     box-shadow: var(--shadow);
@@ -156,8 +156,8 @@ const searchConfig = {
     -webkit-backdrop-filter: blur(10px);
     transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
   }
-  #search-results li:hover { transform: translateY(-1px); border-color: var(--pink-soft); box-shadow: var(--shadow); }
+  #search-results li:hover { transform: translateY(-1px); border-color: var(--accent-soft); box-shadow: var(--shadow-hover); }
   #search-results li a { color: var(--ink); font-weight: 500; }
-  #search-results li a:hover { color: var(--pink-deep); }
+  #search-results li a:hover { color: var(--accent-strong); }
   #search-results li small { color: var(--text-dim); font-size: 0.8rem; }
 </style>
