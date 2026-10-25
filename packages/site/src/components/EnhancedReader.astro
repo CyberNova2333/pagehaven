@@ -1,0 +1,10 @@
+<p class="settings-row" id="enhanced-option">
+  <label><input id="enhanced-toggle" type="checkbox" /> 增强分页</label>
+</p>
+<p class="settings-row settings-note">增强分页支持缩放和手势；长条、文字显示及台词定位使用标准阅读器。</p>
+
+<script>
+  import { mountEnhancedReader } from '../lib/enhanced-reader.js';
+  const reader = document.getElementById('reader');
+  if (reader) mountEnhancedReader(reader);
+</script>

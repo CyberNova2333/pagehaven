@@ -39,6 +39,7 @@ export const SiteConfigSchema = z
       search_function: z.boolean().default(false),
       platform_config: z.boolean().default(true),
       text_layer: z.boolean().default(true),
+      comimi_reader: z.boolean().default(false),
     }),
     budgets: z.strictObject({
       // 上限来自三平台里最紧的那家再留余量（ARCHITECTURE §2）；只许往下调，不许往上放
