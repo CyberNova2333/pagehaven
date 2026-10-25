@@ -11,6 +11,7 @@
 // 键盘：←/→ 翻页、空格下一页、f 全屏、t 目录、Esc 关闭面板。
 import Base from '../../../../layouts/Base.astro';
 import EnhancedReader from '../../../../components/EnhancedReader.astro';
+import ChapterToc from '../../../../components/ChapterToc.astro';
 import siteConfig from '../../../../generated/site-config.json';
 import gallery from '../../../../generated/gallery.json';
 import { boxStyle, chaptersByKey, imageUrl, isDot, urlForKey } from '../../../../lib/gallery.js';
@@ -48,15 +49,7 @@ const boxesByN = new Map(text.pages.map((p) => [p.n, p.boxes]));
 
 const total = chapter.pages.length;
 const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
-// 目录：当前作品全部期的章节（每话 HTML 内嵌，几十条；浏览器端不再请求）
-const tocIssues = series.issues.map((iss) => ({
-  id: iss.id,
-  number: iss.number,
-  title: iss.title,
-  url: iss.url,
-  current: iss.id === issue.id,
-  chapters: iss.chapters.map((c) => ({ key: c.key, title: c.title, url: c.url, current: c.key === chapter.key })),
-}));
+
 ---
 
 <Base
@@ -89,7 +82,7 @@ const tocIssues = series.issues.map((iss) => ({
   >
     <div class="progress" aria-hidden="true"><span id="progress-fill"></span></div>
     <p class="pager">
-      <button id="toc-btn" type="button" class="icon-btn" aria-label="目录" title="目录（t）">☰</button>
+      <button id="toc-btn" aria-controls="toc" aria-expanded="false" type="button" class="icon-btn" aria-label="目录" title="目录（t）">☰</button>
       <a id="page-prev" href="#p1" hidden>← 上一页</a>
       <span class="page-indicator">
         第 <input id="page-input" type="number" min="1" max={total} value="1" inputmode="numeric" aria-label="页码" /> / {total} 页
@@ -102,24 +95,7 @@ const tocIssues = series.issues.map((iss) => ({
       )}
     </p>
 
-    <aside id="toc" class="toc card" hidden aria-label="目录">
-      <div class="toc-head">
-        <strong>目录</strong>
-        <button id="toc-close" type="button" class="icon-btn" aria-label="关闭目录">×</button>
-      </div>
-      <nav>
-        {tocIssues.map((iss) => (
-          <details open={iss.current}>
-            <summary>{iss.number}. {iss.title}</summary>
-            <ol>
-              {iss.chapters.map((c) => (
-                <li><a href={c.url} class:list={[{ current: c.current }]}>{c.title}</a></li>
-              ))}
-            </ol>
-          </details>
-        ))}
-      </nav>
-    </aside>
+    <ChapterToc series={series} issue={issue} chapter={chapter} />
 
     <div id="settings" class="settings card" hidden aria-label="阅读设置">
       <p class="settings-row"><span>模式</span>

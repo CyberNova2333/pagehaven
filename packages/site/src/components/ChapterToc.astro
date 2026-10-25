@@ -1,0 +1,48 @@
+---
+const { series, issue, chapter } = Astro.props;
+---
+
+<aside id="toc" class="toc card" hidden aria-label="目录" data-series-id={series.id} data-chapter-key={chapter.key}>
+  <div class="toc-head">
+    <strong>目录</strong>
+    <button id="toc-close" type="button" class="icon-btn" aria-label="关闭目录">×</button>
+  </div>
+  <nav class="toc-static" aria-label="静态目录">
+    <a href={series.url}>作品目录</a>
+    <a href={issue.url}>本期目录</a>
+  </nav>
+  <p class="toc-current">当前：{issue.title} · {chapter.title}</p>
+  <div class="toc-tools" data-toc-controls hidden>
+    <label for="toc-filter">筛选章节</label>
+    <input id="toc-filter" data-toc-filter type="search" placeholder="章节名、编号或期名" autocomplete="off" />
+    <button type="button" class="btn" data-toc-locate>定位当前章</button>
+  </div>
+  <p class="toc-status" data-toc-status role="status" aria-live="polite">打开目录后加载完整章节列表。</p>
+  <button type="button" class="btn" data-toc-retry hidden>重试加载目录</button>
+  <ol class="toc-chapters" data-toc-list aria-label="章节列表"></ol>
+</aside>
+<noscript>
+  <nav class="toc-static" aria-label="章节目录">
+    <a href={series.url}>作品目录</a> · <a href={issue.url}>本期目录</a>
+  </nav>
+</noscript>
+
+<script>
+  import { mountChapterToc } from '../lib/chapter-toc.js';
+  const toc = document.getElementById('toc');
+  if (toc) mountChapterToc(toc);
+</script>
+
+<style is:global>
+  .reader .toc .toc-static { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+  .reader .toc .toc-current, .reader .toc .toc-status { color: var(--text-dim); font-size: 0.82rem; margin: 0.5rem 0; }
+  .reader .toc .toc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+  .reader .toc .toc-tools[hidden], .reader .toc [data-toc-retry][hidden] { display: none; }
+  .reader .toc .toc-tools label { width: 100%; font-size: 0.85rem; }
+  .reader .toc .toc-tools input { flex: 1; min-width: 8rem; max-width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; }
+  .reader .toc .toc-chapters { margin: 0.6rem 0 0; padding: 0; list-style: none; max-height: min(20rem, 45vh); overflow: auto; overscroll-behavior: contain; }
+  .reader .toc .toc-chapters li { display: grid; gap: 0.1rem; padding: 0.4rem 0.2rem; }
+  .reader .toc .toc-chapters a { overflow-wrap: anywhere; }
+  .reader .toc .toc-chapters small { color: var(--text-dim); font-size: 0.75rem; }
+  .reader .toc .toc-chapters a[aria-current="page"] { color: var(--pink-deep); font-weight: 700; }
+</style>
