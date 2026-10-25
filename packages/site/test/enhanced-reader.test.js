@@ -1,0 +1,500 @@
+// 执行真实适配层；DOM 与上游实例只提供已核实的公开契约，控制异步完成顺序。
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mountEnhancedReader } from '../src/lib/enhanced-reader.js';
+
+const preferenceKey = 'gallery:reader:enhanced';
+const chapterKey = 'sample/v/c';
+const favoritesKey = `gallery:favorites:${chapterKey}`;
+const settle = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+function element(id = '', interactive = false) {
+  const listeners = new Map();
+  const classes = new Set();
+  const attributes = new Map();
+  return {
+    id, dataset: {}, hidden: false, checked: false, textContent: '', children: [],
+    classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name), contains: (name) => classes.has(name) },
+    setAttribute: (name, value) => attributes.set(name, value),
+    getAttribute: (name) => attributes.get(name) ?? null,
+    removeAttribute: (name) => attributes.delete(name),
+    replaceChildren(...children) { this.children = children; },
+    closest: () => interactive ? {} : null,
+    focus(options) { this.focused = true; this.focusOptions = options; },
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type).add(listener);
+    },
+    removeEventListener: (type, listener) => listeners.get(type)?.delete(listener),
+    listenerCount: (type) => type ? listeners.get(type)?.size ?? 0 : [...listeners.values()].reduce((sum, entries) => sum + entries.size, 0),
+    fire(type, properties = {}) {
+      const event = { target: this, defaultPrevented: false, stopped: false,
+        preventDefault() { this.defaultPrevented = true; },
+        stopPropagation() { this.stopped = true; }, ...properties };
+      for (const listener of [...(listeners.get(type) ?? [])]) listener(event);
+      return event;
+    },
+    click() { this.fire('click'); },
+  };
+}
+
+function fixture({ preferred = false, mode = 'single', hash = '', text = false, page = 3, requestedPage = page, load, storageDenied = false, favorites = [] } = {}) {
+  const data = new Map([[preferenceKey, String(preferred)], [favoritesKey, JSON.stringify(favorites)]]);
+  const writes = [];
+  const nodes = new Map(['enhanced-toggle', 'enhanced-viewer', 'enhanced-status', 'text-toggle', 'fullscreen-btn', 'toc-btn', 'settings-btn', 'toc', 'settings']
+    .map((id) => [id, element(id)]));
+  const document = element('document');
+  const window = element('window');
+  const timers = new Map();
+  let timerId = 0;
+  window.location = new URL(`https://example.invalid/sample/v/c/${hash}`);
+  window.localStorage = {
+    getItem(key) { if (storageDenied) throw new Error('Storage denied'); return data.get(key) ?? null; },
+    setItem(key, value) { if (storageDenied) throw new Error('Storage denied'); data.set(key, value); writes.push({ key, value }); },
+  };
+  window.queueMicrotask = queueMicrotask;
+  window.setTimeout = (callback) => { timers.set(++timerId, callback); return timerId; };
+  window.clearTimeout = (id) => timers.delete(id);
+  document.defaultView = window;
+  document.getElementById = (id) => nodes.get(id) ?? null;
+  const reader = element('reader');
+  reader.ownerDocument = document;
+  reader.dataset = { key: chapterKey, title: '测试话' };
+  const pages = Array.from({ length: 6 }, (_, i) => {
+    const pageNode = element(`p${i + 1}`);
+    const image = element();
+    image.src = `/images/p${i + 1}.jpg`;
+    image.alt = `第 ${i + 1} 页`;
+    image.setAttribute('width', '700');
+    image.setAttribute('height', '1000');
+    pageNode.dataset.n = String(i + 1);
+    pageNode.querySelector = () => image;
+    return pageNode;
+  });
+  reader.querySelectorAll = () => pages;
+  nodes.get('text-toggle').checked = text;
+  nodes.get('enhanced-viewer').hidden = true;
+  nodes.get('toc').hidden = true;
+  nodes.get('settings').hidden = true;
+  const subscribers = new Set();
+  const coreState = { mode, dir: 'ltr', page, requestedPage };
+  const showCalls = [];
+  let enhancement = null;
+  let refreshCount = 0;
+  const publish = () => subscribers.forEach((listener) => listener({ ...coreState }));
+  reader.galleryReader = {
+    getState: () => ({ ...coreState }),
+    subscribe(listener) { subscribers.add(listener); return () => subscribers.delete(listener); },
+    setEnhancement(value) { enhancement = value; },
+    showPage(value) {
+      showCalls.push(value);
+      coreState.page = value;
+      coreState.requestedPage = value;
+      window.location.hash = `#p${value}`;
+      publish();
+    },
+    refresh() { refreshCount++; publish(); },
+  };
+  const instances = [];
+  let loads = 0;
+  const createMangaViewer = (host, options) => {
+    const nativeKeys = [];
+    const state = { settings: { ...options.settings }, panel: 'none' };
+    let current = options.initialPageIndex;
+    let favoritePageIds = [];
+    const emit = (name, value) => options.events[name]?.(value);
+    const keyboard = (event) => nativeKeys.push(event.key);
+    window.addEventListener('keydown', keyboard);
+    const instance = {
+      options, nativeKeys, destroyed: false, goCalls: [], nextCalls: 0, previousCalls: 0,
+      panelCalls: [], shareUrl: '', renderedBeforePageChange: [],
+      updateResult: null,
+      getState: () => state,
+      getCurrentPageIndex: () => current,
+      goToPage(index) {
+        this.goCalls.push(index);
+        current = index;
+        // 上游 store 先触发 renderer.update，之后才发 pageChange。
+        this.shareUrl = window.location.href;
+        this.renderedBeforePageChange.push(this.shareUrl);
+        emit('pageChange', { pageIndex: index });
+      },
+      setPanel(panel) { this.panelCalls.push(panel); state.panel = panel; this.shareUrl = window.location.href; },
+      nextPage() { this.nextCalls++; this.goToPage(current + 1); },
+      previousPage() { this.previousCalls++; this.goToPage(current - 1); },
+      updateSettings(patch) { Object.assign(state.settings, patch); return this.updateResult ?? Promise.resolve(); },
+      setFavorites(ids) {
+        const known = new Set(options.manga.pages.map((entry) => entry.id));
+        favoritePageIds = [...new Set(ids.filter((id) => known.has(id)))];
+        emit('favoritesChange', { pageIds: favoritePageIds });
+      },
+      getFavoritePageIds: () => [...favoritePageIds],
+      destroy() { this.destroyed = true; window.removeEventListener('keydown', keyboard); host.replaceChildren(); },
+      ready: () => emit('ready', { manga: options.manga }),
+      emit,
+    };
+    host.replaceChildren(element('native-viewer'));
+    instances.push(instance);
+    return instance;
+  };
+  const api = mountEnhancedReader(reader, {
+    loadViewer: () => { loads++; return load ? load({ createMangaViewer }) : { createMangaViewer }; },
+    timeoutMs: 50,
+  });
+  return {
+    api, reader, nodes, window, document, timers, instances, writes, data, showCalls,
+    get loads() { return loads; },
+    get enhancement() { return enhancement; },
+    get refreshCount() { return refreshCount; },
+    get subscriberCount() { return subscribers.size; },
+    get active() { return reader.classList.contains('enhanced-active'); },
+    choose(checked) { nodes.get('enhanced-toggle').checked = checked; nodes.get('enhanced-toggle').fire('change'); },
+    changeState(patch) {
+      if ('page' in patch && !('requestedPage' in patch)) coreState.requestedPage = patch.page;
+      Object.assign(coreState, patch);
+      publish();
+    },
+    hash(value) { window.location.hash = value; window.fire('hashchange'); },
+    text(checked) { nodes.get('text-toggle').checked = checked; nodes.get('text-toggle').fire('change'); },
+    expire() { const pending = [...timers.values()]; timers.clear(); pending.forEach((callback) => callback()); },
+    key(key, target = element(), extra = {}) {
+      const event = document.fire('keydown', { key, target, ...extra });
+      if (!event.stopped) window.fire('keydown', event);
+      return event;
+    },
+  };
+}
+
+async function activate(f) {
+  f.choose(true);
+  await settle();
+  const instance = f.instances.at(-1);
+  assert.ok(instance, '应创建一个上游实例');
+  instance.ready();
+  await settle();
+  assert.equal(f.active, true);
+  return instance;
+}
+
+test('增强分页：接管双页模式时恢复归并前的偶数目标页', async () => {
+  const f = fixture({ mode: 'double', page: 3, requestedPage: 4 });
+  const viewer = await activate(f);
+  assert.equal(viewer.options.initialPageIndex, 3);
+  assert.equal(viewer.getCurrentPageIndex(), 3);
+  assert.equal(f.reader.galleryReader.getState().page, 4);
+  viewer.nextPage();
+  await settle();
+  assert.equal(f.showCalls.at(-1), 5);
+  f.api.destroy();
+});
+
+for (const [name, options] of [
+  ['未选择', {}], ['长条', { preferred: true, mode: 'long' }],
+  ['气泡深链', { preferred: true, hash: '#p3b1' }], ['文字层', { preferred: true, text: true }],
+]) {
+  test(`增强分页：${name}时不加载依赖`, async () => {
+    const f = fixture(options);
+    await settle();
+    assert.equal(f.loads, 0);
+    assert.equal(f.enhancement, null);
+    assert.equal(f.nodes.get('enhanced-viewer').hidden, true);
+    f.api.destroy();
+  });
+}
+
+test('增强分页：ready 后才接管，沿用核心最新页码并把原生翻页交回核心', async () => {
+  const f = fixture();
+  f.choose(true);
+  await settle();
+  const instance = f.instances[0];
+  assert.equal(f.enhancement, null);
+  assert.equal(f.active, false);
+  assert.equal(instance.options.initialPageIndex, 2);
+  assert.equal(instance.options.storage.enabled, false);
+  assert.equal(instance.options.lockLayoutMode, true);
+  assert.ok(instance.options.hiddenSettings.every((key) => ['locale', 'theme', 'cover', 'direction', 'interval', 'pageMode', 'autoplay', 'viewMode'].includes(key)));
+  f.changeState({ page: 5 });
+  instance.ready();
+  await settle();
+  assert.equal(f.active, true);
+  assert.equal(instance.getCurrentPageIndex(), 4);
+  f.enhancement.navigate(1);
+  await settle();
+  assert.equal(instance.nextCalls, 1);
+  assert.equal(f.showCalls.at(-1), 6, '既有核心负责写进度与 hash，适配层仅回报 1-based 页码');
+  assert.ok(f.writes.every(({ key }) => !key.startsWith('gallery:progress:')));
+  assert.equal(f.timers.size, 0);
+  f.api.destroy();
+});
+
+test('增强分页：加载阶段不把键盘同时交给上游；接管后协调空格与隐藏快捷键', async () => {
+  const f = fixture();
+  f.choose(true);
+  await settle();
+  const instance = f.instances[0];
+  f.key('ArrowRight');
+  assert.deepEqual(instance.nativeKeys, []);
+  instance.ready();
+  await settle();
+  const space = f.key(' ');
+  assert.equal(space.defaultPrevented, true);
+  assert.equal(instance.nextCalls, 1);
+  for (const key of ['p', 'P', 'c', 'C', 'a', 'A']) assert.equal(f.key(key).stopped, true);
+  let fullscreen = 0, toc = 0;
+  f.nodes.get('fullscreen-btn').addEventListener('click', () => fullscreen++);
+  f.nodes.get('toc-btn').addEventListener('click', () => toc++);
+  f.key('F'); f.key('t');
+  assert.equal(fullscreen, 1);
+  assert.equal(toc, 1);
+  const buttonSpace = f.key(' ', element('button', true));
+  assert.equal(buttonSpace.defaultPrevented, false, '按钮的空格应保留原生点击');
+  assert.equal(f.key('p', element(), { ctrlKey: true }).defaultPrevented, false, '保留浏览器组合键默认行为');
+  assert.equal(instance.nextCalls, 1);
+  f.key('ArrowRight');
+  assert.deepEqual(instance.nativeKeys, ['ArrowRight']);
+  f.api.destroy();
+});
+
+for (const panel of ['toc', 'settings']) {
+  test(`增强分页：${panel} 输入框内 Escape 关闭外部面板并返回对应按钮`, async () => {
+    const f = fixture();
+    const instance = await activate(f);
+    instance.setPanel('share');
+    f.nodes.get(panel).hidden = false;
+    const event = f.key('Escape', element('panel-input', true));
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(event.stopped, true);
+    assert.equal(f.nodes.get(panel).hidden, true);
+    assert.equal(f.nodes.get(`${panel}-btn`).focused, true);
+    assert.deepEqual(f.nodes.get(`${panel}-btn`).focusOptions, { preventScroll: true });
+    assert.deepEqual(instance.nativeKeys, [], '同一次 Escape 不能顺便关闭上游面板');
+    assert.equal(instance.getState().panel, 'share');
+    assert.equal(instance.nextCalls, 0);
+    f.api.destroy();
+  });
+}
+
+test('增强分页：外部面板打开或交互控件聚焦时，翻页快捷键不会到达上游', async () => {
+  const f = fixture();
+  const instance = await activate(f);
+  const page = f.reader.galleryReader.getState().page;
+  for (const panel of ['toc', 'settings']) {
+    f.nodes.get(panel).hidden = false;
+    for (const target of [element('body'), element('filter', true), element('current-chapter', true)]) {
+      for (const key of ['ArrowLeft', 'ArrowRight', ' ', 'PageDown']) {
+        const event = f.key(key, target);
+        assert.equal(event.stopped, true);
+        assert.equal(event.defaultPrevented, false, '不阻止输入、链接与按钮的默认键盘操作');
+      }
+    }
+    f.nodes.get(panel).hidden = true;
+  }
+  for (const key of ['ArrowLeft', 'ArrowRight', ' ']) f.key(key, element('page-input', true));
+  assert.deepEqual(instance.nativeKeys, []);
+  assert.equal(instance.nextCalls, 0);
+  assert.equal(f.reader.galleryReader.getState().page, page);
+  f.key('ArrowRight');
+  assert.deepEqual(instance.nativeKeys, ['ArrowRight'], '退出外部面板且焦点离开控件后恢复上游快捷键');
+  f.api.destroy();
+});
+
+test('增强分页：只有原生面板打开时 Escape 继续交给上游，包括输入框焦点', async () => {
+  const f = fixture();
+  const instance = await activate(f);
+  instance.setPanel('share');
+  for (const target of [element('body'), element('native-input', true)]) {
+    const event = f.key('Escape', target);
+    assert.equal(event.stopped, false);
+    assert.equal(event.defaultPrevented, false);
+  }
+  assert.deepEqual(instance.nativeKeys, ['Escape', 'Escape']);
+  assert.deepEqual(instance.panelCalls, ['share'], '适配层不替上游切换其原生面板');
+  assert.equal(f.nodes.get('toc-btn').focused, undefined);
+  assert.equal(f.nodes.get('settings-btn').focused, undefined);
+  f.api.destroy();
+});
+
+test('增强分页：外部翻页在核心更新 hash 后刷新已打开的分享面板', async () => {
+  const f = fixture({ page: 3 });
+  const instance = await activate(f);
+  instance.setPanel('share');
+  assert.equal(new URL(instance.shareUrl).hash, '#p3');
+  f.enhancement.navigate(1);
+  assert.equal(new URL(instance.renderedBeforePageChange.at(-1)).hash, '#p3', '复现上游先用旧 URL 绘制分享框');
+  assert.equal(new URL(instance.shareUrl).hash, '#p4');
+  assert.equal(new URL(instance.shareUrl).search, '', '保持原有 hash 深链，不另写 query');
+  assert.deepEqual(instance.panelCalls, ['share', 'share']);
+  await settle();
+  assert.equal(instance.panelCalls.length, 2, '同步不能引起重复刷新循环');
+
+  for (const panel of ['settings', 'none']) {
+    instance.setPanel(panel);
+    const count = instance.panelCalls.length;
+    f.enhancement.navigate(1);
+    await settle();
+    assert.equal(instance.panelCalls.length, count, '分享未打开时无需刷新面板');
+    assert.equal(instance.getState().panel, panel, '不能打开分享或切走当前面板');
+  }
+  f.api.destroy();
+});
+
+for (const reason of ['退出', '长条', '销毁']) {
+  test(`增强分页：import 未完成时${reason}取消接管`, async () => {
+    const loading = deferred();
+    let module;
+    const f = fixture({ preferred: true, load: (value) => { module = value; return loading.promise; } });
+    await settle();
+    if (reason === '退出') f.choose(false);
+    if (reason === '长条') f.changeState({ mode: 'long' });
+    if (reason === '销毁') f.api.destroy();
+    await settle();
+    loading.resolve(module);
+    await settle();
+    assert.equal(f.instances.length, 0);
+    assert.equal(f.enhancement, null);
+    assert.equal(f.timers.size, 0);
+    f.api.destroy();
+  });
+}
+
+test('增强分页：ready 前打开文字层销毁实例，过期 ready 不会重新接管', async () => {
+  const f = fixture({ preferred: true });
+  await settle();
+  const instance = f.instances[0];
+  f.text(true);
+  await settle();
+  instance.ready();
+  await settle();
+  assert.equal(instance.destroyed, true);
+  assert.equal(f.active, false);
+  assert.equal(f.enhancement, null);
+  assert.equal(f.window.listenerCount('keydown'), 0);
+  f.api.destroy();
+});
+
+for (const reason of ['import 拒绝', 'ready 超时', '图片失败']) {
+  test(`增强分页：${reason}恢复标准阅读器且可重试`, async () => {
+    let rejectImport = reason === 'import 拒绝';
+    const f = fixture({ preferred: true, load: (module) => rejectImport ? Promise.reject(new Error('Unavailable')) : module });
+    await settle();
+    if (reason === 'ready 超时') f.expire();
+    if (reason === '图片失败') { f.instances[0].ready(); f.instances[0].emit('pageLoadError', { pageIndex: 2 }); }
+    await settle();
+    assert.equal(f.enhancement, null);
+    assert.equal(f.active, false);
+    assert.equal(f.nodes.get('enhanced-toggle').checked, false);
+    assert.equal(f.nodes.get('enhanced-viewer').hidden, true);
+    assert.match(f.nodes.get('enhanced-status').textContent, /标准阅读器/);
+    assert.equal(f.window.listenerCount('keydown'), 0);
+    assert.equal(f.timers.size, 0);
+    rejectImport = false;
+    await activate(f);
+    f.api.destroy();
+  });
+}
+
+test('增强分页：旧实例迟到的设置失败不能关闭新实例', async () => {
+  const f = fixture();
+  const first = await activate(f);
+  const update = deferred();
+  first.updateResult = update.promise;
+  f.changeState({ dir: 'rtl' });
+  await settle();
+  f.choose(false);
+  await settle();
+  const second = await activate(f);
+  update.reject(new Error('Old update failed'));
+  await settle();
+  assert.equal(first.destroyed, true);
+  assert.equal(second.destroyed, false);
+  assert.equal(f.active, true);
+  assert.equal(f.nodes.get('enhanced-toggle').checked, true);
+  f.api.destroy();
+});
+
+test('增强分页：气泡 hash 立即恢复标准阅读，移除气泡后可重新启用', async () => {
+  const f = fixture();
+  const first = await activate(f);
+  f.hash('#p4b2');
+  await settle();
+  assert.equal(first.destroyed, true);
+  assert.equal(f.active, false);
+  assert.equal(f.nodes.get('enhanced-toggle').checked, true, '暂停保留使用者选择');
+  f.hash('#p4');
+  await settle();
+  f.instances.at(-1).ready();
+  await settle();
+  assert.equal(f.active, true);
+  f.api.destroy();
+});
+
+test('增强分页：收藏恢复不覆盖旧记录，只在用户变更后写独立本话键', async () => {
+  const f = fixture({ favorites: [`${chapterKey}/p4`, 'obsolete-page', 10] });
+  const instance = await activate(f);
+  assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p4`]);
+  assert.equal(f.writes.filter(({ key }) => key === favoritesKey).length, 0);
+  instance.setFavorites([`${chapterKey}/p5`]);
+  assert.deepEqual(JSON.parse(f.data.get(favoritesKey)), [`${chapterKey}/p5`]);
+  f.api.destroy();
+});
+
+test('增强分页：收藏读写与偏好存储被拒绝仍可阅读', async () => {
+  const f = fixture({ storageDenied: true });
+  const instance = await activate(f);
+  instance.setFavorites([`${chapterKey}/p3`]);
+  await settle();
+  assert.equal(f.active, true);
+  assert.match(f.nodes.get('enhanced-status').textContent, /当前会话/);
+  f.enhancement.navigate(1);
+  await settle();
+  assert.equal(f.showCalls.at(-1), 4);
+  assert.equal(f.active, true);
+  f.api.destroy();
+});
+
+test('增强分页：bfcache 离开只暂停，返回重新初始化且不重复监听', async () => {
+  const f = fixture();
+  const first = await activate(f);
+  f.window.fire('pagehide', { persisted: true });
+  await settle();
+  assert.equal(first.destroyed, true);
+  assert.equal(f.refreshCount, 0, '离开时不能刷新核心覆盖 hash 或进度');
+  assert.equal(f.window.listenerCount('keydown'), 0);
+  assert.equal(f.nodes.get('enhanced-toggle').listenerCount('change'), 1);
+  f.window.fire('pageshow', { persisted: true });
+  await settle();
+  assert.equal(f.instances.length, 2);
+  f.instances[1].ready();
+  await settle();
+  assert.equal(f.active, true);
+  assert.equal(f.window.listenerCount('keydown'), 1);
+  f.window.fire('pageshow', { persisted: true });
+  await settle();
+  assert.equal(f.instances.length, 2);
+  f.api.destroy();
+});
+
+test('增强分页：销毁取消实例、待执行任务、计时器和所有适配层监听', async () => {
+  const f = fixture();
+  const instance = await activate(f);
+  f.changeState({ dir: 'rtl' });
+  f.api.destroy();
+  f.api.destroy();
+  await settle();
+  assert.equal(instance.destroyed, true);
+  assert.equal(f.subscriberCount, 0);
+  assert.equal(f.document.listenerCount(), 0);
+  assert.equal(f.window.listenerCount(), 0);
+  assert.equal(f.nodes.get('enhanced-toggle').listenerCount(), 0);
+  assert.equal(f.nodes.get('text-toggle').listenerCount(), 0);
+  assert.equal(f.timers.size, 0);
+  f.choose(true);
+  f.window.fire('pageshow', { persisted: true });
+  await settle();
+  assert.equal(f.instances.length, 1);
+});

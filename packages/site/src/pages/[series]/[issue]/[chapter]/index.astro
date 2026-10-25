@@ -10,6 +10,7 @@
 // hash 约定（检索结果也按这个链过来）：#p<n>、#p<n>b<i>（高亮第 i 个框）。
 // 键盘：←/→ 翻页、空格下一页、f 全屏、t 目录、Esc 关闭面板。
 import Base from '../../../../layouts/Base.astro';
+import EnhancedReader from '../../../../components/EnhancedReader.astro';
 import siteConfig from '../../../../generated/site-config.json';
 import gallery from '../../../../generated/gallery.json';
 import { boxStyle, chaptersByKey, imageUrl, isDot, urlForKey } from '../../../../lib/gallery.js';
@@ -73,6 +74,7 @@ const tocIssues = series.issues.map((iss) => ({
     <a href={issue.url}>目录</a>
     {next ? <a rel="next" href={urlForKey(next.key)}>下一话：{next.title} →</a> : <span></span>}
   </nav>
+
 
   <script is:inline data-hosts={JSON.stringify(hosts)}>
     (function () {
@@ -151,8 +153,14 @@ const tocIssues = series.issues.map((iss) => ({
       <p class="settings-row"><span>亮度</span>
         <input id="brightness" type="range" min="40" max="100" value="100" />
       </p>
+      {features.comimi_reader && <EnhancedReader />}
       <p class="settings-row settings-note">快捷键：← / → 翻页，空格下一页，f 全屏，t 目录，Esc 关闭</p>
     </div>
+
+    {features.comimi_reader && <>
+      <p id="enhanced-status" class="muted enhanced-status" role="status" hidden></p>
+      <div id="enhanced-viewer" class="enhanced-stage" aria-label="漫画分页阅读" hidden></div>
+    </>}
 
     {
       chapter.pages.map((p) => {
@@ -209,8 +217,33 @@ const tocIssues = series.issues.map((iss) => ({
       var settingsPanel = document.getElementById('settings');
       var brightness = document.getElementById('brightness');
       var cur = 1;
+      var requestedPage = 1;
       var hl = null;
+      var scrollFrame = 0;
+      var restoringLong = false;
+      var longRestoreId = 0;
+      var longRestoreFrame = 0;
+      var longRestoreReady = null;
+      var enhancement = null;
+      var subscribers = [];
       var settings = loadSettings();
+
+      function readerState() {
+        return { page: cur, requestedPage: requestedPage, mode: settings.mode, dir: settings.dir };
+      }
+      function notify() {
+        subscribers.slice().forEach(function (fn) { fn(readerState()); });
+      }
+      reader.galleryReader = {
+        getState: readerState,
+        subscribe: function (fn) {
+          subscribers.push(fn);
+          return function () { subscribers = subscribers.filter(function (item) { return item !== fn; }); };
+        },
+        showPage: function (n) { show(n, {}); },
+        setEnhancement: function (adapter) { enhancement = adapter; },
+        refresh: function () { applyHash(false); },
+      };
 
       function loadSettings() {
         var d = { mode: 'single', dir: 'ltr', brightness: 100 };
@@ -241,14 +274,9 @@ const tocIssues = series.issues.map((iss) => ({
         if (modeInput) modeInput.checked = true;
         var dirInput = settingsPanel.querySelector('input[name="reader-dir"][value="' + settings.dir + '"]');
         if (dirInput) dirInput.checked = true;
-        if (settings.mode === 'long') {
-          // 长条模式把全部图片拉起来，否则 display:block 里的 lazy 图要在滚动时才加载
-          pages.forEach(function (p) {
-            var img = p.querySelector('img');
-            if (img && img.loading === 'lazy') img.loading = 'eager';
-          });
-        }
+        // 长条模式保留原生 lazy，只让浏览器加载视口附近的页。
         updateProgress();
+        notify();
       }
 
       function parseHash(h) {
@@ -259,7 +287,7 @@ const tocIssues = series.issues.map((iss) => ({
         return Math.min(Math.max(n, 1), total);
       }
       function step() {
-        return settings.mode === 'double' ? 2 : 1;
+        return !enhancement && settings.mode === 'double' ? 2 : 1;
       }
       function updateProgress() {
         if (!fill) return;
@@ -272,6 +300,42 @@ const tocIssues = series.issues.map((iss) => ({
         }
         fill.style.width = (pct * 100).toFixed(2) + '%';
       }
+      function updateLongPage() {
+        if (settings.mode !== 'long' || restoringLong) return;
+        // 搜索命中的气泡会居中，页面顶部此时可能仍是上一页；气泡仍可见就保留命中页。
+        if (hl) {
+          var box = hl.getBoundingClientRect();
+          if (box.bottom >= 0 && box.top <= window.innerHeight) return;
+        }
+        // 以视口上部的阅读位置判定当前页，留出顶部导航的空间。
+        var marker = Math.min(window.innerHeight / 3, 200);
+        var n = 1;
+        for (var i = 1; i < total; i++) {
+          if (pages[i].getBoundingClientRect().top > marker) break;
+          n = i + 1;
+        }
+        if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) n = total;
+        requestedPage = n;
+        if (n === cur) return;
+        cur = n;
+        if (curEl) curEl.value = String(n);
+        saveProgress(n);
+        // 同一页内滚动保留检索气泡的深链，跨页后才更新 hash。
+        var target = parseHash(location.hash);
+        if (!target || target.n !== n) {
+          highlight(n, null);
+          history.replaceState(null, '', '#p' + n);
+        }
+        notify();
+      }
+      function onScroll() {
+        if (scrollFrame) return;
+        scrollFrame = window.requestAnimationFrame(function () {
+          scrollFrame = 0;
+          updateLongPage();
+          updateProgress();
+        });
+      }
       function warm(n) {
         var p = pages[n - 1];
         var img = p && p.querySelector('img');
@@ -281,6 +345,7 @@ const tocIssues = series.issues.map((iss) => ({
         if (img2 && img2.loading === 'lazy') img2.loading = 'eager';
       }
       function saveProgress(n) {
+        if (restoringLong) return;
         try {
           localStorage.setItem(
             progressKey,
@@ -300,7 +365,9 @@ const tocIssues = series.issues.map((iss) => ({
       function show(n, opts) {
         opts = opts || {};
         n = clamp(n);
-        if (settings.mode === 'double' && n % 2 === 0) n -= 1;
+        // 增强阅读器可能在窄屏改成单页，接管时仍需知道跨页归并前的目标。
+        requestedPage = n;
+        if (!enhancement && settings.mode === 'double' && n % 2 === 0) n -= 1;
         pages.forEach(function (p, i) {
           p.classList.toggle('current', i === n - 1);
         });
@@ -312,14 +379,18 @@ const tocIssues = series.issues.map((iss) => ({
           prevLink.href = '#p' + Math.max(n - step(), 1);
         }
         if (nextLink) {
-          nextLink.hidden = n + (settings.mode === 'double' ? 1 : 0) >= total;
+          nextLink.hidden = n + (!enhancement && settings.mode === 'double' ? 1 : 0) >= total;
           nextLink.href = '#p' + Math.min(n + step(), total);
         }
         if (!opts.keepHash) history.replaceState(null, '', '#p' + n);
         saveProgress(n);
         updateProgress();
-        warm(n + 1);
-        if (opts.scroll) reader.scrollIntoView();
+        if (settings.mode !== 'long') warm(n + 1);
+        if (opts.scroll) {
+          if (settings.mode === 'long') pages[n - 1].scrollIntoView({ block: 'start' });
+          else reader.scrollIntoView();
+        }
+        notify();
       }
       function highlight(n, b) {
         if (hl) hl.classList.remove('hl');
@@ -329,11 +400,51 @@ const tocIssues = series.issues.map((iss) => ({
           hl.scrollIntoView({ block: 'center' });
         }
       }
+      function cancelLongRestore() {
+        longRestoreId++;
+        restoringLong = false;
+        if (longRestoreFrame) window.cancelAnimationFrame(longRestoreFrame);
+        if (longRestoreReady) document.removeEventListener('DOMContentLoaded', longRestoreReady);
+        longRestoreFrame = 0;
+        longRestoreReady = null;
+      }
+      function restoreLongPage(n, b, scroll) {
+        cancelLongRestore();
+        var restoreId = longRestoreId;
+        restoringLong = true;
+        n = clamp(n);
+        show(n, { keepHash: true });
+        // 内联脚本执行时页尾尚未解析。等完整文档布局后定位，避免短末页被旧滚动上限截住。
+        var start = function () {
+          longRestoreReady = null;
+          longRestoreFrame = window.requestAnimationFrame(function () {
+            if (restoreId !== longRestoreId) return;
+            show(n, { keepHash: true, scroll: scroll });
+            highlight(n, b);
+            // 程序触发的 scroll 可能晚于定位到达；此帧内仍不得覆盖恢复目标。
+            longRestoreFrame = window.requestAnimationFrame(function () {
+              if (restoreId !== longRestoreId) return;
+              longRestoreFrame = 0;
+              restoringLong = false;
+              saveProgress(cur);
+              updateProgress();
+            });
+          });
+        };
+        if (document.readyState === 'loading') {
+          longRestoreReady = start;
+          document.addEventListener('DOMContentLoaded', start, { once: true });
+        } else start();
+      }
       function applyHash(scroll) {
+        cancelLongRestore();
         var t = parseHash(location.hash);
         if (t) {
-          show(t.n, { keepHash: true, scroll: scroll });
-          highlight(t.n, t.b);
+          if (settings.mode === 'long') restoreLongPage(t.n, t.b, true);
+          else {
+            show(t.n, { keepHash: true, scroll: scroll });
+            highlight(t.n, t.b);
+          }
           return;
         }
         // 没有 hash：恢复本话的上次进度（首页「继续阅读」也靠这份记录）
@@ -344,7 +455,8 @@ const tocIssues = series.issues.map((iss) => ({
         } catch (e) {
           /* 坏记录忽略 */
         }
-        show(resumed, { keepHash: true });
+        if (settings.mode === 'long') restoreLongPage(resumed, null, resumed > 1);
+        else show(resumed, { keepHash: true });
         if (resumed > 1 && settings.mode !== 'long') {
           var tip = document.getElementById('resume-tip');
           if (!tip) {
@@ -357,17 +469,24 @@ const tocIssues = series.issues.map((iss) => ({
         }
       }
       function go(delta) {
+        if (enhancement) {
+          enhancement.navigate(delta);
+          return;
+        }
         if (settings.mode === 'long') {
           window.scrollBy({ top: delta * window.innerHeight * 0.9, behavior: 'smooth' });
           return;
         }
-        var d = delta * step();
-        if (settings.dir === 'rtl') d = -d;
-        var n = cur + d;
+        // delta 永远表示章节顺序；按钮与空格不会因阅读方向而倒退。
+        var n = cur + delta * step();
         if (n < 1 || n > total) return;
         highlight(n, null);
         show(n);
         if (settings.mode !== 'long') reader.scrollIntoView({ block: 'nearest' });
+      }
+      function goPhysical(delta) {
+        // 只有左右键、点击区域、滑动需要从物理方向映射到章节顺序。
+        go(settings.dir === 'rtl' ? -delta : delta);
       }
       function openPanel(el, open) {
         if (!el) return;
@@ -415,16 +534,19 @@ const tocIssues = series.issues.map((iss) => ({
       }
       settingsPanel.addEventListener('change', function (e) {
         var t = e.target;
-        if (t.name === 'reader-mode') settings.mode = t.value;
-        else if (t.name === 'reader-dir') settings.dir = t.value;
+        if (t.name === 'reader-mode') {
+          updateLongPage();
+          cancelLongRestore();
+          settings.mode = t.value;
+        } else if (t.name === 'reader-dir') settings.dir = t.value;
         else if (t.id === 'brightness') settings.brightness = Number(t.value);
         else return;
         saveSettings();
         applySettings();
         if (settings.mode !== 'long') show(cur);
         if (settings.mode === 'long') {
-          var target = document.getElementById('p' + cur);
-          if (target) target.scrollIntoView();
+          var target = parseHash(location.hash);
+          restoreLongPage(cur, target && target.n === cur ? target.b : null, true);
         }
       });
       if (brightness) {
@@ -434,13 +556,24 @@ const tocIssues = series.issues.map((iss) => ({
         });
       }
       window.addEventListener('hashchange', function () { applyHash(true); });
-      window.addEventListener('scroll', updateProgress, { passive: true });
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll);
+      // 离开页面时同步保存，避免最后一次滚动还排在下一帧。
+      window.addEventListener('pagehide', updateLongPage);
       document.addEventListener('keydown', function (e) {
+        if (enhancement) return;
         if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+        if (e.key === 'Escape' && (!toc.hidden || !settingsPanel.hidden)) {
+          var returnTo = !toc.hidden ? tocBtn : settingsBtn;
+          closeAll();
+          if (returnTo) returnTo.focus();
+          e.preventDefault();
+          return;
+        }
         var t = e.target;
-        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-        if (e.key === 'ArrowLeft') go(-1);
-        else if (e.key === 'ArrowRight') go(1);
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON' || t.tagName === 'SELECT' || t.tagName === 'A' || t.isContentEditable || t.closest?.('.toc, .settings'))) return;
+        if (e.key === 'ArrowLeft') goPhysical(-1);
+        else if (e.key === 'ArrowRight') goPhysical(1);
         else if (e.key === ' ') go(1);
         else if (e.key === 'f') {
           if (document.fullscreenElement) document.exitFullscreen();
@@ -453,28 +586,30 @@ const tocIssues = series.issues.map((iss) => ({
         e.preventDefault();
       });
       reader.addEventListener('click', function (e) {
+        if (enhancement) return;
         if (e.target.closest('.box') || e.target.closest('a') || e.target.closest('button') || e.target.closest('input') || e.target.closest('.toc') || e.target.closest('.settings')) return;
         var frame = e.target.closest('.frame');
         if (!frame) return;
         var sel = window.getSelection();
         if (sel && sel.toString()) return;
         var r = frame.getBoundingClientRect();
-        var leftToRight = settings.dir !== 'rtl';
-        go(e.clientX - r.left < r.width / 2 ? (leftToRight ? -1 : 1) : leftToRight ? 1 : -1);
+        goPhysical(e.clientX - r.left < r.width / 2 ? -1 : 1);
       });
       // 触摸滑动（单页/双页模式）
       var touchX = null;
       reader.addEventListener('touchstart', function (e) {
-        if (settings.mode === 'long' || e.touches.length !== 1) return;
+        touchX = null;
+        if (enhancement || settings.mode === 'long' || e.touches.length !== 1) return;
+        if (e.target.closest('button, input, select, a, .toc, .settings, .box')) return;
         touchX = e.touches[0].clientX;
       }, { passive: true });
       reader.addEventListener('touchend', function (e) {
+        if (enhancement) { touchX = null; return; }
         if (touchX === null) return;
         var dx = e.changedTouches[0].clientX - touchX;
         touchX = null;
         if (Math.abs(dx) < 50) return;
-        var leftToRight = settings.dir !== 'rtl';
-        go(dx < 0 ? (leftToRight ? 1 : -1) : leftToRight ? -1 : 1);
+        goPhysical(dx < 0 ? 1 : -1);
       });
       if (toggle) {
         toggle.addEventListener('change', function () {
@@ -496,14 +631,14 @@ const tocIssues = series.issues.map((iss) => ({
     padding: 0.35rem 0.85rem;
     border-radius: 999px;
     border: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.6);
+    background: var(--glass);
     color: var(--purple);
     transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
   }
   .chapter-nav a:hover { color: var(--pink-deep); border-color: var(--pink-soft); background: #fff; }
   .reader { margin: 0.6rem 0 1rem; }
-  .reader .progress { position: sticky; top: 0; z-index: 5; height: 3px; background: rgba(123, 94, 167, 0.12); border-radius: 999px; overflow: hidden; }
-  .reader .progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--pink), var(--purple-light)); transition: width 0.15s linear; }
+  .reader .progress { position: sticky; top: 0; z-index: 5; height: 3px; background: var(--pink-soft); border-radius: 999px; overflow: hidden; }
+  .reader .progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--pink), var(--purple)); transition: width 0.15s linear; }
   .reader .pager {
     display: none;
     justify-content: center;
@@ -514,23 +649,23 @@ const tocIssues = series.issues.map((iss) => ({
     margin: 0.6rem auto 1rem;
     padding: 0.35rem 0.9rem;
     color: var(--text-dim);
-    background: rgba(255, 255, 255, 0.68);
+    background: var(--glass);
     border: 1px solid var(--line);
     border-radius: 999px;
-    box-shadow: 0 8px 24px rgba(123, 94, 167, 0.1);
+    box-shadow: var(--shadow);
   }
   .reader .pager a { color: var(--purple); text-decoration: none; }
   .reader .page-indicator { display: inline-flex; align-items: center; gap: 0.3rem; }
-  .reader #page-input { width: 3.4rem; padding: 0.12rem 0.3rem; font: inherit; text-align: center; color: var(--ink); background: rgba(255, 255, 255, 0.8); border: 1px solid var(--line); border-radius: 8px; }
-  .reader .icon-btn { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.7); color: var(--purple); font-size: 0.95rem; cursor: pointer; }
+  .reader #page-input { width: 3.4rem; padding: 0.12rem 0.3rem; font: inherit; text-align: center; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+  .reader .icon-btn { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--purple); font-size: 0.95rem; cursor: pointer; }
   .reader .icon-btn:hover { border-color: var(--pink-soft); color: var(--pink-deep); background: #fff; }
   .reader .text-toggle { cursor: pointer; user-select: none; }
   .reader .resume-tip { text-align: center; font-size: 0.82rem; margin: 0 0 0.6rem; }
   .reader .toc, .reader .settings {
     position: fixed; right: clamp(1rem, 4vw, 3rem); top: 4.2rem; z-index: 30;
-    width: min(22rem, calc(100vw - 2rem)); max-height: 70vh; overflow: auto;
-    padding: 0.8rem 1rem; box-shadow: 0 18px 50px rgba(46, 35, 80, 0.18);
-    background: rgba(255, 255, 255, 0.92);
+    width: min(22rem, calc(100% - 2rem)); max-height: 70vh; overflow: auto;
+    padding: 0.8rem 1rem; box-shadow: var(--shadow);
+    background: var(--glass);
   }
   .reader .toc-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
   .reader .toc nav { display: grid; gap: 0.4rem; }
@@ -543,6 +678,7 @@ const tocIssues = series.issues.map((iss) => ({
   .reader .settings-row label { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--text); cursor: pointer; }
   .reader .settings-note { color: var(--text-dim); font-size: 0.78rem; margin-top: 0.6rem; }
   .reader .page {
+    scroll-margin-top: 4rem;
     margin: 0 0 1.25rem;
     padding: 0.55rem;
     background: var(--glass);
@@ -555,6 +691,7 @@ const tocIssues = series.issues.map((iss) => ({
   .reader .page-num { font-size: 0.8rem; margin: 0 0 0.3rem 0.2rem; }
   .reader .frame { position: relative; container-type: inline-size; background: #14101f; border-radius: 12px; overflow: hidden; aspect-ratio: 1; }
   .reader .frame img { display: block; width: 100%; height: auto; }
+
   .reader .text-layer { position: absolute; inset: 0; }
   .reader .box {
     position: absolute;
@@ -570,7 +707,7 @@ const tocIssues = series.issues.map((iss) => ({
     user-select: text;
     -webkit-user-select: text;
   }
-  .reader .box::selection { background: rgba(255, 143, 171, 0.45); }
+  .reader .box::selection { background: var(--pink-deep); color: #fff; text-shadow: none; }
   .reader .box.dot { overflow: visible; white-space: nowrap; }
   .reader .box.dot::before {
     content: '';
@@ -581,14 +718,14 @@ const tocIssues = series.issues.map((iss) => ({
     height: 0.6em;
     border-radius: 50%;
     background: var(--gold);
-    box-shadow: 0 0 0 2px rgba(46, 35, 80, 0.35), 0 0 10px rgba(201, 154, 63, 0.6);
+    box-shadow: 0 0 0 2px #14101f, 0 0 10px rgba(201, 154, 63, 0.6);
   }
   .reader .box.hl, .reader:not(.js) .box:target {
     outline: 2px solid var(--pink);
     background: rgba(255, 143, 171, 0.28);
     border-radius: 2px;
   }
-  .reader.show-text .box { color: #fff; background: rgba(46, 35, 80, 0.82); text-shadow: 0 0 2px #000; border-radius: 2px; }
+  .reader.show-text .box { color: #fff; background: rgba(46, 35, 80, 0.82); text-shadow: 0 0 2px #14101f; border-radius: 2px; }
 
   /* JS 接管后：单页 / 双页 / 长条 */
   .reader.js .pager { display: flex; }
@@ -601,12 +738,25 @@ const tocIssues = series.issues.map((iss) => ({
   .reader.js.mode-double .page.current { display: block; }
   .reader.js.mode-double {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.8rem;
     align-items: start;
   }
   .reader.js.mode-double .pager, .reader.js.mode-double .toc, .reader.js.mode-double .settings, .reader.js.mode-double .progress { grid-column: 1 / -1; }
   .reader.js.mode-double .page { margin: 0; }
-  .reader.rtl .frame { direction: rtl; }
-  .reader { filter: brightness(var(--reader-brightness, 1)); }
+  .reader.js.mode-double.rtl { direction: rtl; }
+  .reader.js.mode-double > * { direction: ltr; }
+  @media (max-width: 48rem) {
+    .reader.js.mode-double { grid-template-columns: minmax(0, 1fr); }
+  }
+  .reader .frame, .reader .enhanced-stage { filter: brightness(var(--reader-brightness, 1)); }
+  .reader { position: relative; }
+  .reader:not(.js) #enhanced-option { display: none; }
+  .reader .enhanced-stage { grid-column: 1 / -1; width: 100%; height: min(80svh, 64rem); min-height: 20rem; }
+  .reader .enhanced-stage .comimi-root { width: 100%; max-width: none; height: 100%; aspect-ratio: auto; margin: 0; direction: ltr; }
+  .reader .enhanced-stage[hidden], .reader .enhanced-status[hidden] { display: none; }
+  .reader .enhanced-stage[data-loading] { position: absolute; left: 0; right: 0; visibility: hidden; pointer-events: none; }
+  .reader .enhanced-status { grid-column: 1 / -1; }
+  .reader.js.enhanced-active { display: block; }
+  .reader.js.enhanced-active .page, .reader.js.enhanced-active .page.current { display: none; }
 </style>

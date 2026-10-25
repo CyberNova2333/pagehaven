@@ -44,6 +44,7 @@ features:
   search_function: false   # 部署 Hono 函数加速检索
   platform_config: true    # 把 _headers/_redirects/edgeone.json 放进 dist（关掉 = 纯静态基线）
   text_layer: true         # 阅读器叠可选中的文字层
+  comimi_reader: false     # 允许用户选择增强分页；加载失败回退现有阅读器
 
 budgets:
   # 数字的来历见 docs/ARCHITECTURE.md §2「预算」

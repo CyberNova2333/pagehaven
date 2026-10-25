@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@gallery/core": "*",
+    "@yui540/comimi": "0.26.0",
     "astro": "^7.0.0"
   }
 }

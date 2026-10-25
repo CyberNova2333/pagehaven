@@ -62,6 +62,36 @@ async function walk(dir, out = []) {
   return out;
 }
 
+// 沿阅读器自己的同源 JS 引用查找静态与懒加载 chunk；不能扫描整个 _astro，搜索页也在同一产物中。
+async function readerChunks(dist, html) {
+  const roots = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"[^>]*>/g)];
+  const inline = [...html.matchAll(/<script\b(?=[^>]*\btype="module")(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+  assert.ok(roots.length + inline.length > 0, '阅读器应包含构建后的浏览器模块');
+  for (const [tag, src] of roots) {
+    assert.match(tag, /\btype="module"/, '增强分页脚本应为 module');
+    assert.match(src, /^\/_astro\/[^?#]+\.js$/, '增强分页脚本应来自本站静态产物');
+  }
+  const pending = roots.map(([, src]) => src);
+  const seen = new Set();
+  const chunks = [...inline];
+  for (const chunk of inline) {
+    for (const [, src] of chunk.matchAll(/["'](\/_astro\/[^"'\s]+\.js)["']/g)) pending.push(src);
+  }
+  while (pending.length) {
+    const src = pending.pop();
+    if (seen.has(src)) continue;
+    seen.add(src);
+    assert.ok(src.startsWith('/_astro/'), '模块依赖必须留在本站构建目录内');
+    const text = await readFile(join(dist, src.slice(1)), 'utf8');
+    chunks.push(text);
+    // Vite 的 import/export 与预加载映射均使用带引号的相对 JS 路径。
+    for (const [, specifier] of text.matchAll(/["']((?:\.{1,2}\/|\/_astro\/)[^"'\s]+\.js)["']/g)) {
+      pending.push(new URL(specifier, `https://static.invalid${src}`).pathname);
+    }
+  }
+  return chunks.join('\n');
+}
+
 test('站点配置：trigram 最短 MATCH 长度固定为 3，拒绝会漏掉两字结果的设置', () => {
   assert.equal(SiteConfigSchema.safeParse(config).success, true);
   assert.equal(config.search.min_match_length, 3);
@@ -117,7 +147,15 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       assert.deepEqual(stray, [], `${key} 下不该有独立 JS/CSS/wasm`);
       const html = await readFile(join(dir, 'index.html'), 'utf8');
       assert.ok(!html.includes('/_astro/'), `${key} 的 HTML 不该引用 _astro/ 下的检索 chunk`);
+      assert.doesNotMatch(html, /id="enhanced-(?:option|toggle|viewer|status)"/, `${key} 默认不输出增强分页控件或容器`);
     }
+  });
+
+  await t.test('静态产物保留增强分页组件的许可证', async () => {
+    assert.equal(
+      await readFile(join(DIST, 'licenses', 'comimi.txt'), 'utf8'),
+      await readFile(join(SITE_DIR, 'public', 'licenses', 'comimi.txt'), 'utf8'),
+    );
   });
 
   await t.test('阅读器 HTML：台词、webp URL、上下话链接、#p 脚本、文字层高亮 id', async () => {
@@ -302,6 +340,42 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
 
   // 下面的用例改动 src/generated/ 里的文件再直接跑 astro build，跑完原样放回：
   // 这个目录是共享的构建中间态，不能留下与 gallery.json 对不上的东西。
+
+  await t.test('features.comimi_reader 开：可选同源模块保留原图片、文字层与每话一 HTML', async () => {
+    const cfgFile = join(GENERATED, 'site-config.json');
+    const saved = await readFile(cfgFile, 'utf8');
+    try {
+      const cfg = JSON.parse(saved);
+      cfg.features.comimi_reader = true;
+      cfg.features.platform_config = false;
+      await writeFile(cfgFile, JSON.stringify(cfg));
+      const out = join(tmp, 'dist-enhanced-reader');
+      const r = astroBuild(out);
+      assert.equal(r.status, 0, r.out);
+      for (const chapter of model.chapters) {
+        const dir = join(out, ...chapter.key.split('/'));
+        assert.deepEqual((await walk(dir)).filter((file) => extname(file) === '.html'), [join(dir, 'index.html')]);
+        const html = await readFile(join(dir, 'index.html'), 'utf8');
+        assert.match(html, /<input\b(?=[^>]*\bid="enhanced-toggle")(?=[^>]*\btype="checkbox")[^>]*>/);
+        assert.match(html, /<div\b(?=[^>]*\bid="enhanced-viewer")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/);
+        const pages = [...html.matchAll(/<section\b[^>]*\bclass="page"[^>]*>([\s\S]*?)<\/section>/g)];
+        assert.equal(pages.length, chapter.pages.length, `${chapter.key} 的原阅读器页不能被替换为空容器`);
+        for (const [index, page] of pages.entries()) {
+          assert.ok(page[1].includes(`src="${imageOrigin}/${chapter.pages[index].keys.webp}"`), '原图片仍在 HTML 中');
+        }
+        const modules = await readerChunks(out, html);
+        assert.doesNotMatch(modules, /sqlite|search-config|search-form|search-results/i, '阅读器的模块依赖不应包含检索执行器');
+      }
+      const html = await readFile(join(out, 'sample', 'vol01', 'c001', 'index.html'), 'utf8');
+      assert.match(html, /class="text-layer"/);
+      for (const id of ['p1b0', 'p1b1', 'p2b0']) assert.ok(html.includes(`id="${id}"`), `保留台词框 ${id}`);
+      assert.ok(html.includes('你好，世界！') && html.includes('漫画作者的契約'), '文字内容仍是普通 DOM 文本');
+      assert.match(html, /class="box dot[^"]*"[^>]*id="p2b0"/, '点标签也保留');
+      assert.ok(existsSync(join(out, 'licenses', 'comimi.txt')), '增强模式产物也应附带许可证');
+    } finally {
+      await writeFile(cfgFile, saved);
+    }
+  });
 
   await t.test('hasText 但分片缺失：astro build 报错退出、信息含该话 key，而不是静默丢掉文字层', async () => {
     const shard = join(GENERATED, 'text', 'sample', 'vol01', 'c001.json');
