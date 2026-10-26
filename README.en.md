@@ -44,6 +44,7 @@ Requires **Node.js 22.19.0+ and npm 9.6.5+** to meet the locked dependencies' mi
 
 ```bash
 npm ci
+npm run init -- --ui-lang en # Interactive setup; confirm to save, or build with the defaults
 npm run build     # Generate configuration, database, pages, indexes, and sitemap; no deployment
 npm run check     # Check configuration sync, data, artifact budgets, and lint
 npm test          # Test data models, readers, search, builds, and release workflows
@@ -76,7 +77,22 @@ Fixtures contain fictional metadata and dialogue, without comic images. This pre
 
 ## Configuration and content
 
-[`site.config.yaml`](site.config.yaml) is the single configuration source. Review these fields before first use:
+[`site.config.yaml`](site.config.yaml) is the single configuration source. `npm run init` interactively sets the site name, domains, image sources, and feature flags, using the current configuration as defaults. Cancelling leaves the file unchanged. The tool defaults to Chinese; use `npm run init -- --ui-lang en` for English.
+
+You can also preview changes with command-line arguments:
+
+```bash
+npm run init -- --ui-lang en --title "My Comic Library" --domain gallery.example.org --image-host images.example.org --target cloudflare --project my-comics
+npm run init -- --ui-lang en --help
+```
+
+Argument mode previews changes by default. Append `--write` to the same command to save them after review. `--dry-run` explicitly requests a preview and cannot be combined with `--write`. Use argument mode in non-interactive environments. Repeat `--image-host` for up to two sources; `--text-layer`, `--enhanced-reader`, and `--platform-config` accept `true` or `false`. `--site-lang` sets the HTML language tag without translating the website interface.
+
+`--target` accepts `none` (the default), `cloudflare`, `edgeone`, or `github` and selects platform setup guidance only. The actual release target is still chosen in the manual release form. `--project` writes the Cloudflare project name; other platform account identifiers and credentials remain in secrets. Initialization accepts example domains for previews and does not create cloud resources or deploy the site.
+
+The tool preserves existing comments and unselected fields and validates the complete configuration. Before saving, it backs up the original in `out/init/` (overridable with `OUT_DIR`), replaces the file atomically through a temporary file in the same directory, and stops if it detects a concurrent configuration edit. Use `--config` to edit another existing configuration; otherwise, `CONFIG_FILE` takes precedence over the repository root file. Run `npm run build` afterwards to refresh generated configuration and site artifacts.
+
+Review these fields before first use:
 
 | Setting | Purpose |
 |---|---|

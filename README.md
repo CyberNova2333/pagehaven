@@ -44,6 +44,7 @@
 
 ```bash
 npm ci
+npm run init      # 中文交互配置站点，确认后写入；也可保留默认配置直接构建
 npm run build     # 生成配置、检索库、静态页面、索引和 sitemap，不发布
 npm run check     # 配置同步、数据校验、产物预算与 lint
 npm test          # 数据模型、阅读器、搜索与构建发布测试
@@ -76,7 +77,22 @@ python3 -m http.server 4173 --bind 0.0.0.0 --directory out/demo-dist
 
 ## 配置与内容
 
-[`site.config.yaml`](site.config.yaml) 是唯一配置源。首次使用应核对：
+[`site.config.yaml`](site.config.yaml) 是唯一配置源。`npm run init` 可交互设置站名、域名、图片源和功能开关，按当前配置提供默认值；取消时不写入。使用 `npm run init -- --ui-lang en` 可切换初始化工具的界面语言。
+
+也可以通过参数预览修改：
+
+```bash
+npm run init -- --title "我的漫画站" --domain gallery.example.org --image-host images.example.org --target cloudflare --project my-comics
+npm run init -- --help
+```
+
+参数模式默认只预览，确认后在同一条命令末尾加 `--write` 才写入；`--dry-run` 可显式预览，不能与 `--write` 同用。非交互环境应使用参数模式。图片源可重复传入 `--image-host`，最多两个；`--text-layer`、`--enhanced-reader` 和 `--platform-config` 接受 `true` 或 `false`。`--site-lang` 只设置 HTML 语言标记，不翻译网站界面。
+
+`--target` 取 `none`（默认）、`cloudflare`、`edgeone` 或 `github`，仅选择平台设置提示；实际发布目标仍由手动发布表单指定。`--project` 写入 Cloudflare 项目名，其他平台的账号标识和凭据仍放在 secrets。初始化允许示例域名用于预览，不创建云资源或触发部署。
+
+工具保留已有注释和未选择的字段，复用完整配置校验；写入前将原文件备份到 `out/init/`（可由 `OUT_DIR` 覆盖），通过同目录临时文件原子替换，并在检测到配置被同时修改时中止。`--config` 可指定其他现有配置，未指定时依次使用 `CONFIG_FILE` 环境变量或仓库根文件。初始化后运行 `npm run build` 刷新派生配置和站点产物。
+
+首次使用应核对：
 
 | 配置 | 用途 |
 |---|---|
