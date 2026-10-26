@@ -10,6 +10,7 @@
     "packages/*"
   ],
   "scripts": {
+    "init": "node scripts/init-site.mjs",
     "ingest:labelplus": "node scripts/ingest-labelplus.mjs",
     "ingest:ocr": "node scripts/ingest-ocr.mjs",
     "build:config": "node scripts/build-config.mjs",
@@ -39,7 +40,8 @@
     "eslint": "^10.0.0",
     "globals": "^17.0.0",
     "js-yaml": "^4.1.0",
-    "undici": "8.12.2"
+    "undici": "8.12.2",
+    "yaml": "2.9.1"
   },
   "overrides": {
     "source-map-js": "1.2.2"
