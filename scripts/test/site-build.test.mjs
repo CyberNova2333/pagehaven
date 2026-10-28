@@ -295,6 +295,18 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.ok(!library.includes('rel="canonical"'), '书架不应声明公开内容 canonical');
     assert.ok(!library.includes('property="og:url"'));
     assert.match(library, /<noscript>[\s\S]*?书架[\s\S]*?<\/noscript>/, '禁用脚本时要解释书架的使用条件');
+    for (const id of ['reading-backup', 'backup-export', 'backup-file', 'backup-mode', 'backup-preview', 'backup-summary', 'backup-apply', 'backup-cancel', 'backup-feedback', 'backup-download']) {
+      assert.ok(library.includes(`id="${id}"`), `阅读备份缺 #${id}`);
+    }
+    assert.match(library, /<input\b(?=[^>]*\bid="backup-file")(?=[^>]*\btype="file")(?=[^>]*\baccept="[^"]*json)[^>]*>/, '导入应通过 JSON 文件选择器读取');
+    assert.match(library, /<select\b(?=[^>]*\bid="backup-mode")[^>]*>\s*<option\b[^>]*\bvalue="keep-existing"/, '导入默认保留现有记录');
+    assert.match(library, /<button\b(?=[^>]*\bid="backup-apply")(?=[^>]*\bdisabled(?:\s|[=>]))[^>]*>/, '导入前必须先生成可确认的预览');
+    assert.match(library, /<\w+\b(?=[^>]*\bid="backup-preview")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '初始页面不能假装已有备份预览');
+    assert.match(library, /<noscript>[\s\S]*?备份[\s\S]*?<\/noscript>/, '备份需要脚本时必须解释');
+    const libraryModules = await readerChunks(DIST, library);
+    assert.match(libraryModules, /pagehaven-reading-backup/, '实际备份模型必须接入构建后的书架模块');
+    assert.doesNotMatch(libraryModules, /sqlite|search-config|search-form|search-results|createMangaViewer/i,
+      '个人阅读备份不应加载检索执行器或增强分页');
     const json = /<script\b(?=[^>]*\bid="library-catalog")(?=[^>]*\btype="application\/json")[^>]*>([\s\S]*?)<\/script>/.exec(library);
     assert.ok(json, '书架目录应使用 application/json 数据块');
     const catalog = JSON.parse(json[1]);

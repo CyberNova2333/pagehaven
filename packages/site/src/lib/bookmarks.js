@@ -106,6 +106,7 @@ export function createBookmarkStore({ getStorage = () => window.localStorage, no
 
   return {
     get limited() { return limited; },
+    get hasPending() { return pendingPages.size > 0 || pendingNotes.size > 0; },
     list(key, total) {
       if (!validChapter(key) || !validTotal(total)) return [];
       return [...pages(key, total)].sort((a, b) => a - b).map((n) => {

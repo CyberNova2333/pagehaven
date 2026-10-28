@@ -30,6 +30,7 @@ export function createLibraryStore({ getStorage = () => window.localStorage, now
 
   return {
     get limited() { return limited; },
+    get hasPending() { return pending.size > 0; },
     read(seriesId) {
       if (!isId(seriesId)) return null;
       if (pending.has(seriesId)) {

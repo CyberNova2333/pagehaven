@@ -29,6 +29,7 @@ Chinese is the default README; use the buttons above to switch languages. The we
 - **Comic reading:** Single-page, long-strip, and double-page modes; reading direction, keyboard and swipe navigation, fullscreen, brightness, and page jumps. Reading progress is saved automatically and can be resumed from the home and series pages.
 - **Personal library:** Save series, manually mark them as Want to read / Reading / Read, filter by status and series title, and resume from the latest reading position.
 - **Page bookmarks:** The standard and enhanced readers share page favorites, with short notes. View bookmarks by series in your library, edit or remove them, and jump directly to the saved page.
+- **Reading backups:** Export or restore saved series, progress, page bookmarks, and notes from your library. Preview before importing, merge while keeping existing records by default, and process everything in the browser.
 - **Long series and unreliable connections:** The full chapter list loads when first opened, with filtering and current-chapter navigation. Images try backup sources automatically and offer per-page retry after failure, while transcript overlays remain readable.
 - **Dialogue links:** Selectable, copyable text overlays and search results that link directly to a page and text box. The search page shows actual transcript coverage.
 - **Browser-side search:** Download and verify the matching release's SQLite database, filter by series, and paginate results. The database loads only after the first valid query.
@@ -48,9 +49,19 @@ removing it from the library keeps its page bookmarks. Existing enhanced-reader 
 directly without migration. Notes require an explicit Save or Cancel; turning pages does not
 automatically save an edit in progress.
 
-The library, bookmarks, notes, and progress are stored only in the current browser for the current site, with no account
-sync or import/export. Clearing site data or changing domains prevents automatic recovery. If browser
-storage is unavailable, the page explains that changes are kept temporarily on the current page only.
+The library, bookmarks, notes, and progress are stored in the current browser for the current site, with no account
+sync. If browser storage is unavailable, the page explains that changes are kept temporarily on the current page only.
+Save a backup before clearing site data or moving to another device or domain.
+
+### Back up and restore reading data
+
+1. Open “备份与恢复” (Backup and restore) in My library and export a JSON backup. It includes saved library statuses, reading progress, page bookmarks, and notes, without comic images or the dialogue database.
+2. Select that file in the library on another browser or domain. Review the counts of records to add, keep, replace, or repair. Previewing does not write data.
+3. By default, keep existing statuses, progress, and notes, and combine bookmarked pages. To restore conflicting records from the file, explicitly choose the backup values, review the updated preview, and confirm the import. Records absent from the backup are not deleted.
+
+Files are processed in the browser without uploads, accounts, or a backend. Migration matches series and chapter identifiers. Valid records for removed or not-yet-listed content are retained but remain hidden until the catalog matches; an orphaned note does not recreate a bookmark. Only successfully saved records are backed up. Save temporary changes and finish or cancel an open note edit before transferring data.
+
+Backups are limited to **5 MiB and 20,000 records**, counting each bookmarked page separately. Invalid formats, versions, or contents are rejected; exporting skips damaged old records and reports their count. Changes after preview require another preview. Failed writes attempt to restore data written by that import and report incomplete recovery accurately. Keep the original backup, review the reported result, and retry when appropriate.
 
 <a id="section-2"></a>
 <a id="section-3"></a>
