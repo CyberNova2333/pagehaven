@@ -1,4 +1,6 @@
 // 可选分页组件只负责呈现；原阅读器仍统一管理模式、hash 与首页读取的进度。
+import { FAVORITES_PREFIX, NOTE_PREFIX, getReaderBookmarkStore } from './bookmarks.js';
+
 export function mountEnhancedReader(reader, {
   loadViewer = () => import('@yui540/comimi'),
   timeoutMs = 12000,
@@ -13,7 +15,9 @@ export function mountEnhancedReader(reader, {
   if (!core || !toggle || !host || !status) return null;
 
   const preferenceKey = 'gallery:reader:enhanced';
-  const favoritesKey = `gallery:favorites:${reader.dataset.key}`;
+  const chapterKey = reader.dataset.key;
+  const favoritesKey = FAVORITES_PREFIX + chapterKey;
+  const bookmarkStore = getReaderBookmarkStore(reader);
   const pages = [...reader.querySelectorAll('.page')].map((page) => {
     const img = page.querySelector('img');
     return {
@@ -35,6 +39,21 @@ export function mountEnhancedReader(reader, {
   let disposed = false;
   let suspended = false;
   let failure = '';
+  let favoritesReady = false;
+
+  const savedFavoriteIds = () => bookmarkStore.list(chapterKey, pages.length).map(({ n }) => `${chapterKey}/p${n}`);
+  const sameFavorites = (left, right) => {
+    const sortedRight = [...right].sort();
+    return left.length === right.length && [...left].sort().every((id, index) => id === sortedRight[index]);
+  };
+  function syncFavorites() {
+    if (!active || !viewer || !favoritesReady || disposed) return;
+    const favorites = savedFavoriteIds();
+    if (sameFavorites(favorites, viewer.getFavoritePageIds())) return;
+    // 上游 setFavorites 也会回报 favoritesChange；恢复和同步都不能变成一次用户写入。
+    favoritesReady = false;
+    try { viewer.setFavorites(favorites); } finally { favoritesReady = true; }
+  }
 
   function message(value) {
     status.textContent = value;
@@ -55,6 +74,7 @@ export function mountEnhancedReader(reader, {
     pending = false;
     const wasActive = active;
     active = false;
+    favoritesReady = false;
     core.setEnhancement(null);
     const previous = viewer;
     viewer = null;
@@ -109,7 +129,7 @@ export function mountEnhancedReader(reader, {
     Promise.resolve().then(loadViewer).then(({ createMangaViewer }) => {
       if (ticket !== generation || !wantsViewer()) return;
       const state = core.getState();
-      let favoritesReady = false;
+      favoritesReady = false;
       host.hidden = false;
       host.setAttribute('data-loading', '');
       viewer = createMangaViewer(host, {
@@ -135,13 +155,8 @@ export function mountEnhancedReader(reader, {
             host.removeAttribute('data-loading');
             reader.classList.add('enhanced-active');
             message('');
-            let favorites = [];
-            try {
-              const saved = JSON.parse(win.localStorage.getItem(favoritesKey) ?? '[]');
-              if (Array.isArray(saved)) favorites = saved.filter((id) => typeof id === 'string');
-            } catch { /* 收藏不可读取时仍可翻页。 */ }
-            viewer.setFavorites(favorites);
             favoritesReady = true;
+            syncFavorites();
             // 加载期间仍可在标准阅读器翻页，取最新页码而非请求开始时的快照。
             sync();
           },
@@ -154,8 +169,10 @@ export function mountEnhancedReader(reader, {
           pageLoadError: () => { if (ticket === generation) fail(); },
           favoritesChange: () => {
             if (!active || !favoritesReady || ticket !== generation) return;
-            try { win.localStorage.setItem(favoritesKey, JSON.stringify(viewer.getFavoritePageIds())); }
-            catch { message('收藏保留在当前会话，浏览器未允许保存。'); }
+            const favorites = viewer.getFavoritePageIds();
+            if (sameFavorites(savedFavoriteIds(), favorites)) return;
+            const result = bookmarkStore.replace(chapterKey, pages.length, favorites);
+            message(result.persisted ? '' : '书签修改未能完整保存，暂留在当前页面；离开或刷新页面后可能丢失。');
           },
         },
       });
@@ -203,9 +220,16 @@ export function mountEnhancedReader(reader, {
     }
   }
   const unsubscribe = core.subscribe(schedule);
+  const unsubscribeBookmarks = bookmarkStore.subscribe(({ chapterKey: changed }) => {
+    if (changed === chapterKey) syncFavorites();
+  });
+  function onStorage(event) {
+    if (event.key === null || event.key === favoritesKey || event.key?.startsWith(`${NOTE_PREFIX}${chapterKey}/p`)) syncFavorites();
+  }
   toggle.addEventListener('change', changePreference);
   textToggle?.addEventListener('change', schedule);
   win.addEventListener('hashchange', schedule);
+  win.addEventListener('storage', onStorage);
   doc.addEventListener('keydown', keydown);
   function suspend() {
     suspended = true;
@@ -213,15 +237,18 @@ export function mountEnhancedReader(reader, {
   }
   function resume() {
     suspended = false;
+    syncFavorites();
     schedule();
   }
   function destroy() {
     if (disposed) return;
     disposed = true;
     unsubscribe();
+    unsubscribeBookmarks();
     toggle.removeEventListener('change', changePreference);
     textToggle?.removeEventListener('change', schedule);
     win.removeEventListener('hashchange', schedule);
+    win.removeEventListener('storage', onStorage);
     doc.removeEventListener('keydown', keydown);
     win.removeEventListener('pagehide', suspend);
     win.removeEventListener('pageshow', resume);

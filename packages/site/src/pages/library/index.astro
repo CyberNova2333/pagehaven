@@ -46,6 +46,34 @@ const catalog = gallery.series.map((series) => ({
     <div id="library-empty" class="card card-pad" role="status">启用浏览器脚本后，即可查看收藏的作品与阅读进度。</div>
     <ul id="library-list" class="library-grid" aria-label="书架作品" hidden></ul>
 
+    <section id="library-bookmarks" class="library-bookmarks" aria-labelledby="bookmark-heading">
+      <h2 id="bookmark-heading">页码书签</h2>
+      <p class="muted library-help">从阅读页收藏喜欢的一页，在这里查看、添加备注或继续阅读。作品无需先加入书架。</p>
+      <div class="library-toolbar card card-pad" data-bookmark-toolbar hidden>
+        <label for="bookmark-filter">作品
+          <select id="bookmark-filter">
+            <option value="">全部作品</option>
+            {catalog.map((series) => <option value={series.id}>{series.title}</option>)}
+          </select>
+        </label>
+        <p id="bookmark-count" class="muted" role="status" aria-live="polite"></p>
+      </div>
+      <p id="bookmark-storage-note" class="library-notice" role="status" aria-live="polite" hidden></p>
+      <p id="bookmark-feedback" class="muted" role="status" aria-live="polite"></p>
+      <div id="bookmark-editor" class="card card-pad library-bookmark-editor" hidden>
+        <h3 id="bookmark-editor-title"></h3>
+        <label for="library-bookmark-note">备注（最多 200 字符）</label>
+        <textarea id="library-bookmark-note" maxlength="200" rows="3"></textarea>
+        <div class="library-item-actions">
+          <button id="bookmark-save" class="btn btn-primary" type="button">保存备注</button>
+          <button id="bookmark-cancel" class="btn" type="button">取消</button>
+        </div>
+      </div>
+      <p id="bookmark-empty" class="card card-pad" role="status">启用浏览器脚本后，即可查看收藏的页码。</p>
+      <ul id="bookmark-list" class="bookmark-list" aria-label="收藏的页码" hidden></ul>
+      <button id="bookmark-more" class="btn" type="button" hidden>显示更多书签</button>
+    </section>
+
     <p class="library-back"><a class="btn" href="/">浏览作品 →</a></p>
     <p class="muted library-help">收藏和状态只保存在本浏览器，不会自动跨设备同步。清除站点数据后需要重新添加；移出书架会保留阅读进度。</p>
     <noscript><p class="library-notice">个人书架需要启用 JavaScript 才能读取浏览器中的收藏。仍可<a href="/">回首页浏览作品</a>。</p></noscript>
@@ -55,8 +83,11 @@ const catalog = gallery.series.map((series) => ({
 
 <script>
   import { mountLibrary } from '../../lib/library-controls.js';
+  import { mountBookmarkLibrary } from '../../lib/library-bookmarks.js';
   const root = document.getElementById('library-root');
   if (root) mountLibrary(root);
+  const bookmarks = document.getElementById('library-bookmarks');
+  if (bookmarks) mountBookmarkLibrary(bookmarks);
 </script>
 
 <style is:global>
@@ -88,6 +119,15 @@ const catalog = gallery.series.map((series) => ({
   .library-notice { border-left: 3px solid var(--highlight); padding: 0.7rem 1rem; background: var(--surface-soft); border-radius: 0.4rem; font-size: 0.9rem; }
   .library-back { margin-top: 1.4rem; }
   #library-feedback:empty { display: none; }
+  .library-bookmarks { margin-top: 2.3rem; scroll-margin-top: 8rem; }
+  .bookmark-list { display: grid; gap: 0.8rem; list-style: none; padding: 0; }
+  .bookmark-row h3 { margin: 0; font-size: 1.05rem; }
+  .bookmark-row p { margin: 0.5rem 0; }
+  .bookmark-row .bookmark-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .library-bookmark-editor { margin-bottom: 1rem; }
+  .library-bookmark-editor h3 { margin: 0 0 0.7rem; }
+  .library-bookmark-editor textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; padding: 0.7rem; margin: 0.5rem 0; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 0.7rem; }
+  #bookmark-feedback:empty { display: none; }
   #library-root [hidden] { display: none; }
   @media (max-width: 48rem) { .library-grid { grid-template-columns: 1fr; } }
   @media (max-width: 24rem) { .library-item { grid-template-columns: 4.5rem minmax(0, 1fr); gap: 0.7rem; } }

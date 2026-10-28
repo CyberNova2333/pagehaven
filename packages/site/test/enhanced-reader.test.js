@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mountEnhancedReader } from '../src/lib/enhanced-reader.js';
+import { NOTE_PREFIX } from '../src/lib/bookmarks.js';
 
 const preferenceKey = 'gallery:reader:enhanced';
 const chapterKey = 'sample/v/c';
@@ -56,6 +57,7 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
   window.localStorage = {
     getItem(key) { if (storageDenied) throw new Error('Storage denied'); return data.get(key) ?? null; },
     setItem(key, value) { if (storageDenied) throw new Error('Storage denied'); data.set(key, value); writes.push({ key, value }); },
+    removeItem(key) { if (storageDenied) throw new Error('Storage denied'); data.delete(key); writes.push({ key, value: null }); },
   };
   window.queueMicrotask = queueMicrotask;
   window.setTimeout = (callback) => { timers.set(++timerId, callback); return timerId; };
@@ -449,11 +451,82 @@ test('增强分页：收藏读写与偏好存储被拒绝仍可阅读', async ()
   instance.setFavorites([`${chapterKey}/p3`]);
   await settle();
   assert.equal(f.active, true);
-  assert.match(f.nodes.get('enhanced-status').textContent, /当前会话/);
+  assert.match(f.nodes.get('enhanced-status').textContent, /当前页面/);
   f.enhancement.navigate(1);
   await settle();
   assert.equal(f.showCalls.at(-1), 4);
   assert.equal(f.active, true);
+  f.api.destroy();
+});
+
+test('增强分页：普通阅读器书签与备注变更同步到收藏，不回写或循环通知', async () => {
+  const f = fixture();
+  const instance = await activate(f);
+  assert.equal(f.writes.filter(({ key }) => key === favoritesKey).length, 0);
+  const store = f.reader.galleryBookmarkStore;
+  store.set(chapterKey, 6, 2, '稍后重读');
+  assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p2`]);
+  assert.equal(f.writes.filter(({ key }) => key === favoritesKey).length, 1);
+  store.set(chapterKey, 6, 2, '补充备注');
+  assert.deepEqual(store.list(chapterKey, 6).map(({ note }) => note), ['补充备注']);
+  const before = f.writes.length;
+  instance.emit('favoritesChange');
+  await settle();
+  assert.equal(f.writes.length, before, '相同收藏集合的迟到回调不能重新落盘');
+  f.api.destroy();
+  store.set(chapterKey, 6, 3, '销毁后只更新数据');
+  assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p2`], '销毁后解绑书签订阅');
+});
+
+test('增强分页：外部收藏与页面恢复同步不落盘，无关事件不改变收藏', async () => {
+  const f = fixture({ favorites: [`${chapterKey}/p1`] });
+  const instance = await activate(f);
+  const before = f.writes.length;
+  f.data.set(favoritesKey, JSON.stringify([`${chapterKey}/p4`]));
+  f.window.fire('storage', { key: 'unrelated' });
+  assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p1`]);
+  f.window.fire('storage', { key: favoritesKey });
+  assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p4`]);
+  f.data.set(favoritesKey, JSON.stringify([`${chapterKey}/p5`]));
+  f.window.fire('pageshow', { persisted: true });
+  await settle();
+  assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p5`]);
+  f.data.delete(favoritesKey);
+  f.window.fire('storage', { key: null });
+  assert.deepEqual(instance.getFavoritePageIds(), []);
+  assert.equal(f.writes.length, before, '同步只是读取，不能覆盖原收藏或备注');
+  f.api.destroy();
+});
+
+test('增强分页：取消一页收藏删除其备注，保留其他页备注与阅读记录', async () => {
+  const f = fixture({ favorites: [`${chapterKey}/p2`, `${chapterKey}/p4`] });
+  const noteKey = (n) => `${NOTE_PREFIX}${chapterKey}/p${n}`;
+  const note = (value) => JSON.stringify({ version: 1, note: value, updatedAt: 10 });
+  f.data.set(noteKey(2), note('取消这一页'));
+  f.data.set(noteKey(4), note('保留这一页'));
+  f.data.set(`gallery:progress:${chapterKey}`, '原阅读记录');
+  f.data.set('gallery:library:sample', '原书架状态');
+  const instance = await activate(f);
+  instance.setFavorites([`${chapterKey}/p4`]);
+  assert.equal(f.data.has(noteKey(2)), false);
+  assert.equal(f.data.get(noteKey(4)), note('保留这一页'));
+  assert.equal(f.data.get(`gallery:progress:${chapterKey}`), '原阅读记录');
+  assert.equal(f.data.get('gallery:library:sample'), '原书架状态');
+  assert.deepEqual(f.reader.galleryBookmarkStore.list(chapterKey, 6).map(({ n, note }) => [n, note]), [[4, '保留这一页']]);
+  f.api.destroy();
+});
+
+test('增强分页：存储受限时切换到标准模式再启用仍保留当前页临时书签', async () => {
+  const f = fixture({ storageDenied: true });
+  const first = await activate(f);
+  first.setFavorites([`${chapterKey}/p2`]);
+  f.reader.galleryBookmarkStore.set(chapterKey, 6, 3, '本页临时备注');
+  assert.deepEqual(first.getFavoritePageIds(), [`${chapterKey}/p2`, `${chapterKey}/p3`]);
+  f.choose(false);
+  await settle();
+  const second = await activate(f);
+  assert.deepEqual(second.getFavoritePageIds(), [`${chapterKey}/p2`, `${chapterKey}/p3`]);
+  assert.equal(f.reader.galleryBookmarkStore.list(chapterKey, 6).find(({ n }) => n === 3).note, '本页临时备注');
   f.api.destroy();
 });
 

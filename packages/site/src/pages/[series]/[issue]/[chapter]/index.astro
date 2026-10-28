@@ -12,6 +12,7 @@
 import Base from '../../../../layouts/Base.astro';
 import EnhancedReader from '../../../../components/EnhancedReader.astro';
 import ChapterToc from '../../../../components/ChapterToc.astro';
+import ReaderBookmarks from '../../../../components/ReaderBookmarks.astro';
 import siteConfig from '../../../../generated/site-config.json';
 import gallery from '../../../../generated/gallery.json';
 import { boxStyle, chaptersByKey, imageUrl, isDot, urlForKey } from '../../../../lib/gallery.js';
@@ -95,6 +96,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
       )}
     </p>
 
+    <ReaderBookmarks />
     <ChapterToc series={series} issue={issue} chapter={chapter} />
 
     <div id="settings" class="settings card" hidden aria-label="阅读设置">
@@ -575,7 +577,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
       reader.addEventListener('touchstart', function (e) {
         touchX = null;
         if (enhancement || settings.mode === 'long' || e.touches.length !== 1) return;
-        if (e.target.closest('button, input, select, a, .toc, .settings, .box')) return;
+        if (e.target.closest('button, input, textarea, select, a, .toc, .settings, .box, .reader-bookmarks')) return;
         touchX = e.touches[0].clientX;
       }, { passive: true });
       reader.addEventListener('touchend', function (e) {
