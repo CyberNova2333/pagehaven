@@ -241,6 +241,13 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.ok(!html.includes('href="/sample/vol02/c003/"'), '远端章节目录应在打开时读取索引');
     assert.match(html, /data-series-id="sample"/);
     assert.match(html, /data-chapter-key="sample\/vol01\/c001"/);
+    const tocControls = /<div\b(?=[^>]*\bdata-toc-controls)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>([\s\S]*?)<\/div>/.exec(html);
+    assert.ok(tocControls, '目录增强控件在脚本加载目录前应保持隐藏');
+    const progressFilter = /<select\b(?=[^>]*\bdata-toc-progress-filter)[^>]*>([\s\S]*?)<\/select>/.exec(tocControls[1]);
+    assert.ok(progressFilter, '进度筛选应位于按需目录的增强控件中');
+    for (const value of ['all', 'started', 'new']) assert.match(progressFilter[1], new RegExp(`<option\\b[^>]*\\bvalue="${value}"`));
+    assert.match(html, /<p\b(?=[^>]*\bdata-toc-progress-summary)[^>]*>/, '目录应提供独立的阅读进度汇总');
+    assert.match(html, /<p\b(?=[^>]*\bdata-toc-progress-note)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '存储限制提示只在实际受限时显示');
     assert.match(html, /<noscript>[\s\S]*?href="\/sample\/"[\s\S]*?href="\/sample\/vol01\/"[\s\S]*?<\/noscript>/);
     assert.equal((html.match(/class="image-feedback" hidden/g) ?? []).length, 3, '无 JS 时图片反馈隐藏，原生图片仍可读');
     assert.match(html, /<\w+\b(?=[^>]*\bid="reader-bookmarks")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '书签操作仅在脚本初始化后启用');
