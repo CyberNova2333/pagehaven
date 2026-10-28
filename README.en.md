@@ -28,6 +28,7 @@ Chinese is the default README; use the buttons above to switch languages. The we
 - **Catalog browsing:** Series / issue / chapter / page navigation, covers, authors, tags, each series' latest chapter, a random chapter, and metadata search. Latest chapters follow issue / chapter order, not publication dates.
 - **Comic reading:** Single-page, long-strip, and double-page modes; reading direction, keyboard and swipe navigation, fullscreen, brightness, and page jumps. Reading progress is saved automatically and can be resumed from the home and series pages.
 - **Personal library:** Save series, manually mark them as Want to read / Reading / Read, filter by status and series title, and resume from the latest reading position.
+- **Page bookmarks:** The standard and enhanced readers share page favorites, with short notes. View bookmarks by series in your library, edit or remove them, and jump directly to the saved page.
 - **Long series and unreliable connections:** The full chapter list loads when first opened, with filtering and current-chapter navigation. Images try backup sources automatically and offer per-page retry after failure, while transcript overlays remain readable.
 - **Dialogue links:** Selectable, copyable text overlays and search results that link directly to a page and text box. The search page shows actual transcript coverage.
 - **Browser-side search:** Download and verify the matching release's SQLite database, filter by series, and paginate results. The database loads only after the first valid query.
@@ -40,7 +41,13 @@ it starts as Want to read. Reading status is manual and does not automatically b
 turn pages. Removing a series keeps its reading progress. Series without chapters can also be saved
 and become readable once chapters are published.
 
-The library and progress are stored only in the current browser for the current site, with no account
+While reading, bookmark the current page and add a note of up to 200 characters. Manage these in the
+page-bookmark section of My library. A series does not need to be saved to your library first, and
+removing it from the library keeps its page bookmarks. Existing enhanced-reader page favorites work
+directly without migration. Notes require an explicit Save or Cancel; turning pages does not
+automatically save an edit in progress.
+
+The library, bookmarks, notes, and progress are stored only in the current browser for the current site, with no account
 sync or import/export. Clearing site data or changing domains prevents automatic recovery. If browser
 storage is unavailable, the page explains that changes are kept temporarily on the current page only.
 

@@ -38,7 +38,7 @@ npm run build:site     # = 写 gallery.json + text/ → astro build → 平台�
 | `/<series>/<issue>/` | `pages/[series]/[issue]/index.astro` | 话列表：number、title、页数、「有台词」（只在 `features.text_layer` 开时标——flag 关了阅读器没有文字层，列表不该还承诺） |
 | `/<series>/<issue>/<chapter>/` | `pages/[series]/[issue]/[chapter]/index.astro` | 阅读器，见下 |
 | `/search/` | `pages/search/index.astro` | 检索页壳；逻辑由 `packages/search` 接入 |
-| `/library/` | `pages/library/index.astro` | 个人书架；收藏、阅读状态、筛选与继续阅读，noindex |
+| `/library/` | `pages/library/index.astro` | 个人书架与页码书签；收藏、阅读状态、筛选与继续阅读，noindex |
 | `/404.html` | `pages/404.astro` | noindex |
 
 外壳 `layouts/Base.astro`：`lang` 取 `site.lang`，页面标题使用 `site.title`，提供 viewport、
@@ -70,13 +70,36 @@ Astro 会静默让静态路由赢；`scripts/lib/site-generated.mjs` 在构建�
 保留。无 JavaScript 时保留站点目录入口，个人书架需要 JavaScript。书架页带 `noindex` 且不进
 sitemap；功能运行于三平台共同的纯静态基线，不需要服务端接口或平台配置。
 
+## 页码书签
+
+普通阅读器和增强分页共用每话的页收藏。在阅读器中收藏当前页、添加或修改最多 200 字符
+的备注；双页模式以页码框显示的当前页为目标。编辑区明确显示目标页，编辑期间翻页不会
+改变该目标，也不会自动保存；由读者明确保存或取消。
+
+书架页的页码书签区按作品筛选，集中显示当前目录仍有效的书签，链接到对应 `#p<n>`，
+支持修改备注和移除。作品无需加入书架；移出作品书架不删除页书签。旧目录或越界页的
+记录只在显示时过滤，不因打开页面而清理，阅读进度也不因读取书签而改变。
+
+收藏成员沿用 `gallery:favorites:<chapter key>` 的 JSON 字符串数组，成员为
+`<chapter key>/p<n>`，增强阅读器已有记录无需迁移。备注独立保存在
+`gallery:bookmark-note:<chapter key>/p<n>`，值为 `{ version: 1, note, updatedAt }`。
+备注上限按 JavaScript 字符串长度与输入框 `maxlength=200` 一致；按纯文本显示。
+普通与增强阅读器在同一页共享存储实例，书签修改同步更新，恢复收藏不会触发回写。
+
+书签、备注仍限当前站点的当前浏览器，无账号同步或导入导出。写入或删除受限时保留
+当前页面中的临时结果并显示提示。没有 JavaScript 时漫画和原生页锚点仍可阅读，书签
+操作保持隐藏。书签集中在现有 `noindex` 的书架页，不新增公开索引页面或平台配置。
+翻页与进度核心继续内联；书签代码以同源模块共享，避免在每话重复内嵌同一套存储逻辑。
+构建回归检查阅读器模块的实际依赖图，默认不加载检索执行器或增强分页。
+
 ## 阅读器
 
 - **可选增强分页**：`features.comimi_reader` 默认关闭；开启后阅读设置提供「增强分页」，由读者自行勾选。
   按需加载同源分页组件，使用原站的 `#p<n>`、每话页码和 `gallery:progress:<chapter key>`，
   不再建立另一套进度数据库。长条、显示文字、`#p<n>b<i>` 台词定位继续走标准阅读器；
   关闭选项或组件加载失败会退回标准阅读器。无 JavaScript 时所有图片和文字仍完整可读。
-  页收藏按话保存在 `gallery:favorites:<chapter key>`，与阅读进度分开；存储不可用时仅保留当前会话。
+  页收藏与普通阅读器共用 `gallery:favorites:<chapter key>`，备注使用独立页键，与阅读进度分开；
+  存储不可用时仅保留当前页面中的临时结果，详见「页码书签」。
   分享面板沿用站点页码深链，并在外部翻页后同步更新。
   依赖固定版本并随站点构建，不运行时访问第三方脚本 CDN；许可随产物放在 `licenses/comimi.txt`。
   功能开关关闭的页面不加载增强入口，部署目标和响应头不变。

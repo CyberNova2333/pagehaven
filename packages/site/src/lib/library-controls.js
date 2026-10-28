@@ -62,7 +62,7 @@ export function mountSeriesLibrary(root, options = {}) {
 }
 
 /** 即使浏览器存储受损，链接、标题与封面也只使用当前站点目录中的有效数据。 */
-function readCatalog(node) {
+export function readLibraryCatalog(node) {
   const catalog = JSON.parse(node.textContent);
   if (!Array.isArray(catalog)) throw new Error('书架目录格式错误');
   const seen = new Set();
@@ -104,7 +104,7 @@ export function mountLibrary(root, options = {}) {
   const storageNote = root.querySelector('#library-storage-note');
   const feedback = root.querySelector('#library-feedback');
   let catalog;
-  try { catalog = readCatalog(root.querySelector('#library-catalog')); }
+  try { catalog = readLibraryCatalog(root.querySelector('#library-catalog')); }
   catch {
     empty.textContent = '书架目录暂时无法读取，请刷新页面重试；也可回首页继续浏览作品。';
     root.setAttribute('aria-busy', 'false');

@@ -1,0 +1,41 @@
+<div id="reader-bookmarks" class="reader-bookmarks" hidden>
+  <div class="bookmark-actions">
+    <span data-bookmark-page></span>
+    <button class="btn" type="button" data-bookmark-toggle aria-pressed="false">收藏当前页</button>
+    <button class="btn" type="button" data-bookmark-edit>添加备注</button>
+    <a href="/library/#library-bookmarks">查看全部书签</a>
+  </div>
+  <p data-bookmark-current-note class="bookmark-note" hidden></p>
+  <div class="bookmark-editor" data-bookmark-editor hidden>
+    <label for="reader-bookmark-note"><strong data-bookmark-editing-page></strong> · 备注（最多 200 字符）</label>
+    <textarea id="reader-bookmark-note" data-bookmark-note maxlength="200" rows="3" placeholder="记下喜欢的画面或想回看的内容"></textarea>
+    <div class="bookmark-actions">
+      <button class="btn btn-primary" type="button" data-bookmark-save>保存书签和备注</button>
+      <button class="btn" type="button" data-bookmark-cancel>取消</button>
+    </div>
+    <p class="muted">翻页不会改变正在编辑的书签页码；保存后可在书架查看。</p>
+  </div>
+  <p data-bookmark-message class="muted" role="status" aria-live="polite"></p>
+</div>
+
+<script>
+  import { mountReaderBookmarks } from '../lib/reader-bookmarks.js';
+  const reader = document.getElementById('reader');
+  const root = document.getElementById('reader-bookmarks');
+  if (reader && root) mountReaderBookmarks(reader, root);
+</script>
+
+<style is:global>
+  .reader-bookmarks { padding: 0.8rem; margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 0.8rem; background: var(--surface); color: var(--ink); }
+  .reader-bookmarks[hidden], .reader-bookmarks [hidden] { display: none; }
+  .bookmark-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+  .reader-bookmarks .btn { padding: 0.45rem 0.8rem; font-size: 0.85rem; }
+  .reader-bookmarks a, .reader-bookmarks p { font-size: 0.85rem; }
+  .reader-bookmarks p { margin: 0.6rem 0 0; }
+  .reader-bookmarks p:empty { display: none; }
+  .bookmark-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .bookmark-editor { margin-top: 0.9rem; }
+  .bookmark-editor label { display: block; font-size: 0.9rem; }
+  .bookmark-editor textarea { display: block; box-sizing: border-box; width: 100%; resize: vertical; padding: 0.7rem; margin: 0.5rem 0; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 0.7rem; }
+  .reader.mode-double .reader-bookmarks { grid-column: 1 / -1; }
+</style>

@@ -136,8 +136,8 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       assert.ok(existsSync(join(DIST, p)), `${p} 不存在`);
     }
     // 没有图片、没有 DB。搜索页的执行器是懒加载 chunk（sqlite-wasm 的 wasm 与 worker 代理
-    // 也只能是独立文件），放在 dist/_astro/ 下；但话目录里不许出现独立 JS/CSS——话页面
-    // 仍是「一个 HTML，样式与脚本内联」，检索脚本不该被引到阅读器里。
+    // 也只能是独立文件），放在 dist/_astro/ 下；话目录里不许出现独立 JS/CSS。
+    // 页码书签与书架共享同源模块，检查真实依赖图，不能再把所有 _astro 引用当成检索执行器。
     const files = await walk(DIST);
     const bad = files.filter((f) => ['.avif', '.webp', '.png', '.jpg', '.sqlite'].includes(extname(f)));
     assert.deepEqual(bad, []);
@@ -146,7 +146,9 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       const stray = (await walk(dir)).filter((f) => ['.js', '.css', '.wasm'].includes(extname(f)));
       assert.deepEqual(stray, [], `${key} 下不该有独立 JS/CSS/wasm`);
       const html = await readFile(join(dir, 'index.html'), 'utf8');
-      assert.ok(!html.includes('/_astro/'), `${key} 的 HTML 不该引用 _astro/ 下的检索 chunk`);
+      const modules = await readerChunks(DIST, html);
+      assert.doesNotMatch(modules, /sqlite|search-config|search-form|search-results|createMangaViewer|comimi/i,
+        `${key} 的书签模块不能带入检索执行器或默认关闭的增强分页`);
       assert.doesNotMatch(html, /id="enhanced-(?:option|toggle|viewer|status)"/, `${key} 默认不输出增强分页控件或容器`);
     }
   });
@@ -195,6 +197,11 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.match(html, /data-chapter-key="sample\/vol01\/c001"/);
     assert.match(html, /<noscript>[\s\S]*?href="\/sample\/"[\s\S]*?href="\/sample\/vol01\/"[\s\S]*?<\/noscript>/);
     assert.equal((html.match(/class="image-feedback" hidden/g) ?? []).length, 3, '无 JS 时图片反馈隐藏，原生图片仍可读');
+    assert.match(html, /<\w+\b(?=[^>]*\bid="reader-bookmarks")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '书签操作仅在脚本初始化后启用');
+    for (const attr of ['data-bookmark-page', 'data-bookmark-toggle', 'data-bookmark-edit', 'data-bookmark-editor', 'data-bookmark-note', 'data-bookmark-save', 'data-bookmark-cancel', 'data-bookmark-message']) {
+      assert.ok(html.includes(attr), `阅读器书签缺 ${attr}`);
+    }
+    assert.match(html, /<textarea\b(?=[^>]*\bdata-bookmark-note(?:\s|[=>]))(?=[^>]*\bmaxlength="200")[^>]*>/, '书签备注输入框上限应与存储校验一致');
     // 外壳
     assert.ok(html.includes(`<html lang="${config.site.lang}">`));
     assert.ok(html.includes(`<link rel="canonical" href="${siteOrigin}/sample/vol01/c001/">`));
@@ -246,9 +253,10 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
 
   await t.test('个人书架：独立静态页面、最小目录、作品操作与全站入口，私人内容不索引', async () => {
     const library = await readFile(join(DIST, 'library', 'index.html'), 'utf8');
-    for (const id of ['library-root', 'library-catalog', 'library-list', 'library-filter', 'library-search', 'library-count', 'library-empty', 'library-storage-note']) {
+    for (const id of ['library-root', 'library-catalog', 'library-list', 'library-filter', 'library-search', 'library-count', 'library-empty', 'library-storage-note', 'library-bookmarks', 'bookmark-count', 'bookmark-list', 'bookmark-empty', 'bookmark-storage-note', 'bookmark-filter']) {
       assert.ok(library.includes(`id="${id}"`), `书架页缺 #${id}`);
     }
+    assert.match(library, /<select\b(?=[^>]*\bid="bookmark-filter")[^>]*>/, '集中书签应提供作品筛选');
     assert.ok(library.includes('<meta name="robots" content="noindex">'));
     assert.ok(!library.includes('rel="canonical"'), '书架不应声明公开内容 canonical');
     assert.ok(!library.includes('property="og:url"'));
@@ -513,6 +521,9 @@ test('0 话也能建：空 data/ 目录下首页、搜索页、书架、404、�
   const catalog = /<script\b(?=[^>]*\bid="library-catalog")(?=[^>]*\btype="application\/json")[^>]*>([\s\S]*?)<\/script>/.exec(library);
   assert.ok(catalog, '空库也要输出书架目录数据块');
   assert.deepEqual(JSON.parse(catalog[1]), []);
+  for (const id of ['library-bookmarks', 'bookmark-count', 'bookmark-list', 'bookmark-empty', 'bookmark-storage-note', 'bookmark-filter']) {
+    assert.ok(library.includes(`id="${id}"`), `空库书签区缺 #${id}`);
+  }
   assert.ok(library.includes('<meta name="robots" content="noindex">'));
   assert.ok(!library.includes('rel="canonical"'));
   assert.match(library, /<noscript>[\s\S]*?书架[\s\S]*?<\/noscript>/);
