@@ -34,6 +34,7 @@ Chinese is the default README; use the buttons above to switch languages. The we
 - **Browser-side search:** Download and verify the matching release's SQLite database, filter by series, and paginate results. The database loads only after the first valid query.
 - **Content import:** Import LabelPlus transcripts. When no transcript is available, generate an OCR draft, review it, and explicitly accept it before indexing.
 - **Optional enhanced pagination:** Enable the reader option with `features.comimi_reader` for zoom and gesture support, using your site's name, icon, and page-bookmark labels. It is disabled by default and can fall back to the standard reader if loading fails.
+- **Site customization:** Maintainers can preview and edit the site name, logo, footer text, colors, heading font, navigation entries, and reading features in a browser, saving to the same site configuration.
 - **Static releases:** One HTML file per chapter, with indexes, sitemaps, and platform configuration generated at build time. The release pipeline checks immutable resources, deployment receipts, and version consistency.
 
 Open “我的书架” (My library) from the navigation or footer at `/library/`. Add a series from its page;
@@ -109,11 +110,27 @@ Argument mode previews changes by default. Append `--write` to the same command 
 
 The tool preserves existing comments and unselected fields and validates the complete configuration. Before saving, it backs up the original in `out/init/` (overridable with `OUT_DIR`), replaces the file atomically through a temporary file in the same directory, and stops if it detects a concurrent configuration edit. Use `--config` to edit another existing configuration; otherwise, `CONFIG_FILE` takes precedence over the repository root file. Run `npm run build` afterwards to refresh generated configuration and site artifacts.
 
+### Site customization
+
+```bash
+npm run customize
+```
+
+Open the address printed in the terminal to edit the name, logo, and footer text; choose Paper, Ocean, or Plum colors, a custom accent, and serif or sans-serif headings; show or hide search and library navigation entries; and enable or disable text overlays and enhanced pagination. The preview updates as you edit. Only Save writes `site.config.yaml`. Hiding navigation entries does not remove the corresponding pages, bookmarks, or reading records.
+
+This is a temporary maintainer tool, bound to the loopback address by default and not deployed with the public site. If Codespaces requires listening on all interfaces, run `npm run customize -- --host 0.0.0.0`, open its port from the Ports panel, keep the port **private**, and append the printed `#token=…` fragment to the forwarded address. Do not make the forwarded port public or share a token-bearing address; stop the command when finished.
+
+Use an HTTPS image URL or an on-site SVG path for the logo; `/favicon.svg` remains the default. Images can be hosted on your CDN. Current output budgets prohibit PNG, JPEG, WebP, and similar image files in `dist`, so the editor does not offer uploads. The logo is shared by navigation, the favicon, and the enhanced reader; third-party license notices remain intact.
+
+Saving validates the settings, backs up the original in `out/customize/` (overridable with `OUT_DIR`), preserves comments and unselected fields, and refuses to overwrite concurrent edits. `--config` selects another existing configuration; otherwise, `CONFIG_FILE` takes precedence over the repository root file. A save only changes the source configuration. **Rebuild, check, and publish manually to apply it for all visitors**; the public static site needs no write endpoint.
+
 Review these fields before first use:
 
 | Setting | Purpose |
 |---|---|
 | `site.title` | Default site name: “页间 · Pagehaven” |
+| `site.logo`, `site.tagline` | Logo URL and footer text; omitted values preserve the default icon and text |
+| `appearance` | Theme, accent color, heading font, and search/library navigation entries; omitted values preserve the default appearance |
 | `site.domain` | Production site domain |
 | `site.lang` | HTML language tag, `zh-CN` by default; changing it does not translate interface text |
 | `images.hosts` | CDN domains for images and search resources |
@@ -233,4 +250,4 @@ Before committing, run `npm run check`, `npm test`, and `npm run build`. Read [`
 
 The project uses [GPL-3.0](LICENSE). Third-party components retain their own licenses. The optional pagination component's license is included in [`packages/site/public/licenses/comimi.txt`](packages/site/public/licenses/comimi.txt); collaboration-guard provenance is documented in [`tools/NOTICE.md`](tools/NOTICE.md).
 
-The enhanced reader uses `site.title` and the site's favicon. Its reader information panel links to the third-party component's full MIT license. The interface branding changes preserve the original copyright and license notices, which ship with the static output.
+The enhanced reader uses `site.title` and `site.logo`, which defaults to the site's favicon. Its reader information panel links to the third-party component's full MIT license. The interface branding changes preserve the original copyright and license notices, which ship with the static output.

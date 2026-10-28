@@ -44,7 +44,7 @@ function element(id = '', interactive = false) {
   };
 }
 
-function fixture({ preferred = false, mode = 'single', hash = '', text = false, page = 3, requestedPage = page, load, storageDenied = false, favorites = [], siteTitle = '测试站点', brandViewer = () => true } = {}) {
+function fixture({ preferred = false, mode = 'single', hash = '', text = false, page = 3, requestedPage = page, load, storageDenied = false, favorites = [], siteTitle = '测试站点', siteLogo = '/favicon.svg', brandViewer = () => true } = {}) {
   const data = new Map([[preferenceKey, String(preferred)], [favoritesKey, JSON.stringify(favorites)]]);
   const writes = [];
   const nodes = new Map(['enhanced-toggle', 'enhanced-viewer', 'enhanced-status', 'text-toggle', 'fullscreen-btn', 'toc-btn', 'settings-btn', 'toc', 'settings']
@@ -66,7 +66,7 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
   document.getElementById = (id) => nodes.get(id) ?? null;
   const reader = element('reader');
   reader.ownerDocument = document;
-  reader.dataset = { key: chapterKey, title: '测试话', siteTitle };
+  reader.dataset = { key: chapterKey, title: '测试话', siteTitle, siteLogo };
   const pages = Array.from({ length: 6 }, (_, i) => {
     const pageNode = element(`p${i + 1}`);
     const image = element();
@@ -148,9 +148,9 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
   const api = mountEnhancedReader(reader, {
     loadViewer: () => { loads++; return load ? load({ createMangaViewer }) : { createMangaViewer }; },
     // 这里验证适配层接线；第三方 DOM 的品牌替换由 reader-branding.test.js 执行真实函数。
-    brandViewer: (viewer, title) => {
-      brandingCalls.push({ viewer, title, active: reader.classList.contains('enhanced-active'), enhancement });
-      return brandViewer(viewer, title);
+    brandViewer: (viewer, title, logo) => {
+      brandingCalls.push({ viewer, title, logo, active: reader.classList.contains('enhanced-active'), enhancement });
+      return brandViewer(viewer, title, logo);
     },
     timeoutMs: 50,
   });
@@ -230,7 +230,7 @@ test('增强分页：ready 后才接管，沿用核心最新页码并把原生�
   f.changeState({ page: 5 });
   instance.ready();
   await settle();
-  assert.deepEqual(f.brandingCalls, [{ viewer: instance, title: '测试站点', active: false, enhancement: null }], '先完成站点标识替换，再接管阅读');
+  assert.deepEqual(f.brandingCalls, [{ viewer: instance, title: '测试站点', logo: '/favicon.svg', active: false, enhancement: null }], '先完成站点标识替换，再接管阅读');
   assert.equal(f.active, true);
   assert.equal(instance.getCurrentPageIndex(), 4);
   f.enhancement.navigate(1);
@@ -242,10 +242,10 @@ test('增强分页：ready 后才接管，沿用核心最新页码并把原生�
   f.api.destroy();
 });
 
-test('增强分页：创建时覆盖所有吉祥物区域与收藏说明，站名取自宿主配置', async () => {
-  const f = fixture({ siteTitle: '书页小屋' });
+test('增强分页：创建时覆盖所有吉祥物区域与收藏说明，站名和图标取自宿主配置', async () => {
+  const f = fixture({ siteTitle: '书页小屋', siteLogo: 'https://images.example.org/brand.svg' });
   const instance = await activate(f);
-  assert.deepEqual(instance.options.mascot, { default: { src: '/favicon.svg', alt: '书页小屋' } });
+  assert.deepEqual(instance.options.mascot, { default: { src: 'https://images.example.org/brand.svg', alt: '书页小屋' } });
   assert.equal(instance.options.translations['menu.openAbout'], '阅读器说明');
   assert.equal(instance.options.translations['menu.openFavorites'], '页码书签');
   for (const key of ['favorites.description', 'favorites.empty', 'favorites.added', 'favorites.addedUnsaved', 'favorites.remove']) {
@@ -253,6 +253,7 @@ test('增强分页：创建时覆盖所有吉祥物区域与收藏说明，站�
     assert.doesNotMatch(instance.options.translations[key], /超喜欢|comimi/i);
   }
   assert.equal(f.brandingCalls[0].title, '书页小屋');
+  assert.equal(f.brandingCalls[0].logo, 'https://images.example.org/brand.svg');
   f.api.destroy();
 });
 

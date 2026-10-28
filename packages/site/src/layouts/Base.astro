@@ -1,11 +1,11 @@
 ---
-// 所有页面共用的外壳：lang / title / viewport / canonical / og:title、纸白墨蓝主题、内联样式、
+// 所有页面共用的外壳：lang / title / viewport / canonical / og:title、站点外观、内联样式、
 // 导航与页脚。不用 UI 框架——站点要在三平台的纯静态基线上跑（铁律 2），每话一个 HTML 又
 // 有 18 000 份的量级（ARCHITECTURE §2），外壳越薄越好；样式随 inlineStylesheets=always 内联，
 // dist 里不多出一个文件。
 //
-// 视觉语言：暖纸白底、墨蓝标题、青绿交互色与轻阴影卡片。
-// 衬线标题 + 无衬线正文。字体只用系统栈，不引外部字体请求（离线可用）。
+// 语义色与标题字体来自唯一配置源，默认暖纸白与青绿交互色。
+// 字体只用系统栈，不引外部字体请求（离线可用）。
 //
 // props：
 //   title    页面标题（不含站名；空则只用站名）
@@ -13,22 +13,29 @@
 //   crumbs   面包屑 [{ text, href? }]，首页那一级由外壳自己加
 //   noindex  真则不出 canonical、加 robots noindex（404 页用）
 import siteConfig from '../generated/site-config.json';
+import { appearanceVariables } from '../lib/site-appearance.js';
 
 const { site } = siteConfig;
-const { title = '', url = '/', crumbs = [], description = '' } = Astro.props;
+const appearance = siteConfig.appearance ?? {};
+const variables = appearanceVariables(appearance);
+const logo = site.logo ?? '/favicon.svg';
+const tagline = site.tagline ?? '在页间，遇见好故事';
+const showSearch = appearance.show_search !== false;
+const showLibrary = appearance.show_library !== false;
+const { title = '', url = '/', crumbs = [], description = tagline } = Astro.props;
 const noindex = Boolean(Astro.props.noindex || siteConfig.preview);
 const fullTitle = title ? `${title} · ${site.title}` : site.title;
 const canonical = `https://${site.domain}${url}`;
 ---
 
 <!doctype html>
-<html lang={site.lang}>
+<html lang={site.lang} style={variables}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
-    <meta name="theme-color" content="#203540" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content={variables['--accent']} />
+    <link rel="icon" href={logo} />
     <title>{fullTitle}</title>
     {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
     <meta property="og:title" content={fullTitle} />
@@ -41,30 +48,7 @@ const canonical = `https://${site.domain}${url}`;
       /* 共享语义色：正文、交互、表面与阅读标注各自取同一组变量。 */
       :root {
         color-scheme: light;
-        --bg-top: #faf8f1;
-        --bg-mid: #f4f1e9;
-        --bg-low: #edf2ed;
-        --accent: #28776e;
-        --accent-strong: #19574f;
-        --accent-soft: #dcece5;
-        --accent-alt: #355d72;
-        --highlight: #a47730;
-        --ink: #203540;
-        --text: #394d55;
-        --text-dim: #61706d;
-        --line: rgba(32, 53, 64, 0.16);
-        --surface: #fffdf7;
-        --surface-soft: #f4f0e6;
-        --surface-raised: rgba(255, 253, 247, 0.95);
-        --cover-bg: linear-gradient(135deg, #e2ece5, #e7e9df);
-        --selection: rgba(40, 119, 110, 0.24);
-        --focus-ring: rgba(40, 119, 110, 0.18);
-        --reader-bg: #192a33;
-        --text-overlay: rgba(25, 42, 51, 0.88);
-        --highlight-ring: rgba(164, 119, 48, 0.3);
         --radius: 16px;
-        --shadow: 0 10px 34px rgba(32, 53, 64, 0.07);
-        --shadow-hover: 0 12px 30px rgba(32, 53, 64, 0.12);
         --font-serif: 'EB Garamond', 'Noto Serif SC', 'Songti SC', Georgia, serif;
         --font-sans: 'Inter', 'Noto Sans SC', system-ui, -apple-system, 'Segoe UI', sans-serif;
         /* 基础页面与检索组件共用的简写。 */
@@ -75,7 +59,7 @@ const canonical = `https://${site.domain}${url}`;
       }
       * { box-sizing: border-box; }
       ::selection { background: var(--selection); color: var(--ink); }
-      :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+      :focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 3px; }
       input, select, button { accent-color: var(--accent); }
       html { background: var(--bg-mid); }
       body {
@@ -86,19 +70,19 @@ const canonical = `https://${site.domain}${url}`;
         font-size: 16px;
         line-height: 1.7;
         background:
-          radial-gradient(1000px 700px at 10% -10%, rgba(201, 214, 193, 0.25), transparent 64%),
-          radial-gradient(900px 620px at 95% 0%, rgba(180, 205, 198, 0.2), transparent 60%),
-          radial-gradient(1000px 700px at 50% 100%, rgba(207, 213, 196, 0.16), transparent 60%),
+          radial-gradient(1000px 700px at 10% -10%, var(--glow-one), transparent 64%),
+          radial-gradient(900px 620px at 95% 0%, var(--glow-two), transparent 60%),
+          radial-gradient(1000px 700px at 50% 100%, var(--glow-three), transparent 60%),
           linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 46%, var(--bg-low) 100%);
         background-attachment: fixed;
       }
       a { color: var(--accent-strong); text-decoration: none; transition: color 0.18s ease; }
       a:hover { color: var(--accent-alt); }
-      h1, h2, h3 { color: var(--ink); font-family: var(--font-serif); font-weight: 600; letter-spacing: 0.01em; }
+      h1, h2, h3 { color: var(--ink); font-family: var(--font-heading); font-weight: 600; letter-spacing: 0.01em; }
       h1 { font-size: clamp(1.9rem, 4.6vw, 2.7rem); line-height: 1.25; margin: 0.4rem 0 0.9rem; }
       h2 { font-size: clamp(1.3rem, 2.6vw, 1.7rem); margin: 1.6rem 0 0.8rem; }
       .topbar, main, footer { max-width: 68rem; margin: 0 auto; padding-left: clamp(1rem, 3vw, 1.75rem); padding-right: clamp(1rem, 3vw, 1.75rem); }
-      /* 顶部：纸色导航与青绿交互。 */
+      /* 顶部导航与页面共用主题表面色。 */
       .topbar {
         position: sticky;
         top: 0;
@@ -112,20 +96,15 @@ const canonical = `https://${site.domain}${url}`;
         -webkit-backdrop-filter: blur(14px) saturate(1.2);
       }
       .topbar nav { display: flex; align-items: center; flex-wrap: wrap; gap: 0.55rem; max-width: 68rem; margin: 0 auto; font-size: 0.92rem; }
-      .brand { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--ink); font-family: var(--font-serif); font-weight: 600; letter-spacing: 0.02em; }
+      .brand { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--ink); font-family: var(--font-heading); font-weight: 600; letter-spacing: 0.02em; }
       .brand:hover { color: var(--accent-strong); }
       .brand .mark {
-        display: inline-grid;
-        place-items: center;
+        display: block;
         width: 2.15rem;
         height: 2.15rem;
         border-radius: 0.65rem;
-        color: #fff;
-        font-family: var(--font-sans);
-        font-size: 0.7rem;
-        letter-spacing: 0.04em;
-        background: var(--ink);
-        box-shadow: var(--shadow);
+        flex: 0 0 auto;
+        object-fit: contain;
       }
       .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem; color: var(--text-dim); min-width: 0; }
       .crumbs a { color: var(--text-dim); }
@@ -176,8 +155,8 @@ const canonical = `https://${site.domain}${url}`;
       }
       .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow); color: var(--accent-strong); }
       .btn:disabled { cursor: not-allowed; color: var(--text-dim); background: var(--surface-soft); box-shadow: none; }
-      .btn-primary { color: #fff; border-color: transparent; background: var(--accent); box-shadow: var(--shadow); }
-      .btn-primary:hover:not(:disabled) { color: #fff; filter: brightness(1.04); }
+      .btn-primary { color: var(--on-accent); border-color: var(--line); background: var(--accent); box-shadow: var(--shadow); }
+      .btn-primary:hover:not(:disabled) { color: var(--on-accent); box-shadow: var(--shadow-hover); }
       /* 列表：每行一张轻阴影卡片。 */
       .list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.55rem; }
       .list li {
@@ -217,12 +196,7 @@ const canonical = `https://${site.domain}${url}`;
     <div class="topbar">
       <nav aria-label="位置">
         <a class="brand" href="/">
-          <span class="mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 6C9 4 6 4 3 5v14c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1Z" />
-              <path d="M12 6v14M6 8l3 1M15 9l3-1" />
-            </svg>
-          </span><span>{site.title}</span>
+          <img class="mark" src={logo} alt="" width="34" height="34" /><span>{site.title}</span>
         </a>
         {
           crumbs.length > 0 && (
@@ -239,14 +213,17 @@ const canonical = `https://${site.domain}${url}`;
         }
         <span class="spacer"></span>
         <div class="nav-actions">
-          <a class="pill" href="/library/" aria-current={url === '/library/' ? 'page' : undefined}>我的书架</a>
-          <a class="pill" href="/search/">搜索台词</a>
+          {showLibrary && <a class="pill" href="/library/" aria-current={url === '/library/' ? 'page' : undefined}>我的书架</a>}
+          {showSearch && <a class="pill" href="/search/">搜索台词</a>}
         </div>
       </nav>
     </div>
     <main><slot /></main>
     <footer>
-      <a href="/">回首页</a><span class="sep">·</span><a href="/library/">我的书架</a><span class="sep">·</span><a href="/search/">搜索台词</a><span class="sep">·</span>在页间，遇见好故事
+      <a href="/">回首页</a>
+      {showLibrary && <><span class="sep">·</span><a href="/library/">我的书架</a></>}
+      {showSearch && <><span class="sep">·</span><a href="/search/">搜索台词</a></>}
+      {tagline && <><span class="sep">·</span><span>{tagline}</span></>}
     </footer>
   </body>
 </html>

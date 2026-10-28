@@ -2,7 +2,7 @@
 // build:sitemap，再让 check 守卫过一遍产物。不 mock 任何一步——每话恰好一个 HTML、台词在 HTML 里、
 // 索引与 sitemap 的形状，这些只有真构建出来才算数。
 //
-// DATA_DIR / DIST_DIR / OUT_DIR 全指到样本与临时目录，不碰仓库根的 data/ dist/ out/。
+// CONFIG_FILE / DATA_DIR / DIST_DIR / OUT_DIR 全指到样本与临时目录，不修改站点源配置。
 // 唯一会写进仓库的是 packages/site/src/generated/（不入库、每次构建重生成）与
 // packages/platform/generated/（build:config 的输出；内容与入库的一致，等于没改）。
 import { test } from 'node:test';
@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SiteConfigSchema } from '@gallery/platform';
+import { appearanceVariables } from '../../packages/site/src/lib/site-appearance.js';
 import { loadSiteConfig } from '../lib/config.mjs';
 import { loadGallery } from '../lib/data.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
@@ -25,15 +26,27 @@ const FIXTURES = join(ROOT, 'packages', 'core', 'test', 'fixtures', 'data');
 const SITE_DIR = join(ROOT, 'packages', 'site');
 /** 站点生成物目录：build:site 写、astro build 读；下面有几个用例会动它里面的文件再直接跑 astro。 */
 const GENERATED = join(SITE_DIR, 'src', 'generated');
-const config = await loadSiteConfig();
+// 用户可在自定义工具中关闭文字层/导航或开启增强分页；测试的基线场景由快照明确规定，
+// 不依赖维护者当前的开关选择。其余配置仍取当前站点，另固定无须 HTML 转义的测试标题。
+const config = structuredClone(await loadSiteConfig());
+config.site.title = '构建测试书房';
+Object.assign(config.features, { text_layer: true, comimi_reader: false, platform_config: true });
+Object.assign(config.appearance, { show_search: true, show_library: true });
 const siteOrigin = `https://${config.site.domain}`;
 const imageOrigin = `https://${config.images.hosts[0]}`;
 
 function run(script, env) {
   const clean = { ...process.env };
-  for (const key of ['DATA_DIR', 'DIST_DIR', 'OUT_DIR', 'DEPLOY_ENV', 'RELEASE_VERSION']) delete clean[key];
+  for (const key of ['CONFIG_FILE', 'DATA_DIR', 'DIST_DIR', 'OUT_DIR', 'DEPLOY_ENV', 'RELEASE_VERSION']) delete clean[key];
   const r = spawnSync(process.execPath, [join(ROOT, 'scripts', script)], { cwd: ROOT, encoding: 'utf8', env: { ...clean, ...env } });
   return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
+}
+
+async function configSnapshot(dir) {
+  const file = join(dir, 'site.config.yaml');
+  // JSON 是合法 YAML，避免在测试里维护第二份配置模板或字段清单。
+  await writeFile(file, JSON.stringify(config));
+  return file;
 }
 
 // 跳过 build-site.mjs、直接跑 astro build：用来验证「生成物与 gallery.json 对不上」这类只有绕过流水线
@@ -105,7 +118,7 @@ test('站点配置：trigram 最短 MATCH 长度固定为 3，拒绝会漏掉两
 test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，守卫通过', { timeout: 120_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-site-'));
   const DIST = join(tmp, 'dist');
-  const env = { DATA_DIR: FIXTURES, DIST_DIR: DIST, OUT_DIR: join(tmp, 'out'), RELEASE_VERSION: 'site-build-test' };
+  const env = { CONFIG_FILE: await configSnapshot(tmp), DATA_DIR: FIXTURES, DIST_DIR: DIST, OUT_DIR: join(tmp, 'out'), RELEASE_VERSION: 'site-build-test' };
   t.after(() => rm(tmp, { recursive: true, force: true }));
   const model = await loadGallery({ dataDir: FIXTURES, imagePrefix: config.images.prefix });
   await mkdir(env.OUT_DIR, { recursive: true });
@@ -151,6 +164,23 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
         `${key} 的书签模块不能带入检索执行器或默认关闭的增强分页`);
       assert.doesNotMatch(html, /id="enhanced-(?:option|toggle|viewer|status)"/, `${key} 默认不输出增强分页控件或容器`);
     }
+  });
+
+  await t.test('静态页面使用当前品牌与外观配置，产物不包含维护者编辑器或配置接口', async () => {
+    for (const page of ['index.html', 'sample/vol01/c001/index.html']) {
+      const html = await readFile(join(DIST, page), 'utf8');
+      const iconTag = html.match(/<link\b(?=[^>]*\brel="icon")[^>]*>/)?.[0] ?? '';
+      assert.ok(iconTag.includes(`href="${config.site.logo.replaceAll('&', '&amp;')}"`), 'favicon 应使用已配置 Logo');
+      const rootStyle = /<html\b[^>]*\bstyle="([^"]*)"/.exec(html)?.[1] ?? '';
+      assert.ok(rootStyle.replaceAll(' ', '').includes(`--accent:${appearanceVariables(config.appearance)['--accent']};`), '页面应使用已配置主色');
+      if (config.site.tagline) assert.ok(html.includes(config.site.tagline.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')), '页脚应使用已配置文案');
+      assert.doesNotMatch(html, /\/api\/settings|customize\.(?:js|css)|#token=/);
+    }
+    const reader = await readFile(join(DIST, 'sample/vol01/c001/index.html'), 'utf8');
+    assert.ok(reader.includes(`data-site-logo="${config.site.logo.replaceAll('&', '&amp;')}"`), '增强阅读器应取得同一个 Logo');
+    assert.equal(existsSync(join(DIST, 'api', 'settings')), false);
+    assert.equal(existsSync(join(DIST, 'customize')), false);
+    for (const file of await walk(DIST)) assert.doesNotMatch(file, /[\\/]customize\.(?:js|css|html)$/);
   });
 
   await t.test('静态产物保留增强分页组件的许可证', async () => {
@@ -207,7 +237,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     }
     assert.match(html, /<textarea\b(?=[^>]*\bdata-bookmark-note(?:\s|[=>]))(?=[^>]*\bmaxlength="200")[^>]*>/, '书签备注输入框上限应与存储校验一致');
     // 外壳
-    assert.ok(html.includes(`<html lang="${config.site.lang}">`));
+    assert.equal(/<html\b[^>]*\blang="([^"]+)"/.exec(html)?.[1], config.site.lang);
     assert.ok(html.includes(`<link rel="canonical" href="${siteOrigin}/sample/vol01/c001/">`));
     assert.ok(html.includes(`<meta property="og:title" content="第一话 开端 · 第一卷 · 示例作品 · ${config.site.title}">`));
 
@@ -499,7 +529,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
 test('0 话也能建：空 data/ 目录下首页、搜索页、书架、404、索引总表、sitemap 都在', { timeout: 120_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-site-empty-'));
   const DIST = join(tmp, 'dist');
-  const env = { DATA_DIR: join(tmp, 'data'), DIST_DIR: DIST, OUT_DIR: join(tmp, 'out') };
+  const env = { CONFIG_FILE: await configSnapshot(tmp), DATA_DIR: join(tmp, 'data'), DIST_DIR: DIST, OUT_DIR: join(tmp, 'out') };
   t.after(() => rm(tmp, { recursive: true, force: true }));
   for (const script of ['build-site.mjs', 'build-index.mjs', 'build-sitemap.mjs']) {
     const r = run(script, env);
@@ -538,6 +568,7 @@ test('0 话也能建：空 data/ 目录下首页、搜索页、书架、404、�
 test('作品 id 撞上站点固定路由时构建报错而不是静默丢页', { timeout: 60_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-site-reserved-'));
   t.after(() => rm(tmp, { recursive: true, force: true }));
+  const configFile = await configSnapshot(tmp);
   for (const id of ['search', 'library']) {
     const data = join(tmp, id, 'data');
     await mkdir(join(data, 'meta'), { recursive: true });
@@ -545,7 +576,7 @@ test('作品 id 撞上站点固定路由时构建报错而不是静默丢页', {
       join(data, 'meta', `${id}.yaml`),
       `id: ${id}\ntitle: x\nissues:\n  - id: v1\n    number: 1\n    title: v\n    chapters:\n      - id: c1\n        number: 1\n        title: c\n        pages:\n          - { n: 1, img: 0123456789ab, w: 10, h: 10 }\n`,
     );
-    const env = { DATA_DIR: data, DIST_DIR: join(tmp, id, 'dist'), OUT_DIR: join(tmp, id, 'out') };
+    const env = { CONFIG_FILE: configFile, DATA_DIR: data, DIST_DIR: join(tmp, id, 'dist'), OUT_DIR: join(tmp, id, 'out') };
     for (const script of ['build-site.mjs', 'build-index.mjs']) {
       const r = run(script, env);
       assert.notEqual(r.status, 0, `${script} 应该拒绝 ${id}`);

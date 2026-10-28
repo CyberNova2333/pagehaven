@@ -52,7 +52,7 @@ test('init --write：备份原文件，只更改选定字段，保留注释和�
     .replace('X-Content-Type-Options: nosniff', 'X-Content-Type-Options: nosniff\n      X-Template-Check: preserved');
   const ws = await workspace(t, custom);
   const expected = structuredClone(parseSiteConfig(custom));
-  expected.site = { title: '新书库 # 1', domain: 'gallery.unit-fixture.org', lang: 'en' };
+  expected.site = { ...expected.site, title: '新书库 # 1', domain: 'gallery.unit-fixture.org', lang: 'en' };
   expected.images.hosts = ['images.unit-fixture.org', 'backup.unit-fixture.org'];
   expected.features.text_layer = false;
   expected.features.comimi_reader = true;

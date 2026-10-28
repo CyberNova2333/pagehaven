@@ -32,6 +32,11 @@ export default [
     languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: { ...globals.browser, ...globals.worker } },
   },
   {
+    // 临时维护工具的界面在浏览器运行，服务端仍在 scripts/**/*.mjs。
+    files: ['scripts/customize/**/*.js'],
+    languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: { ...globals.browser } },
+  },
+  {
     rules: {
       'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
