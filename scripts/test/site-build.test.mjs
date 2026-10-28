@@ -171,8 +171,20 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       const html = await readFile(join(DIST, page), 'utf8');
       const iconTag = html.match(/<link\b(?=[^>]*\brel="icon")[^>]*>/)?.[0] ?? '';
       assert.ok(iconTag.includes(`href="${config.site.logo.replaceAll('&', '&amp;')}"`), 'favicon 应使用已配置 Logo');
-      const rootStyle = /<html\b[^>]*\bstyle="([^"]*)"/.exec(html)?.[1] ?? '';
-      assert.ok(rootStyle.replaceAll(' ', '').includes(`--accent:${appearanceVariables(config.appearance)['--accent']};`), '页面应使用已配置主色');
+      const paletteStyle = /<style\b(?=[^>]*\bid="site-color-palettes")[^>]*>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '';
+      assert.ok(paletteStyle.replaceAll(' ', '').includes(`--accent:${appearanceVariables(config.appearance)['--accent']};`), '页面应使用已配置主色');
+      assert.ok(paletteStyle.includes(appearanceVariables(config.appearance, 'dark')['--surface']), '必须构建当前主题的深色表面');
+      assert.match(paletteStyle, /prefers-color-scheme\s*:\s*dark/, '无脚本时仍由 CSS 跟随系统');
+      assert.match(paletteStyle, /data-color-scheme="light"/, '手动浅色应覆盖深色系统偏好');
+      assert.match(paletteStyle, /data-color-scheme="dark"/, '手动深色不依赖系统偏好');
+      const bootstrap = /<script\b(?=[^>]*\bid="color-scheme-bootstrap")[^>]*>([\s\S]*?)<\/script>/.exec(html);
+      assert.ok(bootstrap && html.indexOf(bootstrap[0]) < html.indexOf('</head>'), '正文绘制前恢复浏览器配色偏好');
+      assert.doesNotMatch(bootstrap[0], /\btype="module"|\bsrc=/, '首屏恢复必须同步执行且不依赖模块下载');
+      assert.match(bootstrap[1], /pagehaven:color-scheme/);
+      assert.match(html, /<label\b(?=[^>]*\bdata-color-scheme-control)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/);
+      assert.match(html, /<select\b(?=[^>]*\bid="color-scheme-select")[^>]*>[\s\S]*?<option\b[^>]*\bvalue="system"/);
+      assert.match(html, /<meta\b(?=[^>]*\bname="color-scheme")(?=[^>]*\bcontent="light dark")[^>]*>/);
+      assert.match(html, /<meta\b(?=[^>]*\bdata-color-scheme-meta="dark")(?=[^>]*\bmedia="\(prefers-color-scheme: dark\)")[^>]*>/);
       if (config.site.tagline) assert.ok(html.includes(config.site.tagline.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')), '页脚应使用已配置文案');
       assert.doesNotMatch(html, /\/api\/settings|customize\.(?:js|css)|#token=/);
     }
