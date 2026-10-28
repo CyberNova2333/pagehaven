@@ -1,9 +1,11 @@
 // 可选分页组件只负责呈现；原阅读器仍统一管理模式、hash 与首页读取的进度。
 import { FAVORITES_PREFIX, NOTE_PREFIX, getReaderBookmarkStore } from './bookmarks.js';
+import { readerBrandOptions, applyReaderBranding } from './reader-branding.js';
 
 export function mountEnhancedReader(reader, {
   loadViewer = () => import('@yui540/comimi'),
   timeoutMs = 12000,
+  brandViewer = (viewer, siteTitle) => applyReaderBranding(viewer.getElement(), siteTitle),
 } = {}) {
   const doc = reader.ownerDocument;
   const win = doc.defaultView;
@@ -136,8 +138,7 @@ export function mountEnhancedReader(reader, {
         manga: { id: reader.dataset.key, title: reader.dataset.title, pages },
         initialPageIndex: (state.requestedPage ?? state.page) - 1,
         locale: 'zh-CN',
-        translations: { 'settings.direction.rtl': '从右到左', 'settings.direction.ltr': '从左到右',
-          'favorites.addedUnsaved': '已加入本话收藏' },
+        ...readerBrandOptions(reader.dataset.siteTitle || '漫画阅读器'),
         storage: { enabled: false },
         lockLayoutMode: true,
         hiddenSettings: ['locale', 'cover', 'direction', 'interval', 'pageMode', 'autoplay', 'viewMode'],
@@ -146,6 +147,9 @@ export function mountEnhancedReader(reader, {
         events: {
           ready: () => {
             if (ticket !== generation || !wantsViewer()) { schedule(); return; }
+            try {
+              if (!brandViewer(viewer, reader.dataset.siteTitle || '漫画阅读器')) { fail(); return; }
+            } catch { fail(); return; }
             win.clearTimeout(timer);
             pending = false;
             active = true;

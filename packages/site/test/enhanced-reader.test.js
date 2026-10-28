@@ -44,7 +44,7 @@ function element(id = '', interactive = false) {
   };
 }
 
-function fixture({ preferred = false, mode = 'single', hash = '', text = false, page = 3, requestedPage = page, load, storageDenied = false, favorites = [] } = {}) {
+function fixture({ preferred = false, mode = 'single', hash = '', text = false, page = 3, requestedPage = page, load, storageDenied = false, favorites = [], siteTitle = '测试站点', brandViewer = () => true } = {}) {
   const data = new Map([[preferenceKey, String(preferred)], [favoritesKey, JSON.stringify(favorites)]]);
   const writes = [];
   const nodes = new Map(['enhanced-toggle', 'enhanced-viewer', 'enhanced-status', 'text-toggle', 'fullscreen-btn', 'toc-btn', 'settings-btn', 'toc', 'settings']
@@ -66,7 +66,7 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
   document.getElementById = (id) => nodes.get(id) ?? null;
   const reader = element('reader');
   reader.ownerDocument = document;
-  reader.dataset = { key: chapterKey, title: '测试话' };
+  reader.dataset = { key: chapterKey, title: '测试话', siteTitle };
   const pages = Array.from({ length: 6 }, (_, i) => {
     const pageNode = element(`p${i + 1}`);
     const image = element();
@@ -103,6 +103,7 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
     refresh() { refreshCount++; publish(); },
   };
   const instances = [];
+  const brandingCalls = [];
   let loads = 0;
   const createMangaViewer = (host, options) => {
     const nativeKeys = [];
@@ -146,10 +147,15 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
   };
   const api = mountEnhancedReader(reader, {
     loadViewer: () => { loads++; return load ? load({ createMangaViewer }) : { createMangaViewer }; },
+    // 这里验证适配层接线；第三方 DOM 的品牌替换由 reader-branding.test.js 执行真实函数。
+    brandViewer: (viewer, title) => {
+      brandingCalls.push({ viewer, title, active: reader.classList.contains('enhanced-active'), enhancement });
+      return brandViewer(viewer, title);
+    },
     timeoutMs: 50,
   });
   return {
-    api, reader, nodes, window, document, timers, instances, writes, data, showCalls,
+    api, reader, nodes, window, document, timers, instances, writes, data, showCalls, brandingCalls,
     get loads() { return loads; },
     get enhancement() { return enhancement; },
     get refreshCount() { return refreshCount; },
@@ -216,6 +222,7 @@ test('增强分页：ready 后才接管，沿用核心最新页码并把原生�
   const instance = f.instances[0];
   assert.equal(f.enhancement, null);
   assert.equal(f.active, false);
+  assert.deepEqual(f.brandingCalls, [], '未 ready 的实例不能先展示上游默认内容');
   assert.equal(instance.options.initialPageIndex, 2);
   assert.equal(instance.options.storage.enabled, false);
   assert.equal(instance.options.lockLayoutMode, true);
@@ -223,6 +230,7 @@ test('增强分页：ready 后才接管，沿用核心最新页码并把原生�
   f.changeState({ page: 5 });
   instance.ready();
   await settle();
+  assert.deepEqual(f.brandingCalls, [{ viewer: instance, title: '测试站点', active: false, enhancement: null }], '先完成站点标识替换，再接管阅读');
   assert.equal(f.active, true);
   assert.equal(instance.getCurrentPageIndex(), 4);
   f.enhancement.navigate(1);
@@ -233,6 +241,49 @@ test('增强分页：ready 后才接管，沿用核心最新页码并把原生�
   assert.equal(f.timers.size, 0);
   f.api.destroy();
 });
+
+test('增强分页：创建时覆盖所有吉祥物区域与收藏说明，站名取自宿主配置', async () => {
+  const f = fixture({ siteTitle: '书页小屋' });
+  const instance = await activate(f);
+  assert.deepEqual(instance.options.mascot, { default: { src: '/favicon.svg', alt: '书页小屋' } });
+  assert.equal(instance.options.translations['menu.openAbout'], '阅读器说明');
+  assert.equal(instance.options.translations['menu.openFavorites'], '页码书签');
+  for (const key of ['favorites.description', 'favorites.empty', 'favorites.added', 'favorites.addedUnsaved', 'favorites.remove']) {
+    assert.equal(typeof instance.options.translations[key], 'string', `${key} 必须覆盖上游默认文案`);
+    assert.doesNotMatch(instance.options.translations[key], /超喜欢|comimi/i);
+  }
+  assert.equal(f.brandingCalls[0].title, '书页小屋');
+  f.api.destroy();
+});
+
+for (const reason of ['不支持的内容结构', '品牌替换异常']) {
+  test(`增强分页：${reason}在接管前恢复标准阅读器且可重试`, async () => {
+    let rejected = true;
+    const f = fixture({ brandViewer: () => {
+      if (!rejected) return true;
+      if (reason === '品牌替换异常') throw new Error('Unavailable branding structure');
+      return false;
+    } });
+    f.choose(true);
+    await settle();
+    const first = f.instances[0];
+    first.ready();
+    await settle();
+    assert.equal(first.destroyed, true);
+    assert.equal(f.enhancement, null);
+    assert.equal(f.active, false);
+    assert.equal(f.nodes.get('enhanced-toggle').checked, false);
+    assert.equal(f.nodes.get('enhanced-viewer').hidden, true);
+    assert.match(f.nodes.get('enhanced-status').textContent, /标准阅读器/);
+    assert.equal(f.window.listenerCount('keydown'), 0);
+    assert.equal(f.timers.size, 0);
+    assert.equal(f.brandingCalls.length, 1);
+    rejected = false;
+    await activate(f);
+    assert.equal(f.brandingCalls.length, 2);
+    f.api.destroy();
+  });
+}
 
 test('增强分页：加载阶段不把键盘同时交给上游；接管后协调空格与隐藏快捷键', async () => {
   const f = fixture();
