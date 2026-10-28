@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -203,4 +203,33 @@ test('没有 raw 目录时什么都不做、退出码 0', { timeout: 60_000 }, a
   const r = run({ DATA_DIR: data });
   assert.equal(r.status, 0, r.out);
   assert.match(r.out, /原始稿 0 份，本次处理 0 份/);
+});
+
+test('同章三份大小写扩展名稿全部排除，列出冲突且不误报缺稿', async (t) => {
+  const data = await setup(t);
+  for (const ext of ['.txt', '.TXT', '.Txt']) await putDraft(data, 'sample/vol02/c003', C003, ext);
+  const names = await readdir(join(data, 'raw', 'labelplus', 'sample', 'vol02'));
+  if (names.length !== 3) {
+    t.skip('当前文件系统不支持仅大小写不同的文件名，Linux 检查验证此场景');
+    return;
+  }
+  await putDraft(data, 'zeta/v1/ch1', CH1);
+  const result = run({ DATA_DIR: data });
+  assert.equal(result.status, 1, result.out);
+  assert.match(result.out, /同一话有多份原始稿/);
+  for (const name of names) assert.ok(result.out.includes(name), `必须报告冲突文件 ${name}`);
+  assert.equal(existsSync(join(data, 'text', 'sample', 'vol02', 'c003.json')), false);
+  assert.equal(JSON.parse(await readFile(join(data, 'text', 'zeta', 'v1', 'ch1.json'), 'utf8')).pages[0].boxes.length, 2);
+  const selected = run({ DATA_DIR: data, CHAPTERS: 'sample/vol02/c003' });
+  assert.equal(selected.status, 1, selected.out);
+  assert.match(selected.out, /错误 1 条/);
+  assert.ok(!selected.out.includes('没有 LabelPlus 稿'), '冲突不能误报为没有交稿');
+  const target = join(data, 'text', 'sample', 'vol02', 'c003.json');
+  await mkdir(dirname(target), { recursive: true });
+  const original = JSON.stringify({ chapter: 'sample/vol02/c003', pages: [] });
+  await writeFile(target, original);
+  const mtime = (await stat(target)).mtimeMs;
+  assert.equal(run({ DATA_DIR: data, CHAPTERS: 'sample/vol02/c003' }).status, 1);
+  assert.equal(await readFile(target, 'utf8'), original, '冲突章的已有正文必须保留');
+  assert.equal((await stat(target)).mtimeMs, mtime);
 });

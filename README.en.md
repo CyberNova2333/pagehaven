@@ -112,6 +112,14 @@ The example domains are for build previews only. Production site deployments rej
 
 Comics without transcripts remain readable but do not appear in dialogue search. See [`data/text/README.md`](data/text/README.md) for the text-layer format.
 
+Before importing, run `npm run ingest:labelplus -- --dry-run` to preview chapters that would be created,
+updated, or left unchanged, together with all warnings and errors. The preview creates no directories
+and writes no files. `CHAPTERS` and `LABELPLUS_PAGES` still control selection and page mapping; use
+`--help` for usage. Without `--dry-run`, valid chapters are imported even if other chapters fail; those
+writes are retained and the command exits with a nonzero status. Multiple `.txt` / `.TXT` drafts for
+one chapter are reported as a conflict and that chapter is skipped. Metadata and accepted transcripts
+must use lowercase `.yaml` / `.yml` / `.json` extensions.
+
 <a id="deployment"></a>
 
 ## Deployment

@@ -112,6 +112,12 @@ npm run init -- --help
 
 没有台词稿的漫画仍可阅读，但不会出现在台词检索结果中。台词层格式见 [`data/text/README.md`](data/text/README.md)。
 
+导入前可运行 `npm run ingest:labelplus -- --dry-run`，查看将新增、更新和保持不变的章节，
+同时汇总警告与错误；预览不创建目录或写入文件。章节筛选与页码策略沿用 `CHAPTERS` 和
+`LABELPLUS_PAGES`，可用 `--help` 查看用法。不带 `--dry-run` 时导入有效章节，其他章节
+出错仍会保留这些写入，并以非零退出。同一章存在多份 `.txt` / `.TXT` 稿时会报错并跳过
+该章；元数据和正式台词文件的扩展名须为小写 `.yaml` / `.yml` / `.json`。
+
 <a id="deployment"></a>
 
 ## 部署
