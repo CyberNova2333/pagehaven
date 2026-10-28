@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>站点自定义 · Pagehaven</title>
+  <link rel="icon" href="/favicon.svg">
+  <link rel="stylesheet" href="/customize.css">
+  <script type="module" src="/customize.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-brand"><img src="/favicon.svg" alt="" width="34" height="34"><span>Pagehaven <small>站点自定义</small></span></div>
+    <div class="header-actions"><span id="save-state" class="save-state">正在连接</span><button class="button primary" type="submit" form="settings-form" id="save" disabled>保存设置</button></div>
+  </header>
+  <main>
+    <div class="intro"><p class="eyebrow">YOUR SITE, YOUR STYLE</p><h1>站点自定义</h1><p>调整品牌、配色与阅读功能，右侧预览会随修改更新。</p></div>
+    <p class="notice">设置保存在站点配置中，重新构建并手动发布后对全部读者生效。</p>
+    <noscript><p class="status error">请启用 JavaScript 后使用站点自定义。</p></noscript>
+    <div id="status" class="status" role="status" aria-live="polite">正在读取已保存的设置…</div>
+    <button type="button" class="button" id="reload" hidden>重新读取并放弃本页修改</button>
+    <div class="workspace">
+      <form id="settings-form">
+        <fieldset id="settings-fields" disabled>
+          <section class="panel" aria-labelledby="brand-heading">
+            <div class="section-heading"><span class="step">01</span><div><h2 id="brand-heading">站点品牌</h2><p>让读者一眼认出你。</p></div></div>
+            <label class="field" for="title"><span>站点名称</span><input id="title" name="title" type="text" required maxlength="100" autocomplete="off" placeholder="给站点起个名字"></label>
+            <label class="field" for="logo"><span>Logo 图片地址</span><input id="logo" name="logo" type="text" required maxlength="2048" autocomplete="off" inputmode="url" aria-describedby="logo-help" placeholder="/favicon.svg"><small id="logo-help">使用 HTTPS 图片地址或站内 SVG 路径。站内 SVG 可放在站点的公开资源目录。</small></label>
+            <label class="field" for="tagline"><span>站点标语 <em>可留空</em></span><textarea id="tagline" name="tagline" rows="2" maxlength="160" placeholder="一句话，介绍这里的故事"></textarea><small>用于页脚和默认页面简介。</small></label>
+          </section>
+          <section class="panel" aria-labelledby="appearance-heading">
+            <div class="section-heading"><span class="step">02</span><div><h2 id="appearance-heading">界面外观</h2><p>挑一种适合故事的氛围。</p></div></div>
+            <fieldset class="theme-field"><legend>主题配色</legend><div class="theme-options">
+              <label class="theme-option paper"><input type="radio" name="theme" value="paper" checked><span class="swatch" aria-hidden="true"><i></i><b></b><b></b></span><span>纸间青绿</span></label>
+              <label class="theme-option ocean"><input type="radio" name="theme" value="ocean"><span class="swatch" aria-hidden="true"><i></i><b></b><b></b></span><span>晴海墨蓝</span></label>
+              <label class="theme-option plum"><input type="radio" name="theme" value="plum"><span class="swatch" aria-hidden="true"><i></i><b></b><b></b></span><span>暮色梅紫</span></label>
+            </div></fieldset>
+            <label class="field" for="accent"><span>自定义主色 <em>可选</em></span><span class="color-row"><input id="accent-picker" type="color" value="#28776e" aria-label="选择自定义主色"><input id="accent" name="accent" type="text" pattern="#[0-9A-Fa-f]{6}" maxlength="7" placeholder="使用主题默认色" autocomplete="off" aria-describedby="accent-help"><button class="text-button" id="reset-accent" type="button">使用预设</button></span><small id="accent-help">留空时使用主题主色，支持六位十六进制色值。</small></label>
+            <label class="field" for="font"><span>标题字体</span><select name="font" id="font"><option value="serif">衬线 · 书卷感</option><option value="sans">无衬线 · 简洁</option></select></label>
+          </section>
+          <section class="panel" aria-labelledby="features-heading">
+            <div class="section-heading"><span class="step">03</span><div><h2 id="features-heading">导航与阅读</h2><p>选择想展示的入口和阅读能力。</p></div></div>
+            <label class="toggle-row"><span><strong>书架入口</strong><small>在导航和页脚显示“我的书架”。</small></span><input type="checkbox" name="showLibrary" id="showLibrary" role="switch"></label>
+            <label class="toggle-row"><span><strong>台词搜索入口</strong><small>在导航、首页和页脚显示搜索入口。</small></span><input type="checkbox" name="showSearch" id="showSearch" role="switch"></label>
+            <label class="toggle-row"><span><strong>文字层</strong><small>有台词稿的章节提供可选中的文字。</small></span><input type="checkbox" name="textLayer" id="textLayer" role="switch"></label>
+            <label class="toggle-row"><span><strong>增强分页</strong><small>允许读者在阅读设置中选择增强分页。</small></span><input type="checkbox" name="enhancedReader" id="enhancedReader" role="switch"></label>
+            <p class="field-note">隐藏导航入口不会删除对应页面。文字层和增强分页的实际效果在重新构建后生效。</p>
+          </section>
+          <div class="form-footer"><button class="button" type="button" id="reset" disabled>撤销本页修改</button><span>保存前可随时撤销</span></div>
+        </fieldset>
+      </form>
+      <aside class="preview-column" aria-label="外观实时预览">
+        <div class="preview-heading"><h2>实时预览</h2><span>示例内容</span></div>
+        <div class="preview-window"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>你的故事，从这里开始</span></div>
+          <div class="site-preview" id="site-preview">
+            <div class="preview-nav"><div class="preview-brand"><img id="preview-logo" src="/favicon.svg" alt="" width="28" height="28" referrerpolicy="no-referrer"><span id="preview-title">页间 · Pagehaven</span></div><div class="preview-nav-links"><span id="preview-library">我的书架</span><span id="preview-search">搜索台词</span></div></div>
+            <div class="preview-body"><p class="preview-eyebrow">在这里，翻开新的一页</p><h3>好故事，值得慢慢读。</h3><p class="preview-copy">收集喜欢的故事，接着上次的进度，让每次阅读都有一个舒适的开始。</p><div class="preview-button-row"><span class="preview-primary">开始阅读 →</span><span class="preview-tag">最新章节</span></div>
+              <div class="preview-books" aria-hidden="true"><div class="preview-book first"><span>山海<br>来信</span><small>STORIES / 01</small></div><div class="preview-book second"><span>周末<br>散步</span><small>STORIES / 02</small></div><div class="preview-book third"><span>星夜<br>旅人</span><small>STORIES / 03</small></div></div>
+              <div class="preview-feature-tags"><span id="preview-text-layer">文字层已启用</span><span id="preview-enhanced-reader">增强分页已启用</span></div>
+            </div>
+            <div class="preview-footer" id="preview-tagline">在页间，遇见好故事</div>
+          </div>
+        </div>
+        <p class="preview-note" id="preview-note">这里预览颜色、字体和品牌。实际漫画内容以站点数据为准。</p>
+        <div class="publish-note"><span aria-hidden="true">↗</span><div><strong>保存后，发布才生效</strong><p>设置会写入唯一的站点配置。沿用现有的检查、提交和手动发布流程即可。</p></div></div>
+      </aside>
+    </div>
+  </main>
+</body>
+</html>

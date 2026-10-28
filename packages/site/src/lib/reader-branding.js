@@ -1,8 +1,8 @@
 // 界面使用宿主站点标识，第三方版权与许可始终随静态产物保留。
-export function readerBrandOptions(siteTitle) {
+export function readerBrandOptions(siteTitle, siteLogo = '/favicon.svg') {
   return {
     // area default 同时覆盖启动、菜单、加载与失败；单一 mascot 选项不会覆盖后两者。
-    mascot: { default: { src: '/favicon.svg', alt: siteTitle } },
+    mascot: { default: { src: siteLogo, alt: siteTitle } },
     translations: {
       'settings.direction.rtl': '从右到左',
       'settings.direction.ltr': '从左到右',
@@ -23,13 +23,13 @@ export function readerBrandOptions(siteTitle) {
  * 当前组件没有 about 内容替换选项；只适配其内容区，保留面板与返回按钮的原有行为。
  * 不改第三方包或版权，不把原组件版本号和外部产品链接当作本站信息展示。
  */
-export function applyReaderBranding(root, siteTitle) {
+export function applyReaderBranding(root, siteTitle, siteLogo = '/favicon.svg') {
   const content = root.querySelector('.comimi-menu-view-about .comimi-about-inner');
   if (!content) return false;
   if (content.dataset.readerBranded !== 'true') {
     const doc = root.ownerDocument;
     const icon = doc.createElement('img');
-    icon.src = '/favicon.svg';
+    icon.src = siteLogo;
     icon.alt = '';
     icon.width = 64;
     icon.height = 64;

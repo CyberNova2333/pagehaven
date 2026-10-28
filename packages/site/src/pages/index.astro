@@ -47,7 +47,7 @@ const latest = gallery.series
           </div>
           <div class="hero-actions">
             <a class="btn btn-primary" href={featured.url}>开始阅读 →</a>
-            <a class="btn" href="/search/">搜索台词</a>
+            {siteConfig.appearance?.show_search !== false && <a class="btn" href="/search/">搜索台词</a>}
             <button class="btn" id="random-btn" type="button">随机一话</button>
           </div>
           <dl class="stats">
@@ -186,7 +186,7 @@ const latest = gallery.series
   .stats { display: flex; flex-wrap: wrap; gap: 2rem; margin: 0; padding-top: 1rem; border-top: 1px solid var(--line); }
   .stats div { display: flex; flex-direction: column; gap: 0.1rem; }
   .stats dt { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
-  .stats dd { margin: 0; font-family: var(--font-serif); font-size: 1.6rem; color: var(--ink); }
+  .stats dd { margin: 0; font-family: var(--font-heading); font-size: 1.6rem; color: var(--ink); }
   .continue { margin-bottom: 1.6rem; }
   .continue h2 { margin-top: 0; }
   .continue-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
@@ -200,9 +200,9 @@ const latest = gallery.series
   .series-card:hover { color: var(--accent-strong); }
   .series-cover { flex: 0 0 5.2rem; width: 5.2rem; aspect-ratio: 600 / 879; border-radius: 10px; overflow: hidden; background: var(--cover-bg); }
   .series-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .cover-fallback { display: grid; place-items: center; width: 100%; height: 100%; color: var(--accent-alt); font-family: var(--font-serif); font-size: 1.4rem; }
+  .cover-fallback { display: grid; place-items: center; width: 100%; height: 100%; color: var(--accent-alt); font-family: var(--font-heading); font-size: 1.4rem; }
   .series-info { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
-  .series-title { font-family: var(--font-serif); font-size: 1.1rem; font-weight: 600; }
+  .series-title { font-family: var(--font-heading); font-size: 1.1rem; font-weight: 600; }
   .series-meta { color: var(--text-dim); font-size: 0.82rem; }
   .row-title { flex: 1; min-width: 0; }
 </style>

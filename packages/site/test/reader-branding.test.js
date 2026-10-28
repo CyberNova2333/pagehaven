@@ -111,3 +111,11 @@ test('阅读器标识：窄屏未生成翻页按钮时仍可替换说明', () =>
   assert.equal(applyReaderBranding(f.root, '书页小屋'), true);
   assert.equal(f.content.querySelector('h3').textContent, '书页小屋');
 });
+
+test('阅读器标识：宿主自定义图标同时用于默认区域和说明面板', () => {
+  const f = fixture();
+  const logo = 'https://images.example.org/site-logo.svg';
+  assert.equal(readerBrandOptions('书页小屋', logo).mascot.default.src, logo);
+  assert.equal(applyReaderBranding(f.root, '书页小屋', logo), true);
+  assert.equal(f.content.querySelector('img').src, logo);
+});

@@ -5,10 +5,11 @@
 页间 · Pagehaven 的 Astro 静态站：作品 / 期 / 话页面、阅读器（每话一个 HTML，`#p12` 深链，文字层内嵌）、
 搜索页（接线在 `@gallery/search`）。产物在仓库根 `dist/`（`DIST_DIR` 环境变量可覆盖）。
 
-站点默认名称为「页间 · Pagehaven」，可在 `site.config.yaml` 修改。书页图标随静态产物提供。
-视觉语言：暖纸白背景、墨蓝标题、青绿按钮与链接、16px 圆角和轻阴影卡片，
-衬线标题（`--font-serif`）搭配无衬线正文。表面、交互、选区与阅读标注使用共享语义色变量。
-设计 token 全在 `Base.astro` 的 `:root`，各页面只写自己的局部样式；样式随
+站点默认名称为「页间 · Pagehaven」，可在 `site.config.yaml` 修改。`site.logo` 统一导航、
+favicon 与增强阅读器图标，默认书页 SVG；`site.tagline` 控制页脚文案，可留空。
+外观由 `appearance` 控制：纸白（默认）、海蓝、暮紫主题，可选自定义主色与衬线／无衬线标题，
+以及搜索、书架导航入口。共享语义色保持页面、表面、选区与阅读标注一致。
+各页面只写自己的局部样式；样式随
 `inlineStylesheets=always` 内联，dist 里不多出 CSS 文件；字体只用系统栈，不引外部字体请求。
 
 只用 Web 标准 API（CLAUDE.md 铁律 1）：不 import Node 内置模块，Astro 页面的 frontmatter 也算。
@@ -29,6 +30,18 @@ npm run build:config   # 先生成 src/generated/site-config.json
 npm run build:site     # = 写 gallery.json + text/ → astro build → 平台生成物 + GitHub Pages 基线文件
 ```
 
+## 站点自定义
+
+在仓库根运行 `npm run customize`，打开终端地址即可在浏览器中预览名称、Logo、页脚文案、
+主题、主色、标题字体、导航入口及文字层／增强分页。设置只在点击保存后写入唯一的
+`site.config.yaml`，备份原文件、保留注释，检测到并发修改时拒绝覆盖。旧配置无需显式
+添加新字段即可使用默认外观；隐藏搜索或书架导航入口不会删除对应路由或浏览器记录。
+
+工具是维护期间的临时服务，不进入静态产物。Codespaces 转发端口保持私有，并保留终端
+地址片段中的访问令牌。Logo 支持 HTTPS 图片地址或站内 SVG 路径，暂不上传图片；
+PNG、JPEG、WebP 等图片仍放 CDN，不进入 `dist`。保存后重新构建、检查并手动发布，
+设置才对全部访客生效，正式站点不提供配置写接口。用完停止命令即可。
+
 ## 页面
 
 | 路由 | 文件 | 说明 |
@@ -43,7 +56,7 @@ npm run build:site     # = 写 gallery.json + text/ → astro build → 平台�
 
 外壳 `layouts/Base.astro`：`lang` 取 `site.lang`，页面标题使用 `site.title`，提供 viewport、
 纸白墨蓝主题、书页图标与共享内联 CSS。正式页面输出 canonical（`https://<site.domain>` + 路径）
-和 `og:title`；书架、404 与预览页面使用 `noindex`，不输出 canonical。导航与页脚提供首页、搜索与书架入口。不用 UI 框架。
+和 `og:title`；书架、404 与预览页面使用 `noindex`，不输出 canonical。导航与页脚可按外观设置隐藏搜索、书架入口，页面与已有数据仍保留。不用 UI 框架。
 共用的纯函数（图片 URL、百分比坐标、框样式、切源的域名替换）在 `lib/gallery.js`，lint 管得到，
 单测在 `test/gallery.test.js`；流水线级的构建测试在 `scripts/test/site-build.test.mjs`。
 
@@ -102,7 +115,7 @@ sitemap；功能运行于三平台共同的纯静态基线，不需要服务端�
   存储不可用时仅保留当前页面中的临时结果，详见「页码书签」。
   分享面板沿用站点页码深链，并在外部翻页后同步更新。
   依赖固定版本并随站点构建，不运行时访问第三方脚本 CDN；许可随产物放在 `licenses/comimi.txt`。
-  启动、菜单、加载与错误状态统一使用站点 favicon；说明页名称跟随 `site.title`，
+  启动、菜单、加载与错误状态统一使用 `site.logo`（默认站点 favicon）；说明页名称跟随 `site.title`，
   页收藏与说明文案使用「页码书签」「阅读器说明」。说明页保留第三方完整 MIT 许可入口，
   原版权与许可声明原样分发；依赖包名与技术字段保持不变。
   功能开关关闭的页面不加载增强入口，部署目标和响应头不变。

@@ -12,14 +12,40 @@ const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}
 const hostname = z.string().regex(HOST, '必须是不带协议与路径的主机名，例如 gallery.example.org');
 const absPath = z.string().regex(/^\/[^\s]*$/, '必须以 / 开头的路径');
 const POWER_OF_TWO_PAGE = new Set([512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]);
+const noControls = (value) => [...value].every((char) => char.codePointAt(0) >= 32 && char.codePointAt(0) !== 127);
+
+// 不接受脚本、内联数据、带凭据的地址与路径归一化绕过。站内资源只指向 SVG 文件；
+// 图片实际是否可达由站点预览确认，解析配置时不发起网络请求。
+function safeLogo(value) {
+  if (value !== value.trim() || /[\s\\]/.test(value) || !noControls(value)) return false;
+  if (value.startsWith('/')) {
+    return !value.includes('..') && /^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.svg$/i.test(value);
+  }
+  if (!/^https:\/\//i.test(value)) return false;
+  try {
+    const decoded = decodeURIComponent(value);
+    if (!noControls(decoded) || /[\s\\]/.test(decoded) || /(?:^|\/)\.\.(?:\/|$)/.test(decoded.split(/[?#]/)[0])) return false;
+    const url = new URL(value);
+    return url.protocol === 'https:' && Boolean(url.hostname) && !url.username && !url.password;
+  } catch { return false; }
+}
 
 export const SiteConfigSchema = z
   .strictObject({
     site: z.strictObject({
-      title: z.string().min(1),
+      title: z.string().trim().min(1).max(100).refine(noControls, '名称不能包含控制字符'),
       domain: hostname,
       lang: z.string().min(2).default('zh-CN'),
+      logo: z.string().max(2048).refine(safeLogo, 'Logo 必须是站内 SVG 路径或无凭据的 HTTPS 图片地址').default('/favicon.svg'),
+      tagline: z.string().max(160).refine(noControls, '页脚文案不能包含控制字符').default('在页间，遇见好故事'),
     }),
+    appearance: z.strictObject({
+      theme: z.enum(['paper', 'ocean', 'plum']).default('paper'),
+      accent: z.union([z.literal(''), z.string().regex(/^#[0-9a-f]{6}$/i, '主色必须是 #RRGGBB')]).default(''),
+      font: z.enum(['serif', 'sans']).default('serif'),
+      show_search: z.boolean().default(true),
+      show_library: z.boolean().default(true),
+    }).default({ theme: 'paper', accent: '', font: 'serif', show_search: true, show_library: true }),
     images: z.strictObject({
       hosts: z.array(hostname).min(1, '至少一个图片域名').max(2, '取块层按两条源设计，多于两条请先改 ARCHITECTURE §6'),
       prefix: z.string().regex(/^[^/].*\/$/, '前缀不以 / 开头、以 / 结尾').default('img/'),

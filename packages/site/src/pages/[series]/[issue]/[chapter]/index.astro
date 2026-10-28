@@ -79,6 +79,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     data-url={chapter.url}
     data-title={chapter.title}
     data-site-title={siteConfig.site.title}
+    data-site-logo={siteConfig.site.logo ?? '/favicon.svg'}
     data-series={series.title}
     data-issue={issue.title}
   >

@@ -5,7 +5,7 @@ import { readerBrandOptions, applyReaderBranding } from './reader-branding.js';
 export function mountEnhancedReader(reader, {
   loadViewer = () => import('@yui540/comimi'),
   timeoutMs = 12000,
-  brandViewer = (viewer, siteTitle) => applyReaderBranding(viewer.getElement(), siteTitle),
+  brandViewer = (viewer, siteTitle, siteLogo) => applyReaderBranding(viewer.getElement(), siteTitle, siteLogo),
 } = {}) {
   const doc = reader.ownerDocument;
   const win = doc.defaultView;
@@ -138,7 +138,7 @@ export function mountEnhancedReader(reader, {
         manga: { id: reader.dataset.key, title: reader.dataset.title, pages },
         initialPageIndex: (state.requestedPage ?? state.page) - 1,
         locale: 'zh-CN',
-        ...readerBrandOptions(reader.dataset.siteTitle || '漫画阅读器'),
+        ...readerBrandOptions(reader.dataset.siteTitle || '漫画阅读器', reader.dataset.siteLogo || '/favicon.svg'),
         storage: { enabled: false },
         lockLayoutMode: true,
         hiddenSettings: ['locale', 'cover', 'direction', 'interval', 'pageMode', 'autoplay', 'viewMode'],
@@ -148,7 +148,7 @@ export function mountEnhancedReader(reader, {
           ready: () => {
             if (ticket !== generation || !wantsViewer()) { schedule(); return; }
             try {
-              if (!brandViewer(viewer, reader.dataset.siteTitle || '漫画阅读器')) { fail(); return; }
+              if (!brandViewer(viewer, reader.dataset.siteTitle || '漫画阅读器', reader.dataset.siteLogo || '/favicon.svg')) { fail(); return; }
             } catch { fail(); return; }
             win.clearTimeout(timer);
             pending = false;

@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "init": "node scripts/init-site.mjs",
+    "customize": "node scripts/customize.mjs",
     "ingest:labelplus": "node scripts/ingest-labelplus.mjs",
     "ingest:ocr": "node scripts/ingest-ocr.mjs",
     "build:config": "node scripts/build-config.mjs",
