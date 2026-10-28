@@ -120,6 +120,26 @@ writes are retained and the command exits with a nonzero status. Multiple `.txt`
 one chapter are reported as a conflict and that chapter is skipped. Metadata and accepted transcripts
 must use lowercase `.yaml` / `.yml` / `.json` extensions.
 
+Check content after editing, without a full build:
+
+```bash
+npm run check:data
+npm run --silent check:data -- --json
+```
+
+This reuses the build's format and cross-file validation, summarizes series, chapters, pages, and text
+boxes, and lists chapters with no transcript or a transcript without searchable text. Missing or empty
+transcripts are informational; the empty template is valid. A missing directory, a non-directory path,
+invalid content, or invalid arguments produce a nonzero exit status. `DATA_DIR` can select another
+existing data directory. The command is read-only, generates no artifacts, and does not read cloud
+credentials or verify remote images. A full build and `npm run check` remain required before release.
+
+The JSON report contains `ok`, `dataDir`, `totals`, `coverage`, `missingText`, `emptyText`, and `issues`.
+`coverage.withText` counts chapters with a transcript; `searchableChapters`, `searchablePages`, and
+`searchableBoxes` count chapters, pages, and boxes with nonempty search text. On failure, `totals` and
+`coverage` are `null`. For machine-readable output, use `--silent` as shown above to suppress npm's
+own script banner.
+
 <a id="deployment"></a>
 
 ## Deployment

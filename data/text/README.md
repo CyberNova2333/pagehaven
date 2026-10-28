@@ -7,6 +7,9 @@
 导入人工校对的 OCR 稿，不手改。
 OCR 默认只生成待校对草稿，不会直接写入这里。
 
+导入后可用 `npm run check:data` 检查正式台词与元数据的对应关系，并查看有稿和可检索文字
+覆盖情况；无稿或空稿仅提示，不算内容错误。机器读取报告用 `npm run --silent check:data -- --json`。
+
 ```json
 { "chapter": "sample/vol03/c012",
   "pages": [{ "n": 1, "boxes": [
