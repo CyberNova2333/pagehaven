@@ -149,7 +149,7 @@ test('LabelPlus 帮助和未知参数都不进入写入流程', async (t) => {
   const { root, data } = await setup(t);
   await putDraft(data, NEW_CHAPTER);
   const before = await snapshot(data);
-  for (const args of [['--unknown'], ['--dry-run', '--unknown'], ['unexpected']]) {
+  for (const args of [['--unknown'], ['--dry-run', '--unknown'], ['unexpected'], [''], ['--dry-run', '']]) {
     const result = run(data, args);
     assert.notEqual(result.status, 0, result.output);
     assert.deepEqual(await snapshot(data), before);
