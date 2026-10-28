@@ -14,7 +14,7 @@ import { step, ok, fail, warn, note } from './lib/log.mjs';
 
 const args = process.argv.slice(2);
 const unknown = args.find((arg) => !['--dry-run', '--help'].includes(arg));
-if (unknown) {
+if (unknown !== undefined) {
   fail(`未知参数：${unknown}；使用 --help 查看用法`);
   process.exit(1);
 }
