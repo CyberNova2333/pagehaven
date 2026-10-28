@@ -31,13 +31,15 @@ Chinese is the default README; use the buttons above to switch languages. The we
 - **Page bookmarks:** The standard and enhanced readers share page favorites, with short notes. View bookmarks by series in your library, edit or remove them, and jump directly to the saved page.
 - **Reading backups:** Export or restore saved series, progress, page bookmarks, and notes from your library. Preview before importing, merge while keeping existing records by default, and process everything in the browser.
 - **Light and dark appearance:** Choose Light, Dark, or Follow system across all three palettes. The current browser remembers your choice, while comic images keep their original colors.
-- **Long series and unreliable connections:** The full chapter list loads when first opened, with filtering and current-chapter navigation. Images try backup sources automatically and offer per-page retry after failure, while transcript overlays remain readable.
+- **Long series and unreliable connections:** The full chapter list loads when first opened, showing chapter positions with text and progress filters, current-chapter navigation, and links to saved pages. Images try backup sources automatically and offer per-page retry after failure, while transcript overlays remain readable.
 - **Dialogue links:** Selectable, copyable text overlays and search results that link directly to a page and text box. The search page shows actual transcript coverage.
 - **Browser-side search:** Download and verify the matching release's SQLite database, filter by series, and paginate results. The database loads only after the first valid query.
 - **Content import:** Import LabelPlus transcripts. When no transcript is available, generate an OCR draft, review it, and explicitly accept it before indexing.
 - **Optional enhanced pagination:** Enable the reader option with `features.comimi_reader` for zoom and gesture support, using your site's name, icon, and page-bookmark labels. It is disabled by default and can fall back to the standard reader if loading fails.
 - **Site customization:** Maintainers can preview and edit the site name, logo, footer text, colors, heading font, navigation entries, and reading features in a browser, saving to the same site configuration.
 - **Static releases:** One HTML file per chapter, with indexes, sitemaps, and platform configuration generated at build time. The release pipeline checks immutable resources, deployment receipts, and version consistency.
+
+Open “目录” (Contents) in the reader, or press `t`, to see chapters with no saved position, a recorded page, or a last-page position. Combine title search with “有进度” (With progress) or “暂无进度” (No progress); chapter links with progress return to the recorded page. “定位当前章” (Locate current chapter) clears both filters and locates the current chapter. These are browsing positions and do not automatically mark a series as Read.
 
 Open “我的书架” (My library) from the navigation or footer at `/library/`. Add a series from its page;
 it starts as Want to read. Reading status is manual and does not automatically become Read when you

@@ -1,6 +1,8 @@
 // 完整目录只在打开时读取作品索引；HTML 保留静态目录链接，失败不妨碍继续阅读。
 const ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const isId = (value) => typeof value === 'string' && ID.test(value);
+const PROGRESS_PREFIX = 'gallery:progress:';
+const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
 
 /** 校验索引中的路由与章节身份，不接受跨作品、外部或带查询串的链接。 */
 export function parseChapterIndex(data, seriesId) {
@@ -14,11 +16,12 @@ export function parseChapterIndex(data, seriesId) {
     for (const chapter of issue.chapters) {
       const key = `${seriesId}/${issue.id}/${chapter?.id}`;
       if (!isId(chapter?.id) || chapter.key !== key || chapter.url !== `/${key}/`
-        || typeof chapter.title !== 'string' || !Number.isFinite(chapter.number) || seen.has(key)) {
+        || typeof chapter.title !== 'string' || !Number.isFinite(chapter.number) || !positiveInteger(chapter.pages)
+        || seen.has(key) || rows.length >= 20000) {
         throw new Error('章节目录格式错误');
       }
       seen.add(key);
-      rows.push({ key, url: chapter.url, title: `${chapter.number}. ${chapter.title}`, issue: `${issue.number}. ${issue.title}` });
+      rows.push({ key, url: chapter.url, title: `${chapter.number}. ${chapter.title}`, issue: `${issue.number}. ${issue.title}`, pages: chapter.pages });
     }
   }
   return rows;
@@ -27,9 +30,9 @@ export function parseChapterIndex(data, seriesId) {
 /**
  * #toc 的 hidden 属性是唯一的打开状态，兼容现有按钮、快捷键与面板互斥逻辑。
  * @param {HTMLElement} toc
- * @param {{fetcher?: typeof fetch, timeoutMs?: number}} options
+ * @param {{fetcher?: typeof fetch, timeoutMs?: number, getStorage?: () => Storage}} options
  */
-export function mountChapterToc(toc, { fetcher, timeoutMs = 15000 } = {}) {
+export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } = {}) {
   const doc = toc.ownerDocument;
   const win = doc.defaultView;
   const request = fetcher ?? win.fetch.bind(win);
@@ -39,37 +42,104 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000 } = {}) {
   const retry = toc.querySelector('[data-toc-retry]');
   const locate = toc.querySelector('[data-toc-locate]');
   const list = toc.querySelector('[data-toc-list]');
+  const progressFilter = toc.querySelector('[data-toc-progress-filter]');
+  const progressSummary = toc.querySelector('[data-toc-progress-summary]');
+  const progressNote = toc.querySelector('[data-toc-progress-note]');
   const toggle = doc.getElementById('toc-btn');
+  const core = doc.getElementById('reader')?.galleryReader;
+  const readStorage = getStorage ?? (() => win.localStorage);
   const { seriesId, chapterKey } = toc.dataset;
   let phase = 'idle';
   let rows = [];
+  let currentRow = null;
   let currentLink = null;
+  let currentIndicator = null;
   let controller = null;
   let timer = null;
   let destroyed = false;
+  const progress = new Map();
+
+  function currentProgress() {
+    const row = currentRow;
+    if (!row || !core) return null;
+    try {
+      const page = core.getState().page;
+      return positiveInteger(page) ? { state: 'started', page: Math.min(row.pages, page), live: true } : null;
+    } catch { return null; }
+  }
+  function readProgress(row, storage) {
+    try {
+      const raw = storage.getItem(PROGRESS_PREFIX + row.key);
+      if (raw === null) return { state: 'new' };
+      let value;
+      try { value = JSON.parse(raw); } catch { return { state: 'new' }; }
+      if (!value || typeof value !== 'object' || Array.isArray(value) || value.url !== row.url || !positiveInteger(value.n)) return { state: 'new' };
+      return { state: 'started', page: Math.min(row.pages, value.n) };
+    } catch { return { state: 'unavailable' }; }
+  }
+  function refreshProgress() {
+    if (destroyed || toc.hidden || phase !== 'ready') return;
+    let storage;
+    try { storage = readStorage(); } catch { /* 各行显示无法读取，当前页仍可使用本页核心进度。 */ }
+    for (const row of rows) progress.set(row.key, readProgress(row, storage));
+    const current = currentProgress();
+    if (current) progress.set(chapterKey, current);
+    render();
+  }
+  function progressLabel(row, record) {
+    if (record.state === 'unavailable') return '记录不可用';
+    if (record.state !== 'started') return '暂无进度';
+    const prefix = record.live ? '本页进度 · ' : '';
+    return prefix + (record.page === row.pages ? `已到末页 · ${row.pages} 页` : `读至第 ${record.page} / ${row.pages} 页`);
+  }
 
   function render() {
+    const active = doc.activeElement;
+    const focusedKey = list.contains?.(active) ? active?.dataset.tocChapterKey : null;
+    const previousScroll = list.scrollTop;
     const query = filter.value.trim().normalize('NFKC').toLowerCase();
-    const matches = rows.filter((row) => `${row.title} ${row.issue}`.normalize('NFKC').toLowerCase().includes(query));
+    const progressMode = progressFilter?.value ?? 'all';
+    const matches = rows.filter((row) => `${row.title} ${row.issue}`.normalize('NFKC').toLowerCase().includes(query)
+      && (progressMode === 'all' || progress.get(row.key)?.state === progressMode));
     const fragment = doc.createDocumentFragment();
+    const links = new Map();
     currentLink = null;
+    currentIndicator = null;
     for (const row of matches) {
       const item = doc.createElement('li');
       const link = doc.createElement('a');
       const issue = doc.createElement('small');
-      link.href = row.url;
+      const indicator = doc.createElement('span');
+      const record = progress.get(row.key) ?? { state: 'unavailable' };
+      link.href = record.state === 'started' ? `${row.url}#p${record.page}` : row.url;
+      link.dataset.tocChapterKey = row.key;
       link.textContent = row.title;
       issue.textContent = row.issue;
+      indicator.className = 'toc-progress';
+      indicator.dataset.state = record.state;
+      indicator.textContent = progressLabel(row, record);
       if (row.key === chapterKey) {
         link.setAttribute('aria-current', 'page');
         link.className = 'current';
         currentLink = link;
+        currentIndicator = indicator;
       }
-      item.append(link, issue);
+      links.set(row.key, link);
+      item.append(link, issue, indicator);
       fragment.append(item);
     }
     list.replaceChildren(fragment);
+    list.scrollTop = previousScroll;
     status.textContent = matches.length ? `显示 ${matches.length} / ${rows.length} 话` : '没有匹配的章节。可清空筛选或定位当前章。';
+    const started = rows.filter((row) => progress.get(row.key)?.state === 'started').length;
+    const fresh = rows.filter((row) => progress.get(row.key)?.state === 'new').length;
+    const unavailable = rows.length - started - fresh;
+    if (progressSummary) progressSummary.textContent = `${started} 话有进度 · ${fresh} 话暂无进度` + (unavailable ? ` · ${unavailable} 话记录不可用` : '');
+    if (progressNote) {
+      progressNote.hidden = !unavailable;
+      progressNote.textContent = unavailable ? '部分阅读记录暂时无法读取，不会被视为暂无进度。仍可使用目录链接阅读。' : '';
+    }
+    if (focusedKey) (links.get(focusedKey) ?? progressFilter ?? filter).focus({ preventScroll: true });
   }
 
   function locateCurrent(focus = false) {
@@ -104,11 +174,14 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000 } = {}) {
       });
       const loaded = await Promise.race([pending, timeout]);
       if (destroyed) return;
-      if (!loaded.some((row) => row.key === chapterKey)) throw new Error('目录缺少当前章');
+      const loadedCurrent = loaded.find((row) => row.key === chapterKey);
+      if (!loadedCurrent) throw new Error('目录缺少当前章');
       rows = loaded;
+      currentRow = loadedCurrent;
       phase = 'ready';
       controls.hidden = false;
-      render();
+      if (toc.hidden) render();
+      else refreshProgress();
       locateCurrent();
     } catch {
       if (destroyed) return;
@@ -127,19 +200,44 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000 } = {}) {
     toggle?.setAttribute('aria-expanded', String(!toc.hidden));
     if (toc.hidden) return;
     if (phase === 'idle') void load();
-    else if (phase === 'ready') locateCurrent();
+    else if (phase === 'ready') { refreshProgress(); locateCurrent(); }
   }
   const onFilter = () => { if (phase === 'ready') render(); };
   const onLocate = () => {
     if (phase !== 'ready') return;
     filter.value = '';
+    if (progressFilter) progressFilter.value = 'all';
     render();
     locateCurrent(true);
   };
   const onRetry = () => { if (!toc.hidden) void load(); };
+  const onStorage = (event) => {
+    if (phase !== 'ready' || toc.hidden) return;
+    if (event.key === null || rows.some((row) => event.key === PROGRESS_PREFIX + row.key)) refreshProgress();
+  };
+  const onShow = () => refreshProgress();
+  const unsubscribe = core?.subscribe?.(() => {
+    if (destroyed || toc.hidden || phase !== 'ready') return;
+    const current = currentProgress();
+    if (!current) return;
+    const previous = progress.get(chapterKey);
+    if (previous?.state === current.state && previous.page === current.page && previous.live === current.live) return;
+    progress.set(chapterKey, current);
+    if (previous?.state === 'started') {
+      // 页码变化不会改变筛选归属；仅更新当前行，避免长目录翻页时重建全部节点。
+      if (currentLink && currentIndicator) {
+        currentLink.href = `${currentRow.url}#p${current.page}`;
+        currentIndicator.textContent = progressLabel(currentRow, current);
+      }
+    } else render();
+  });
   filter.addEventListener('input', onFilter);
+  progressFilter?.addEventListener('change', onFilter);
   locate.addEventListener('click', onLocate);
   retry.addEventListener('click', onRetry);
+  win.addEventListener('storage', onStorage);
+  win.addEventListener('pageshow', onShow);
+  win.addEventListener('focus', onShow);
   const observer = new win.MutationObserver(visibilityChanged);
   observer.observe(toc, { attributes: true, attributeFilter: ['hidden'] });
   toggle?.setAttribute('aria-controls', toc.id);
@@ -151,9 +249,14 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000 } = {}) {
       controller?.abort();
       win.clearTimeout(timer);
       observer.disconnect();
+      unsubscribe?.();
       filter.removeEventListener('input', onFilter);
+      progressFilter?.removeEventListener('change', onFilter);
       locate.removeEventListener('click', onLocate);
       retry.removeEventListener('click', onRetry);
+      win.removeEventListener('storage', onStorage);
+      win.removeEventListener('pageshow', onShow);
+      win.removeEventListener('focus', onShow);
     },
   };
 }

@@ -12,11 +12,11 @@ function index() {
   return {
     id: 'sample', title: '作品', issues: [
       { id: 'v1', title: '第一期', number: 1, chapters: [
-        { id: 'c1', number: 1, title: '初遇', key: 'sample/v1/c1', url: '/sample/v1/c1/' },
-        { id: 'c2', number: 2, title: '归途', key: 'sample/v1/c2', url: '/sample/v1/c2/' },
+        { id: 'c1', number: 1, title: '初遇', key: 'sample/v1/c1', url: '/sample/v1/c1/', pages: 5 },
+        { id: 'c2', number: 2, title: '归途', key: 'sample/v1/c2', url: '/sample/v1/c2/', pages: 8 },
       ] },
       { id: 'v2', title: '第二期', number: 2, chapters: [
-        { id: 'c3', number: 3, title: '<img src=x onerror=alert(1)>', key: 'sample/v2/c3', url: '/sample/v2/c3/' },
+        { id: 'c3', number: 3, title: '<img src=x onerror=alert(1)>', key: 'sample/v2/c3', url: '/sample/v2/c3/', pages: 4 },
       ] },
     ],
   };
@@ -37,31 +37,49 @@ function element(tag = '') {
     set innerHTML(_value) { throw new Error('必须使用文本节点渲染目录'); },
     setAttribute(name, value) { attributes.set(name, String(value)); },
     getAttribute(name) { return attributes.get(name) ?? null; },
-    append(...children) { this.children.push(...children); },
-    replaceChildren(...children) { this.children = children.flatMap((node) => node.tag === '#fragment' ? node.children : [node]); },
+    append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } },
+    replaceChildren(...children) {
+      if (this.contains(this.ownerDocument?.activeElement)) this.ownerDocument.activeElement = null;
+      this.children = [];
+      this.append(...children.flatMap((node) => node.tag === '#fragment' ? node.children : [node]));
+    },
+    contains(node) { return node === this || this.children.some((child) => child.contains(node)); },
     addEventListener(type, listener) {
       if (!listeners.has(type)) listeners.set(type, new Set());
       listeners.get(type).add(listener);
     },
     removeEventListener(type, listener) { listeners.get(type)?.delete(listener); },
     listenerCount() { return [...listeners.values()].reduce((sum, entries) => sum + entries.size, 0); },
-    fire(type) { for (const listener of listeners.get(type) ?? []) listener({ target: this }); },
-    focus(options) { this.focused = options; },
+    fire(type, event = {}) { for (const listener of listeners.get(type) ?? []) listener({ target: this, ...event }); },
+    focus(options) { this.focused = options; if (this.ownerDocument) this.ownerDocument.activeElement = this; },
     getBoundingClientRect() { return tag === 'a' ? { top: 300, bottom: 320, height: 20 } : { top: 0, bottom: 100, height: 100 }; },
   };
 }
 
-function fixture({ fetcher = async () => response(), hidden = true, seriesId = 'sample' } = {}) {
+function fixture({ fetcher = async () => response(), hidden = true, seriesId = 'sample', records = {}, currentPage } = {}) {
   const toc = element('aside');
   toc.id = 'toc';
   toc.hidden = hidden;
   toc.dataset = { seriesId, chapterKey: 'sample/v1/c2' };
-  const nodes = Object.fromEntries(['filter', 'controls', 'status', 'retry', 'locate', 'list'].map((name) => [name, element(name)]));
+  const nodes = Object.fromEntries(['filter', 'controls', 'status', 'retry', 'locate', 'list', 'progress-filter', 'progress-summary', 'progress-note'].map((name) => [name, element(name)]));
   nodes.controls.hidden = nodes.retry.hidden = true;
+  nodes['progress-filter'].value = 'all';
   const toggle = element('button');
   const timers = new Map();
   let timerId = 0;
-  const window = {
+  const values = new Map(Object.entries(records).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]));
+  const storage = { values, reads: [], denied: new Set(), deniedAll: false,
+    getItem(key) { this.reads.push(key); if (this.deniedAll || this.denied.has(key)) throw new Error('denied'); return values.get(key) ?? null; },
+    setItem() { throw new Error('目录不能修改进度'); }, removeItem() { throw new Error('目录不能删除进度'); },
+  };
+  const subscribers = new Set();
+  let livePage = currentPage;
+  const reader = currentPage === undefined ? null : { galleryReader: {
+    getState: () => ({ page: livePage }),
+    subscribe(callback) { subscribers.add(callback); return () => subscribers.delete(callback); },
+  } };
+  const window = Object.assign(element('window'), {
+    localStorage: storage,
     setTimeout(callback) { timers.set(++timerId, callback); return timerId; },
     clearTimeout(id) { timers.delete(id); },
     MutationObserver: class {
@@ -69,17 +87,22 @@ function fixture({ fetcher = async () => response(), hidden = true, seriesId = '
       observe(target, options) { assert.deepEqual(options.attributeFilter, ['hidden']); this.target = target; target.observers.add(this.callback); }
       disconnect() { this.target.observers.delete(this.callback); }
     },
-  };
+  });
   toc.ownerDocument = {
-    defaultView: window,
-    getElementById: (id) => id === 'toc-btn' ? toggle : null,
-    createElement: element,
-    createDocumentFragment: () => element('#fragment'),
+    defaultView: window, activeElement: null,
+    getElementById: (id) => id === 'toc-btn' ? toggle : id === 'reader' ? reader : null,
+    createElement(tag) { const node = element(tag); node.ownerDocument = toc.ownerDocument; return node; },
+    createDocumentFragment() { return this.createElement('#fragment'); },
   };
+  for (const node of [window, toggle, ...Object.values(nodes)]) node.ownerDocument = toc.ownerDocument;
   toc.querySelector = (selector) => nodes[selector.slice('[data-toc-'.length, -1)];
   const calls = [];
   const api = mountChapterToc(toc, { fetcher: (url, options) => { calls.push({ url, ...options }); return fetcher(url, options); }, timeoutMs: 100 });
-  return { toc, nodes, toggle, timers, calls, api, links: () => nodes.list.children.map((item) => item.children[0]) };
+  return { toc, nodes, toggle, timers, calls, api, window, storage, subscribers,
+    live(page) { livePage = page; for (const callback of subscribers) callback(); },
+    links: () => nodes.list.children.map((item) => item.children[0]),
+    indicators: () => nodes.list.children.map((item) => item.children[2]),
+  };
 }
 
 test('打开前不请求；并发打开只加载一次，关闭期间完成后复用成功缓存', async () => {
@@ -241,4 +264,190 @@ test('无效作品标识不发起请求；销毁取消请求、定时器和监�
   f.toc.hidden = false;
   await settle();
   assert.equal(f.calls.length, 1);
+});
+
+const progressKey = (key) => `gallery:progress:${key}`;
+const savedProgress = (key, n, extra = {}) => ({ url: `/${key}/`, n, ts: 100, ...extra });
+
+test('索引页数必须为正安全整数，目录行数有上限，合法页数进入渲染模型', () => {
+  assert.deepEqual(parseChapterIndex(index(), 'sample').map((row) => row.pages), [5, 8, 4]);
+  for (const pages of [undefined, 0, -1, 1.5, '5', null, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+    const data = index();
+    data.issues[0].chapters[0].pages = pages;
+    assert.throws(() => parseChapterIndex(data, 'sample'), undefined, `pages=${pages}`);
+  }
+  const large = index();
+  large.issues = [large.issues[0]];
+  large.issues[0].chapters = Array.from({ length: 20001 }, (_, i) => ({
+    id: `c${i}`, key: `sample/v1/c${i}`, url: `/sample/v1/c${i}/`, title: '章节', number: i, pages: 1,
+  }));
+  assert.throws(() => parseChapterIndex(large, 'sample'), /章节目录格式错误/);
+});
+
+test('进度只读登记键，链接由目录构建，越界页归并到末页而不修改原记录', async () => {
+  const f = fixture({ hidden: false, records: {
+    [progressKey('sample/v1/c1')]: savedProgress('sample/v1/c1', 3, { title: '<script>bad()</script>' }),
+    [progressKey('sample/v1/c2')]: savedProgress('sample/v1/c2', 2, { url: 'https://other.example.org/' }),
+    [progressKey('sample/v2/c3')]: savedProgress('sample/v2/c3', 999),
+    'another-app:secret': 'not reading data',
+  } });
+  const before = new Map(f.storage.values);
+  await settle();
+  assert.deepEqual(f.links().map((link) => link.href), ['/sample/v1/c1/#p3', '/sample/v1/c2/', '/sample/v2/c3/#p4']);
+  assert.equal(f.links()[0].textContent, '1. 初遇');
+  assert.match(f.indicators()[0].textContent, /读至第 3 \/ 5 页/);
+  assert.equal(f.indicators()[1].textContent, '暂无进度');
+  assert.match(f.indicators()[2].textContent, /已到末页 · 4 页/);
+  assert.equal(f.nodes['progress-summary'].textContent, '2 话有进度 · 1 话暂无进度');
+  assert.ok(f.storage.reads.every((key) => key.startsWith('gallery:progress:sample/')));
+  assert.deepEqual(f.storage.values, before);
+  f.api.destroy();
+});
+
+test('进度筛选与文字筛选组合使用内存缓存，定位当前章恢复全部筛选', async () => {
+  const f = fixture({ hidden: false, records: {
+    [progressKey('sample/v1/c1')]: savedProgress('sample/v1/c1', 2),
+    [progressKey('sample/v2/c3')]: savedProgress('sample/v2/c3', 1),
+  } });
+  await settle();
+  const reads = f.storage.reads.length;
+  f.nodes['progress-filter'].value = 'started';
+  f.nodes['progress-filter'].fire('change');
+  assert.equal(f.links().length, 2);
+  f.nodes.filter.value = '第一期';
+  f.nodes.filter.fire('input');
+  assert.deepEqual(f.links().map((link) => link.href), ['/sample/v1/c1/#p2']);
+  f.nodes['progress-filter'].value = 'new';
+  f.nodes['progress-filter'].fire('change');
+  assert.deepEqual(f.links().map((link) => link.href), ['/sample/v1/c2/']);
+  f.nodes.filter.value = '没有结果';
+  f.nodes.filter.fire('input');
+  assert.equal(f.links().length, 0);
+  f.nodes.locate.fire('click');
+  assert.equal(f.nodes.filter.value, '');
+  assert.equal(f.nodes['progress-filter'].value, 'all');
+  assert.equal(f.links().length, 3);
+  assert.deepEqual(f.links()[1].focused, { preventScroll: true });
+  assert.equal(f.storage.reads.length, reads, '筛选和定位不应反复扫描存储');
+  f.api.destroy();
+});
+
+test('目录隐藏期间不读进度，重新打开和相关外部修改会刷新缓存但不重复取索引', async () => {
+  const pending = deferred();
+  const f = fixture({ fetcher: () => pending.promise });
+  f.window.fire('pageshow');
+  f.window.fire('storage', { key: progressKey('sample/v1/c1') });
+  assert.equal(f.storage.reads.length, 0);
+  f.toc.hidden = false;
+  await settle();
+  f.toc.hidden = true;
+  pending.resolve(response());
+  await settle();
+  assert.equal(f.storage.reads.length, 0, '关闭期间完成索引加载也不能读取个人进度');
+  f.storage.values.set(progressKey('sample/v1/c1'), JSON.stringify(savedProgress('sample/v1/c1', 2)));
+  f.toc.hidden = false;
+  assert.equal(f.storage.reads.length, 3);
+  assert.equal(f.links()[0].href, '/sample/v1/c1/#p2');
+  f.window.fire('storage', { key: 'another-app:secret' });
+  f.window.fire('storage', { key: progressKey('other/v/c') });
+  assert.equal(f.storage.reads.length, 3);
+  f.storage.values.set(progressKey('sample/v1/c1'), JSON.stringify(savedProgress('sample/v1/c1', 4)));
+  f.window.fire('storage', { key: progressKey('sample/v1/c1') });
+  assert.equal(f.links()[0].href, '/sample/v1/c1/#p4');
+  f.storage.values.delete(progressKey('sample/v1/c1'));
+  f.window.fire('pageshow');
+  assert.equal(f.links()[0].href, '/sample/v1/c1/');
+  f.storage.values.set(progressKey('sample/v1/c2'), JSON.stringify(savedProgress('sample/v1/c2', 3)));
+  f.window.fire('focus');
+  assert.equal(f.links()[1].href, '/sample/v1/c2/#p3');
+  assert.equal(f.calls.length, 1);
+  f.toc.hidden = true;
+  const reads = f.storage.reads.length;
+  f.window.fire('storage', { key: null });
+  f.window.fire('pageshow');
+  assert.equal(f.storage.reads.length, reads);
+  f.api.destroy();
+});
+
+test('当前章使用阅读核心实际页码，只更新当前缓存且隐藏时不读取', async () => {
+  const f = fixture({ currentPage: 4, records: {
+    [progressKey('sample/v1/c2')]: savedProgress('sample/v1/c2', 2),
+  } });
+  f.live(5);
+  assert.equal(f.storage.reads.length, 0);
+  f.toc.hidden = false;
+  await settle();
+  assert.equal(f.links()[1].href, '/sample/v1/c2/#p5');
+  assert.match(f.indicators()[1].textContent, /本页进度 · 读至第 5 \/ 8 页/);
+  const reads = f.storage.reads.length;
+  const rendered = [...f.nodes.list.children];
+  f.live(8);
+  assert.equal(f.links()[1].href, '/sample/v1/c2/#p8');
+  assert.match(f.indicators()[1].textContent, /本页进度 · 已到末页 · 8 页/);
+  assert.equal(f.storage.reads.length, reads, '当前页变更只更新内存行，不扫描其他章节');
+  assert.ok(f.nodes.list.children.every((row, index) => row === rendered[index]), '翻页应保留全部目录节点和链接焦点');
+  f.toc.hidden = true;
+  f.live(2);
+  assert.equal(f.storage.reads.length, reads);
+  f.api.destroy();
+  assert.equal(f.subscribers.size, 0);
+  assert.equal(f.window.listenerCount(), 0);
+});
+
+test('读取失败不是暂无进度，当前页核心仍可用，坏值不会生成不安全页码或链接', async () => {
+  const f = fixture({ hidden: false, currentPage: 2, records: {
+    [progressKey('sample/v1/c1')]: '{broken',
+    [progressKey('sample/v2/c3')]: savedProgress('sample/v2/c3', 0),
+  } });
+  f.storage.deniedAll = true;
+  await settle();
+  assert.equal(f.indicators()[0].textContent, '记录不可用');
+  assert.equal(f.indicators()[2].textContent, '记录不可用');
+  assert.match(f.indicators()[1].textContent, /本页进度/);
+  assert.equal(f.nodes['progress-note'].hidden, false);
+  assert.match(f.nodes['progress-summary'].textContent, /1 话有进度 · 0 话暂无进度 · 2 话记录不可用/);
+  f.nodes['progress-filter'].value = 'new';
+  f.nodes['progress-filter'].fire('change');
+  assert.equal(f.links().length, 0);
+  f.storage.deniedAll = false;
+  f.window.fire('pageshow');
+  assert.equal(f.links().length, 2);
+  assert.equal(f.nodes['progress-note'].hidden, true);
+  for (const invalid of [null, [], { url: '/sample/v1/c1/', n: '3' }, { url: '/sample/v1/c1/', n: -1 }, { url: '/sample/v1/c1/#p3', n: 3 }]) {
+    f.storage.values.set(progressKey('sample/v1/c1'), JSON.stringify(invalid));
+    f.window.fire('storage', { key: progressKey('sample/v1/c1') });
+    assert.equal(f.links()[0].href, '/sample/v1/c1/');
+    assert.equal(f.indicators()[0].textContent, '暂无进度');
+  }
+  Object.defineProperty(f.window, 'localStorage', { get() { throw new Error('getter denied'); } });
+  f.window.fire('focus');
+  assert.equal(f.links().length, 0, '属性访问也被拒绝时不会把未知项混入暂无进度');
+  f.api.destroy();
+});
+
+test('外部刷新保持章节链接焦点，筛除该章后返回筛选器，未改动输入焦点', async () => {
+  const f = fixture({ hidden: false, records: { [progressKey('sample/v1/c1')]: savedProgress('sample/v1/c1', 2) } });
+  await settle();
+  f.links()[0].focus();
+  f.nodes.list.scrollTop = 45;
+  f.window.fire('pageshow');
+  assert.equal(f.toc.ownerDocument.activeElement, f.links()[0]);
+  assert.equal(f.nodes.list.scrollTop, 45);
+  f.nodes.filter.focus();
+  f.window.fire('focus');
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes.filter);
+  f.nodes['progress-filter'].value = 'started';
+  f.nodes['progress-filter'].fire('change');
+  f.links()[0].focus();
+  f.storage.values.delete(progressKey('sample/v1/c1'));
+  f.window.fire('storage', { key: progressKey('sample/v1/c1') });
+  assert.equal(f.links().length, 0);
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes['progress-filter']);
+  f.api.destroy();
+  const reads = f.storage.reads.length;
+  f.window.fire('storage', { key: null });
+  f.window.fire('pageshow');
+  f.window.fire('focus');
+  assert.equal(f.storage.reads.length, reads);
+  assert.equal(f.nodes['progress-filter'].listenerCount(), 0);
 });

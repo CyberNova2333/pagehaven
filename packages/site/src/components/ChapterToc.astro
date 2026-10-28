@@ -15,8 +15,17 @@ const { series, issue, chapter } = Astro.props;
   <div class="toc-tools" data-toc-controls hidden>
     <label for="toc-filter">筛选章节</label>
     <input id="toc-filter" data-toc-filter type="search" placeholder="章节名、编号或期名" autocomplete="off" />
+    <label class="toc-progress-filter" for="toc-progress-filter">阅读进度
+      <select id="toc-progress-filter" data-toc-progress-filter>
+        <option value="all">全部章节</option>
+        <option value="started">有进度</option>
+        <option value="new">暂无进度</option>
+      </select>
+    </label>
     <button type="button" class="btn" data-toc-locate>定位当前章</button>
   </div>
+  <p class="toc-progress-summary" data-toc-progress-summary role="status" aria-live="polite"></p>
+  <p class="toc-progress-note" data-toc-progress-note hidden></p>
   <p class="toc-status" data-toc-status role="status" aria-live="polite">打开目录后加载完整章节列表。</p>
   <button type="button" class="btn" data-toc-retry hidden>重试加载目录</button>
   <ol class="toc-chapters" data-toc-list aria-label="章节列表"></ol>
@@ -40,9 +49,17 @@ const { series, issue, chapter } = Astro.props;
   .reader .toc .toc-tools[hidden], .reader .toc [data-toc-retry][hidden] { display: none; }
   .reader .toc .toc-tools label { width: 100%; font-size: 0.85rem; }
   .reader .toc .toc-tools input { flex: 1; min-width: 8rem; max-width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
+  .reader .toc .toc-tools .toc-progress-filter { display: flex; align-items: center; gap: 0.4rem; width: auto; font-size: 0.8rem; }
+  .reader .toc .toc-tools select { min-width: 0; max-width: 100%; padding: 0.45rem 0.6rem; font: inherit; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); }
+  .reader .toc .toc-progress-summary, .reader .toc .toc-progress-note { margin: 0.5rem 0; color: var(--text-dim); font-size: 0.75rem; }
+  .reader .toc .toc-progress-summary:empty { display: none; }
+  .reader .toc .toc-progress-note { border-left: 2px solid var(--highlight); padding-left: 0.5rem; }
+  .reader .toc .toc-progress-note[hidden] { display: none; }
   .reader .toc .toc-chapters { margin: 0.6rem 0 0; padding: 0; list-style: none; max-height: min(20rem, 45vh); overflow: auto; overscroll-behavior: contain; }
   .reader .toc .toc-chapters li { display: grid; gap: 0.1rem; padding: 0.4rem 0.2rem; }
   .reader .toc .toc-chapters a { overflow-wrap: anywhere; }
   .reader .toc .toc-chapters small { color: var(--text-dim); font-size: 0.75rem; }
+  .reader .toc .toc-progress { width: fit-content; max-width: 100%; color: var(--accent-strong); background: var(--accent-soft); border-radius: 0.4rem; padding: 0.05rem 0.4rem; font-size: 0.72rem; }
+  .reader .toc .toc-progress[data-state="new"], .reader .toc .toc-progress[data-state="unavailable"] { color: var(--text-dim); background: var(--surface-soft); }
   .reader .toc .toc-chapters a[aria-current="page"] { color: var(--accent-strong); font-weight: 700; }
 </style>
