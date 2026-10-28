@@ -78,6 +78,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     data-key={chapter.key}
     data-url={chapter.url}
     data-title={chapter.title}
+    data-site-title={siteConfig.site.title}
     data-series={series.title}
     data-issue={issue.title}
   >
@@ -735,6 +736,11 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
   .reader:not(.js) #enhanced-option { display: none; }
   .reader .enhanced-stage { grid-column: 1 / -1; width: 100%; height: min(80svh, 64rem); min-height: 20rem; }
   .reader .enhanced-stage .comimi-root { width: 100%; max-width: none; height: 100%; aspect-ratio: auto; margin: 0; direction: ltr; }
+  .reader .enhanced-stage .reader-about { color: var(--comimi-fg); line-height: 1.6; padding: 1rem; }
+  .reader .enhanced-stage .reader-about h3, .reader .enhanced-stage .reader-about p { margin: 0; }
+  .reader .enhanced-stage .reader-about h3 { font-size: 1.05rem; }
+  .reader .enhanced-stage .reader-about p { font-size: 0.85rem; }
+  .reader .enhanced-stage .reader-about a { color: inherit; text-decoration: underline; font-size: 0.85rem; }
   .reader .enhanced-stage[hidden], .reader .enhanced-status[hidden] { display: none; }
   .reader .enhanced-stage[data-loading] { position: absolute; left: 0; right: 0; visibility: hidden; pointer-events: none; }
   .reader .enhanced-status { grid-column: 1 / -1; }

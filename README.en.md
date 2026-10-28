@@ -33,7 +33,7 @@ Chinese is the default README; use the buttons above to switch languages. The we
 - **Dialogue links:** Selectable, copyable text overlays and search results that link directly to a page and text box. The search page shows actual transcript coverage.
 - **Browser-side search:** Download and verify the matching release's SQLite database, filter by series, and paginate results. The database loads only after the first valid query.
 - **Content import:** Import LabelPlus transcripts. When no transcript is available, generate an OCR draft, review it, and explicitly accept it before indexing.
-- **Optional enhanced pagination:** Enable the reader option with `features.comimi_reader` for zoom and gesture support. It is disabled by default and can fall back to the standard reader if loading fails.
+- **Optional enhanced pagination:** Enable the reader option with `features.comimi_reader` for zoom and gesture support, using your site's name, icon, and page-bookmark labels. It is disabled by default and can fall back to the standard reader if loading fails.
 - **Static releases:** One HTML file per chapter, with indexes, sitemaps, and platform configuration generated at build time. The release pipeline checks immutable resources, deployment receipts, and version consistency.
 
 Open “我的书架” (My library) from the navigation or footer at `/library/`. Add a series from its page;
@@ -232,3 +232,5 @@ Before committing, run `npm run check`, `npm test`, and `npm run build`. Read [`
 ## License
 
 The project uses [GPL-3.0](LICENSE). Third-party components retain their own licenses. The optional pagination component's license is included in [`packages/site/public/licenses/comimi.txt`](packages/site/public/licenses/comimi.txt); collaboration-guard provenance is documented in [`tools/NOTICE.md`](tools/NOTICE.md).
+
+The enhanced reader uses `site.title` and the site's favicon. Its reader information panel links to the third-party component's full MIT license. The interface branding changes preserve the original copyright and license notices, which ship with the static output.

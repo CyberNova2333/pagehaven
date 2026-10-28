@@ -154,9 +154,13 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
   });
 
   await t.test('静态产物保留增强分页组件的许可证', async () => {
+    const license = await readFile(join(SITE_DIR, 'public', 'licenses', 'comimi.txt'), 'utf8');
+    const originalLicense = await readFile(join(ROOT, 'node_modules', '@yui540', 'comimi', 'LICENSE'), 'utf8');
+    assert.equal(license.replace(/\r\n/g, '\n'), originalLicense.replace(/\r\n/g, '\n'),
+      '随站点分发的许可证必须保留依赖的完整版权与许可声明');
     assert.equal(
       await readFile(join(DIST, 'licenses', 'comimi.txt'), 'utf8'),
-      await readFile(join(SITE_DIR, 'public', 'licenses', 'comimi.txt'), 'utf8'),
+      license,
     );
   });
 
