@@ -132,6 +132,7 @@ const canonical = `https://${site.domain}${url}`;
       .crumbs a:hover { color: var(--accent-strong); }
       .crumbs span[aria-hidden] { opacity: 0.55; margin: 0 0.15rem; }
       .topbar .spacer { flex: 1; }
+      .nav-actions { display: flex; gap: 0.55rem; margin-left: auto; }
       .pill {
         display: inline-flex;
         align-items: center;
@@ -237,12 +238,15 @@ const canonical = `https://${site.domain}${url}`;
           )
         }
         <span class="spacer"></span>
-        <a class="pill" href="/search/">搜索台词</a>
+        <div class="nav-actions">
+          <a class="pill" href="/library/" aria-current={url === '/library/' ? 'page' : undefined}>我的书架</a>
+          <a class="pill" href="/search/">搜索台词</a>
+        </div>
       </nav>
     </div>
     <main><slot /></main>
     <footer>
-      <a href="/">回首页</a><span class="sep">·</span><a href="/search/">搜索台词</a><span class="sep">·</span>在页间，遇见好故事
+      <a href="/">回首页</a><span class="sep">·</span><a href="/library/">我的书架</a><span class="sep">·</span><a href="/search/">搜索台词</a><span class="sep">·</span>在页间，遇见好故事
     </footer>
   </body>
 </html>

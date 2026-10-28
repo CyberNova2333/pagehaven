@@ -1,0 +1,94 @@
+---
+import Base from '../../layouts/Base.astro';
+import gallery from '../../generated/gallery.json';
+import config from '../../generated/site-config.json';
+import { imageUrl, jsonForScript } from '../../lib/gallery.js';
+import { READING_STATUSES } from '../../lib/library.js';
+
+// 只在书架页携带恢复进度需要的目录，不重复嵌入每页图片和文字层。
+const catalog = gallery.series.map((series) => ({
+  id: series.id, title: series.title, url: series.url,
+  coverUrl: series.coverKey ? imageUrl(config.images.hosts[0], series.coverKey) : null,
+  authors: series.authors ?? [],
+  issues: series.issues.map((issue) => ({
+    id: issue.id, title: issue.title,
+    chapters: issue.chapters.map((chapter) => ({
+      key: chapter.key, title: chapter.title, url: chapter.url, pages: chapter.pages.length,
+    })),
+  })),
+}));
+---
+
+<Base title="我的书架" url="/library/" noindex crumbs={[{ text: '我的书架' }]}>
+  <section id="library-root" aria-busy="false">
+    <header class="library-heading">
+      <p class="eyebrow">Your reading corner</p>
+      <h1>我的书架</h1>
+      <p class="lede">把想读的故事留在这里，下次从上次读到的那一页继续。</p>
+      <p class="muted library-help">在作品页点击“加入书架”，再选择想读、在读或已读。书架保存在当前浏览器中。</p>
+    </header>
+
+    <div class="library-toolbar card card-pad" data-library-toolbar hidden>
+      <label for="library-filter">阅读状态
+        <select id="library-filter">
+          <option value="all">全部</option>
+          {READING_STATUSES.map((status) => <option value={status.value}>{status.label}</option>)}
+        </select>
+      </label>
+      <label class="library-search" for="library-search">查找作品
+        <input id="library-search" type="search" placeholder="作品名称或作者" autocomplete="off" />
+      </label>
+      <p id="library-count" class="muted" role="status" aria-live="polite"></p>
+    </div>
+
+    <p id="library-storage-note" class="library-notice" role="status" aria-live="polite" hidden></p>
+    <p id="library-feedback" class="muted" role="status" aria-live="polite"></p>
+    <div id="library-empty" class="card card-pad" role="status">启用浏览器脚本后，即可查看收藏的作品与阅读进度。</div>
+    <ul id="library-list" class="library-grid" aria-label="书架作品" hidden></ul>
+
+    <p class="library-back"><a class="btn" href="/">浏览作品 →</a></p>
+    <p class="muted library-help">收藏和状态只保存在本浏览器，不会自动跨设备同步。清除站点数据后需要重新添加；移出书架会保留阅读进度。</p>
+    <noscript><p class="library-notice">个人书架需要启用 JavaScript 才能读取浏览器中的收藏。仍可<a href="/">回首页浏览作品</a>。</p></noscript>
+    <script id="library-catalog" type="application/json" set:html={jsonForScript(catalog)} />
+  </section>
+</Base>
+
+<script>
+  import { mountLibrary } from '../../lib/library-controls.js';
+  const root = document.getElementById('library-root');
+  if (root) mountLibrary(root);
+</script>
+
+<style is:global>
+  .library-heading { margin-bottom: 1.5rem; }
+  .library-heading h1 { margin: 0; }
+  .library-heading .lede { margin-bottom: 0.5rem; }
+  .library-help { font-size: 0.85rem; }
+  .library-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin-bottom: 1rem; }
+  .library-toolbar label { display: grid; gap: 0.35rem; font-size: 0.85rem; }
+  .library-toolbar input, .library-toolbar select, .library-item select {
+    padding: 0.65rem 0.8rem; border: 1px solid var(--line); border-radius: 0.8rem;
+    background: var(--surface); color: var(--ink); font: inherit; min-height: 2.7rem;
+  }
+  .library-search { flex: 1; min-width: min(100%, 12rem); }
+  .library-toolbar input { width: 100%; min-width: 0; }
+  .library-toolbar p { margin: 0 0 0.6rem; font-size: 0.85rem; }
+  .library-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .library-item { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; padding: 1.1rem; }
+  .library-cover { display: block; aspect-ratio: 600 / 879; background: var(--cover-bg); border-radius: 0.7rem; overflow: hidden; color: var(--accent-alt); }
+  .library-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .library-cover span { display: grid; place-items: center; height: 100%; font-family: var(--font-serif); font-size: 1.5rem; }
+  .library-item h2 { margin: 0 0 0.35rem; font-size: 1.15rem; overflow-wrap: anywhere; }
+  .library-item p { margin: 0.3rem 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+  .library-item-body { min-width: 0; }
+  .library-item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.7rem; }
+  .library-item-actions .btn { padding: 0.5rem 0.8rem; font-size: 0.85rem; }
+  .library-item-status { display: grid; gap: 0.3rem; font-size: 0.8rem; color: var(--text-dim); }
+  .library-item select { max-width: 100%; font-size: 0.85rem; }
+  .library-notice { border-left: 3px solid var(--highlight); padding: 0.7rem 1rem; background: var(--surface-soft); border-radius: 0.4rem; font-size: 0.9rem; }
+  .library-back { margin-top: 1.4rem; }
+  #library-feedback:empty { display: none; }
+  #library-root [hidden] { display: none; }
+  @media (max-width: 48rem) { .library-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 24rem) { .library-item { grid-template-columns: 4.5rem minmax(0, 1fr); gap: 0.7rem; } }
+</style>

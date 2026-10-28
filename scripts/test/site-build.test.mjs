@@ -131,8 +131,8 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       const htmls = (await walk(dir)).filter((f) => extname(f) === '.html');
       assert.equal(htmls.length, 1, `${key} 下的 HTML：${htmls.join(', ')}`);
     }
-    // 作品页、期页、首页、搜索页、404
-    for (const p of ['index.html', '404.html', 'search/index.html', 'sample/index.html', 'sample/vol01/index.html', 'zeta/v1/index.html']) {
+    // 作品页、期页、首页、搜索页、个人书架、404
+    for (const p of ['index.html', '404.html', 'search/index.html', 'library/index.html', 'sample/index.html', 'sample/vol01/index.html', 'zeta/v1/index.html']) {
       assert.ok(existsSync(join(DIST, p)), `${p} 不存在`);
     }
     // 没有图片、没有 DB。搜索页的执行器是懒加载 chunk（sqlite-wasm 的 wasm 与 worker 代理
@@ -242,6 +242,45 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     const notFound = await readFile(join(DIST, '404.html'), 'utf8');
     assert.ok(notFound.includes('<meta name="robots" content="noindex">'));
     assert.ok(!notFound.includes('rel="canonical"'));
+  });
+
+  await t.test('个人书架：独立静态页面、最小目录、作品操作与全站入口，私人内容不索引', async () => {
+    const library = await readFile(join(DIST, 'library', 'index.html'), 'utf8');
+    for (const id of ['library-root', 'library-catalog', 'library-list', 'library-filter', 'library-search', 'library-count', 'library-empty', 'library-storage-note']) {
+      assert.ok(library.includes(`id="${id}"`), `书架页缺 #${id}`);
+    }
+    assert.ok(library.includes('<meta name="robots" content="noindex">'));
+    assert.ok(!library.includes('rel="canonical"'), '书架不应声明公开内容 canonical');
+    assert.ok(!library.includes('property="og:url"'));
+    assert.match(library, /<noscript>[\s\S]*?书架[\s\S]*?<\/noscript>/, '禁用脚本时要解释书架的使用条件');
+    const json = /<script\b(?=[^>]*\bid="library-catalog")(?=[^>]*\btype="application\/json")[^>]*>([\s\S]*?)<\/script>/.exec(library);
+    assert.ok(json, '书架目录应使用 application/json 数据块');
+    const catalog = JSON.parse(json[1]);
+    assert.deepEqual(catalog.map((series) => series.id), ['zeta', 'sample']);
+    const sample = catalog.find((series) => series.id === 'sample');
+    assert.equal(sample.title, '示例作品');
+    assert.equal(sample.url, '/sample/');
+    assert.equal(sample.coverUrl, null);
+    assert.deepEqual(sample.authors, []);
+    assert.deepEqual(sample.issues.map((issue) => issue.id), ['vol01', 'vol02']);
+    assert.deepEqual(sample.issues[0].chapters[0], {
+      key: 'sample/vol01/c001', title: '第一话 开端', url: '/sample/vol01/c001/', pages: 3,
+    });
+    assert.equal(catalog.flatMap((series) => series.issues.flatMap((issue) => issue.chapters)).length, 4);
+    assert.ok(!json[1].includes('你好，世界！'), '书架目录不应携带台词正文');
+    assert.ok(!json[1].includes('0123456789ab'), '恢复进度只需要章节页数，不重复携带每页图片信息');
+
+    const series = await readFile(join(DIST, 'sample', 'index.html'), 'utf8');
+    assert.match(series, /<\w+\b(?=[^>]*\bid="series-library")(?=[^>]*\bdata-series-id="sample")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '作品书架控件仅在脚本初始化后启用');
+    for (const attr of ['data-library-add', 'data-library-status', 'data-library-remove', 'data-library-message']) {
+      assert.ok(series.includes(attr), `作品书架控件缺 ${attr}`);
+    }
+    for (const page of ['index.html', 'library/index.html', 'sample/index.html', 'sample/vol01/c001/index.html']) {
+      const html = await readFile(join(DIST, page), 'utf8');
+      assert.ok((html.match(/href="\/library\/"/g) ?? []).length >= 2, `${page} 的导航与页脚均需提供书架入口`);
+    }
+    const sitemap = await readFile(join(DIST, 'sitemap.xml'), 'utf8');
+    assert.ok(!sitemap.includes('/library/'), '个人书架不进入公开内容 sitemap');
   });
 
   await t.test('index/ 分片', async () => {
@@ -445,7 +484,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
   });
 });
 
-test('0 话也能建：空 data/ 目录下首页、搜索页、404、索引总表、sitemap 都在', { timeout: 120_000 }, async (t) => {
+test('0 话也能建：空 data/ 目录下首页、搜索页、书架、404、索引总表、sitemap 都在', { timeout: 120_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-site-empty-'));
   const DIST = join(tmp, 'dist');
   const env = { DATA_DIR: join(tmp, 'data'), DIST_DIR: DIST, OUT_DIR: join(tmp, 'out') };
@@ -454,7 +493,7 @@ test('0 话也能建：空 data/ 目录下首页、搜索页、404、索引总�
     const r = run(script, env);
     assert.equal(r.status, 0, `${script} 失败：\n${r.out}`);
   }
-  for (const p of ['index.html', '404.html', 'search/index.html', 'index/series.json', 'sitemap.xml', 'robots.txt']) {
+  for (const p of ['index.html', '404.html', 'search/index.html', 'library/index.html', 'index/series.json', 'sitemap.xml', 'robots.txt']) {
     assert.ok(existsSync(join(DIST, p)), `${p} 不存在`);
   }
   const home = await readFile(join(DIST, 'index.html'), 'utf8');
@@ -470,24 +509,33 @@ test('0 话也能建：空 data/ 目录下首页、搜索页、404、索引总�
   assert.deepEqual(searchConfig.coverage, { chapters: 0, withText: 0, boxes: 0 });
   assert.ok(search.includes('当前还没有作品'));
   assert.ok(!search.includes('作品和漫画仍可正常浏览'));
+  const library = await readFile(join(DIST, 'library', 'index.html'), 'utf8');
+  const catalog = /<script\b(?=[^>]*\bid="library-catalog")(?=[^>]*\btype="application\/json")[^>]*>([\s\S]*?)<\/script>/.exec(library);
+  assert.ok(catalog, '空库也要输出书架目录数据块');
+  assert.deepEqual(JSON.parse(catalog[1]), []);
+  assert.ok(library.includes('<meta name="robots" content="noindex">'));
+  assert.ok(!library.includes('rel="canonical"'));
+  assert.match(library, /<noscript>[\s\S]*?书架[\s\S]*?<\/noscript>/);
   assert.equal(((await readFile(join(DIST, 'sitemap.xml'), 'utf8')).match(/<url>/g) ?? []).length, 2);
   assert.equal(run('check.mjs', env).status, 0);
 });
 
-test('作品 id 撞上站点固定路由（search）时构建报错而不是静默丢页', { timeout: 60_000 }, async (t) => {
+test('作品 id 撞上站点固定路由时构建报错而不是静默丢页', { timeout: 60_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-site-reserved-'));
-  const data = join(tmp, 'data');
-  await mkdir(join(data, 'meta'), { recursive: true });
-  await writeFile(
-    join(data, 'meta', 'search.yaml'),
-    'id: search\ntitle: x\nissues:\n  - id: v1\n    number: 1\n    title: v\n    chapters:\n      - id: c1\n        number: 1\n        title: c\n        pages:\n          - { n: 1, img: 0123456789ab, w: 10, h: 10 }\n',
-  );
-  const env = { DATA_DIR: data, DIST_DIR: join(tmp, 'dist'), OUT_DIR: join(tmp, 'out') };
   t.after(() => rm(tmp, { recursive: true, force: true }));
-  for (const script of ['build-site.mjs', 'build-index.mjs']) {
-    const r = run(script, env);
-    assert.notEqual(r.status, 0, `${script} 应该失败`);
-    assert.match(r.out, /search/);
-    assert.match(r.out, /保留字/);
+  for (const id of ['search', 'library']) {
+    const data = join(tmp, id, 'data');
+    await mkdir(join(data, 'meta'), { recursive: true });
+    await writeFile(
+      join(data, 'meta', `${id}.yaml`),
+      `id: ${id}\ntitle: x\nissues:\n  - id: v1\n    number: 1\n    title: v\n    chapters:\n      - id: c1\n        number: 1\n        title: c\n        pages:\n          - { n: 1, img: 0123456789ab, w: 10, h: 10 }\n`,
+    );
+    const env = { DATA_DIR: data, DIST_DIR: join(tmp, id, 'dist'), OUT_DIR: join(tmp, id, 'out') };
+    for (const script of ['build-site.mjs', 'build-index.mjs']) {
+      const r = run(script, env);
+      assert.notEqual(r.status, 0, `${script} 应该拒绝 ${id}`);
+      assert.ok(r.out.includes(id), `错误信息应指出保留字 ${id}`);
+      assert.match(r.out, /保留字/);
+    }
   }
 });

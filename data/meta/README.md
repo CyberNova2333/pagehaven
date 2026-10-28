@@ -31,5 +31,5 @@ issues:
 
 图片本身不进仓库（进对象存储，经 CDN 读）；这里只有 key 的组成部分与尺寸。
 
-作品 `id` 不能是 `search` `api` `index` `series` `404` `cname`——它们是站点固定路由或平台
+作品 `id` 不能是 `search` `library` `api` `index` `series` `404` `cname`——它们是站点固定路由或平台
 基线文件，撞上时 Astro 只会静默让静态路由赢，`build:site` 会直接报错拦下。
