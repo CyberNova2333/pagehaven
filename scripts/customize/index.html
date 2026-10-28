@@ -51,7 +51,7 @@
         </fieldset>
       </form>
       <aside class="preview-column" aria-label="外观实时预览">
-        <div class="preview-heading"><h2>实时预览</h2><span>示例内容</span></div>
+        <div class="preview-heading"><h2>实时预览</h2><label class="preview-scheme">预览配色 <select id="preview-scheme"><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
         <div class="preview-window"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>你的故事，从这里开始</span></div>
           <div class="site-preview" id="site-preview">
             <div class="preview-nav"><div class="preview-brand"><img id="preview-logo" src="/favicon.svg" alt="" width="28" height="28" referrerpolicy="no-referrer"><span id="preview-title">页间 · Pagehaven</span></div><div class="preview-nav-links"><span id="preview-library">我的书架</span><span id="preview-search">搜索台词</span></div></div>
@@ -63,6 +63,7 @@
           </div>
         </div>
         <p class="preview-note" id="preview-note">这里预览颜色、字体和品牌。实际漫画内容以站点数据为准。</p>
+        <p class="preview-note">深浅切换仅用于预览，不会写入站点配置。读者可在站点导航中选择配色，默认跟随系统。</p>
         <div class="publish-note"><span aria-hidden="true">↗</span><div><strong>保存后，发布才生效</strong><p>设置会写入唯一的站点配置。沿用现有的检查、提交和手动发布流程即可。</p></div></div>
       </aside>
     </div>

@@ -42,6 +42,17 @@ export function mountEnhancedReader(reader, {
   let suspended = false;
   let failure = '';
   let favoritesReady = false;
+  const colorSchemeEvent = 'pagehaven:color-scheme-change';
+  const validTheme = (value) => value === 'light' || value === 'dark';
+  function resolvedTheme(event) {
+    if (validTheme(event?.detail?.scheme)) return event.detail.scheme;
+    const root = doc.documentElement;
+    if (validTheme(root?.dataset.resolvedColorScheme)) return root.dataset.resolvedColorScheme;
+    if (validTheme(root?.dataset.colorScheme)) return root.dataset.colorScheme;
+    try { return win.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+    catch { return 'light'; }
+  }
+  let theme = resolvedTheme();
 
   const savedFavoriteIds = () => bookmarkStore.list(chapterKey, pages.length).map(({ n }) => `${chapterKey}/p${n}`);
   const sameFavorites = (left, right) => {
@@ -114,9 +125,9 @@ export function mountEnhancedReader(reader, {
       const state = core.getState();
       const settings = viewer.getState().settings;
       const mode = state.mode === 'double' ? 'spread' : 'single';
-      if (settings.pageTurnMode !== mode || settings.readingDirection !== state.dir) {
+      if (settings.pageTurnMode !== mode || settings.readingDirection !== state.dir || settings.theme !== theme) {
         const ticket = generation;
-        viewer.updateSettings({ pageTurnMode: mode, readingDirection: state.dir }).catch(() => {
+        viewer.updateSettings({ pageTurnMode: mode, readingDirection: state.dir, theme }).catch(() => {
           if (ticket === generation) fail();
         });
       }
@@ -131,6 +142,7 @@ export function mountEnhancedReader(reader, {
     Promise.resolve().then(loadViewer).then(({ createMangaViewer }) => {
       if (ticket !== generation || !wantsViewer()) return;
       const state = core.getState();
+      theme = resolvedTheme();
       favoritesReady = false;
       host.hidden = false;
       host.setAttribute('data-loading', '');
@@ -141,8 +153,8 @@ export function mountEnhancedReader(reader, {
         ...readerBrandOptions(reader.dataset.siteTitle || '漫画阅读器', reader.dataset.siteLogo || '/favicon.svg'),
         storage: { enabled: false },
         lockLayoutMode: true,
-        hiddenSettings: ['locale', 'cover', 'direction', 'interval', 'pageMode', 'autoplay', 'viewMode'],
-        settings: { locale: 'zh-CN', hasCover: false, layoutMode: 'inline',
+        hiddenSettings: ['locale', 'theme', 'cover', 'direction', 'interval', 'pageMode', 'autoplay', 'viewMode'],
+        settings: { locale: 'zh-CN', hasCover: false, layoutMode: 'inline', theme,
           pageTurnMode: state.mode === 'double' ? 'spread' : 'single', readingDirection: state.dir },
         events: {
           ready: () => {
@@ -230,10 +242,15 @@ export function mountEnhancedReader(reader, {
   function onStorage(event) {
     if (event.key === null || event.key === favoritesKey || event.key?.startsWith(`${NOTE_PREFIX}${chapterKey}/p`)) syncFavorites();
   }
+  function onColorScheme(event) {
+    theme = resolvedTheme(event);
+    schedule();
+  }
   toggle.addEventListener('change', changePreference);
   textToggle?.addEventListener('change', schedule);
   win.addEventListener('hashchange', schedule);
   win.addEventListener('storage', onStorage);
+  win.addEventListener(colorSchemeEvent, onColorScheme);
   doc.addEventListener('keydown', keydown);
   function suspend() {
     suspended = true;
@@ -241,6 +258,7 @@ export function mountEnhancedReader(reader, {
   }
   function resume() {
     suspended = false;
+    theme = resolvedTheme();
     syncFavorites();
     schedule();
   }
@@ -253,6 +271,7 @@ export function mountEnhancedReader(reader, {
     textToggle?.removeEventListener('change', schedule);
     win.removeEventListener('hashchange', schedule);
     win.removeEventListener('storage', onStorage);
+    win.removeEventListener(colorSchemeEvent, onColorScheme);
     doc.removeEventListener('keydown', keydown);
     win.removeEventListener('pagehide', suspend);
     win.removeEventListener('pageshow', resume);

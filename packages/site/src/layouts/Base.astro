@@ -14,10 +14,17 @@
 //   noindex  真则不出 canonical、加 robots noindex（404 页用）
 import siteConfig from '../generated/site-config.json';
 import { appearanceVariables } from '../lib/site-appearance.js';
+import { initializeColorScheme } from '../lib/color-scheme.js';
 
 const { site } = siteConfig;
 const appearance = siteConfig.appearance ?? {};
 const variables = appearanceVariables(appearance);
+const darkVariables = appearanceVariables(appearance, 'dark');
+const declarations = (values) => Object.entries(values).map(([key, value]) => `${key}:${value};`).join('');
+const lightCSS = declarations(variables);
+const darkCSS = declarations(darkVariables);
+const paletteCSS = `:root{${lightCSS}}@media(prefers-color-scheme:dark){:root:not([data-color-scheme="light"]){${darkCSS}}}:root[data-color-scheme="dark"]{${darkCSS}}`;
+const colorSchemeScript = `(${initializeColorScheme.toString()})(window,document);`;
 const logo = site.logo ?? '/favicon.svg';
 const tagline = site.tagline ?? '在页间，遇见好故事';
 const showSearch = appearance.show_search !== false;
@@ -29,12 +36,15 @@ const canonical = `https://${site.domain}${url}`;
 ---
 
 <!doctype html>
-<html lang={site.lang} style={variables}>
+<html lang={site.lang}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light" />
-    <meta name="theme-color" content={variables['--accent']} />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content={variables['--bg-mid']} media="(prefers-color-scheme: light)" data-color-scheme-meta="light" />
+    <meta name="theme-color" content={darkVariables['--bg-mid']} media="(prefers-color-scheme: dark)" data-color-scheme-meta="dark" />
+    <style id="site-color-palettes" is:inline set:html={paletteCSS} />
+    <script id="color-scheme-bootstrap" is:inline set:html={colorSchemeScript} />
     <link rel="icon" href={logo} />
     <title>{fullTitle}</title>
     {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
@@ -47,7 +57,7 @@ const canonical = `https://${site.domain}${url}`;
     <style is:global>
       /* 共享语义色：正文、交互、表面与阅读标注各自取同一组变量。 */
       :root {
-        color-scheme: light;
+        color-scheme: var(--color-scheme);
         --radius: 16px;
         --font-serif: 'EB Garamond', 'Noto Serif SC', 'Songti SC', Georgia, serif;
         --font-sans: 'Inter', 'Noto Sans SC', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -111,7 +121,11 @@ const canonical = `https://${site.domain}${url}`;
       .crumbs a:hover { color: var(--accent-strong); }
       .crumbs span[aria-hidden] { opacity: 0.55; margin: 0 0.15rem; }
       .topbar .spacer { flex: 1; }
-      .nav-actions { display: flex; gap: 0.55rem; margin-left: auto; }
+      .nav-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; margin-left: auto; }
+      .color-scheme-control { align-items: center; gap: 0.35rem; color: var(--text-dim); font-size: 0.8rem; }
+      .color-scheme-control:not([hidden]) { display: inline-flex; }
+      .color-scheme-control select { max-width: 8rem; padding: 0.28rem 0.45rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-soft); color: var(--ink); font: inherit; }
+      #color-scheme-status { width: 100%; max-width: 68rem; margin: 0.35rem auto 0; color: var(--text-dim); font-size: 0.75rem; }
       .pill {
         display: inline-flex;
         align-items: center;
@@ -215,8 +229,17 @@ const canonical = `https://${site.domain}${url}`;
         <div class="nav-actions">
           {showLibrary && <a class="pill" href="/library/" aria-current={url === '/library/' ? 'page' : undefined}>我的书架</a>}
           {showSearch && <a class="pill" href="/search/">搜索台词</a>}
+          <label class="color-scheme-control" data-color-scheme-control hidden>
+            <span>配色</span>
+            <select id="color-scheme-select" aria-label="页面配色">
+              <option value="system">跟随系统</option>
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+            </select>
+          </label>
         </div>
       </nav>
+      <p id="color-scheme-status" role="status" aria-live="polite" hidden></p>
     </div>
     <main><slot /></main>
     <footer>

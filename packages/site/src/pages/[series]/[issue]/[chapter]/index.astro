@@ -708,7 +708,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     background: var(--selection);
     border-radius: 2px;
   }
-  .reader.show-text .box { color: var(--surface); background: var(--text-overlay); text-shadow: 0 0 2px var(--reader-bg); border-radius: 2px; }
+  .reader.show-text .box { color: var(--text-overlay-foreground); background: var(--text-overlay); text-shadow: 0 0 2px var(--reader-bg); border-radius: 2px; }
 
   /* JS 接管后：单页 / 双页 / 长条 */
   .reader.js .pager { display: flex; }

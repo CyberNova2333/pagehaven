@@ -44,7 +44,7 @@ function element(id = '', interactive = false) {
   };
 }
 
-function fixture({ preferred = false, mode = 'single', hash = '', text = false, page = 3, requestedPage = page, load, storageDenied = false, favorites = [], siteTitle = '测试站点', siteLogo = '/favicon.svg', brandViewer = () => true } = {}) {
+function fixture({ preferred = false, mode = 'single', hash = '', text = false, page = 3, requestedPage = page, load, storageDenied = false, favorites = [], siteTitle = '测试站点', siteLogo = '/favicon.svg', brandViewer = () => true, scheme, systemDark = false } = {}) {
   const data = new Map([[preferenceKey, String(preferred)], [favoritesKey, JSON.stringify(favorites)]]);
   const writes = [];
   const nodes = new Map(['enhanced-toggle', 'enhanced-viewer', 'enhanced-status', 'text-toggle', 'fullscreen-btn', 'toc-btn', 'settings-btn', 'toc', 'settings']
@@ -60,9 +60,11 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
     removeItem(key) { if (storageDenied) throw new Error('Storage denied'); data.delete(key); writes.push({ key, value: null }); },
   };
   window.queueMicrotask = queueMicrotask;
+  window.matchMedia = () => ({ matches: systemDark });
   window.setTimeout = (callback) => { timers.set(++timerId, callback); return timerId; };
   window.clearTimeout = (id) => timers.delete(id);
   document.defaultView = window;
+  document.documentElement = { dataset: { ...(scheme === undefined ? {} : { resolvedColorScheme: scheme }) } };
   document.getElementById = (id) => nodes.get(id) ?? null;
   const reader = element('reader');
   reader.ownerDocument = document;
@@ -116,7 +118,7 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
     const instance = {
       options, nativeKeys, destroyed: false, goCalls: [], nextCalls: 0, previousCalls: 0,
       panelCalls: [], shareUrl: '', renderedBeforePageChange: [],
-      updateResult: null,
+      updateResult: null, updateCalls: [],
       getState: () => state,
       getCurrentPageIndex: () => current,
       goToPage(index) {
@@ -130,7 +132,7 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
       setPanel(panel) { this.panelCalls.push(panel); state.panel = panel; this.shareUrl = window.location.href; },
       nextPage() { this.nextCalls++; this.goToPage(current + 1); },
       previousPage() { this.previousCalls++; this.goToPage(current - 1); },
-      updateSettings(patch) { Object.assign(state.settings, patch); return this.updateResult ?? Promise.resolve(); },
+      updateSettings(patch) { this.updateCalls.push(patch); Object.assign(state.settings, patch); return this.updateResult ?? Promise.resolve(); },
       setFavorites(ids) {
         const known = new Set(options.manga.pages.map((entry) => entry.id));
         favoritePageIds = [...new Set(ids.filter((id) => known.has(id)))];
@@ -169,6 +171,10 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
     },
     hash(value) { window.location.hash = value; window.fire('hashchange'); },
     text(checked) { nodes.get('text-toggle').checked = checked; nodes.get('text-toggle').fire('change'); },
+    scheme(value, detail = { scheme: value }) {
+      document.documentElement.dataset.resolvedColorScheme = value;
+      window.fire('pagehaven:color-scheme-change', { detail });
+    },
     expire() { const pending = [...timers.values()]; timers.clear(); pending.forEach((callback) => callback()); },
     key(key, target = element(), extra = {}) {
       const event = document.fire('keydown', { key, target, ...extra });
@@ -254,6 +260,110 @@ test('增强分页：创建时覆盖所有吉祥物区域与收藏说明，站�
   }
   assert.equal(f.brandingCalls[0].title, '书页小屋');
   assert.equal(f.brandingCalls[0].logo, 'https://images.example.org/brand.svg');
+  f.api.destroy();
+});
+
+test('增强分页：初始配色取宿主已解析值，缺失时再取明确偏好或系统', async () => {
+  for (const [options, preference, expected] of [
+    [{ scheme: 'dark', systemDark: false }, undefined, 'dark'],
+    [{ scheme: 'light', systemDark: true }, undefined, 'light'],
+    [{ systemDark: true }, 'light', 'light'],
+    [{ systemDark: false }, 'dark', 'dark'],
+    [{ scheme: 'invalid', systemDark: true }, 'system', 'dark'],
+    [{ systemDark: false }, undefined, 'light'],
+  ]) {
+    const f = fixture(options);
+    if (preference !== undefined) f.document.documentElement.dataset.colorScheme = preference;
+    const instance = await activate(f);
+    assert.equal(instance.options.settings.theme, expected);
+    assert.equal(instance.getState().settings.theme, expected);
+    assert.ok(instance.options.hiddenSettings.includes('theme'), '组件自身主题设置只读，避免与站点偏好冲突');
+    f.api.destroy();
+  }
+  const f = fixture();
+  f.window.matchMedia = () => { throw new Error('Media query unavailable'); };
+  const instance = await activate(f);
+  assert.equal(instance.options.settings.theme, 'light', '旧环境的系统探测失败仍可初始化');
+  f.api.destroy();
+});
+
+test('增强分页：配色在模块加载中及 ready 前变化时最终同步最新主题', async () => {
+  const loading = deferred();
+  let module;
+  const f = fixture({ preferred: true, scheme: 'light', load: (value) => { module = value; return loading.promise; } });
+  await settle();
+  f.scheme('dark');
+  loading.resolve(module);
+  await settle();
+  const instance = f.instances[0];
+  assert.equal(instance.options.settings.theme, 'dark', '延迟 import 不能使用请求开始时的旧主题');
+  assert.equal(f.active, false);
+  f.scheme('light');
+  await settle();
+  assert.equal(instance.updateCalls.length, 0, '未 ready 时不提前更新组件');
+  instance.ready();
+  await settle();
+  assert.equal(f.active, true);
+  assert.equal(instance.getState().settings.theme, 'light');
+  assert.equal(f.instances.length, 1);
+  f.api.destroy();
+});
+
+test('增强分页：就地切换主题不重建组件、不改页码收藏或写入个人记录', async () => {
+  const f = fixture({ scheme: 'light', page: 4, favorites: [`${chapterKey}/p2`] });
+  f.data.set(NOTE_PREFIX + `${chapterKey}/p2`, JSON.stringify({ version: 1, note: '保留备注', updatedAt: 10 }));
+  const instance = await activate(f);
+  const before = { data: new Map(f.data), writes: [...f.writes], showCalls: [...f.showCalls], page: instance.getCurrentPageIndex() };
+  for (const theme of ['dark', 'light', 'dark']) {
+    f.scheme(theme, { scheme: 'invalid' });
+    await settle();
+    assert.equal(instance.getState().settings.theme, theme, '无效事件详情应安全取宿主已解析配色');
+  }
+  assert.equal(f.instances.length, 1);
+  assert.equal(instance.destroyed, false);
+  assert.equal(instance.getCurrentPageIndex(), before.page);
+  assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p2`]);
+  assert.deepEqual(f.data, before.data);
+  assert.deepEqual(f.writes, before.writes);
+  assert.deepEqual(f.showCalls, before.showCalls);
+  const updates = instance.updateCalls.length;
+  f.scheme('dark');
+  await settle();
+  assert.equal(instance.updateCalls.length, updates, '相同主题事件不产生重复设置更新');
+  f.api.destroy();
+  assert.equal(f.window.listenerCount('pagehaven:color-scheme-change'), 0);
+  f.scheme('light');
+  await settle();
+  assert.equal(instance.updateCalls.length, updates, '销毁后不再向旧实例同步配色');
+});
+
+test('增强分页：主题同步拒绝时恢复标准阅读器，旧更新拒绝不影响后来实例', async () => {
+  const f = fixture({ scheme: 'light', page: 4, favorites: [`${chapterKey}/p2`] });
+  const first = await activate(f);
+  first.updateResult = Promise.reject(new Error('Theme update failed'));
+  f.scheme('dark');
+  await settle();
+  assert.equal(first.destroyed, true);
+  assert.equal(f.active, false);
+  assert.equal(f.reader.galleryReader.getState().page, 4);
+  assert.equal(f.nodes.get('enhanced-viewer').hidden, true);
+  assert.match(f.nodes.get('enhanced-status').textContent, /标准阅读器/);
+  assert.equal(f.data.get(favoritesKey), JSON.stringify([`${chapterKey}/p2`]));
+  const second = await activate(f);
+  assert.equal(second.options.settings.theme, 'dark');
+  const update = deferred();
+  second.updateResult = update.promise;
+  f.scheme('light');
+  await settle();
+  f.choose(false);
+  await settle();
+  const third = await activate(f);
+  update.reject(new Error('Stale theme update failed'));
+  await settle();
+  assert.equal(second.destroyed, true);
+  assert.equal(third.destroyed, false);
+  assert.equal(third.getState().settings.theme, 'light');
+  assert.equal(f.active, true);
   f.api.destroy();
 });
 

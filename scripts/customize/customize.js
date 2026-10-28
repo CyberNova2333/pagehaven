@@ -9,6 +9,7 @@ const status = document.querySelector('#status');
 const saveState = document.querySelector('#save-state');
 const preview = document.querySelector('#site-preview');
 const picker = document.querySelector('#accent-picker');
+const previewScheme = document.querySelector('#preview-scheme');
 const token = new URLSearchParams(location.hash.slice(1)).get('token');
 let baseline;
 let revision;
@@ -42,7 +43,7 @@ function update() {
   saveState.textContent = busy ? '正在保存…' : dirty ? '有未保存的修改' : baseline ? '已保存' : '尚未连接';
   saveState.classList.toggle('dirty', dirty);
   const accent = /^#[\da-f]{6}$/i.test(settings.accent) ? settings.accent : '';
-  for (const [property, value] of Object.entries(appearanceVariables({ theme: settings.theme, accent, font: settings.font }))) preview.style.setProperty(property, value);
+  for (const [property, value] of Object.entries(appearanceVariables({ theme: settings.theme, accent, font: settings.font }, previewScheme.value))) preview.style.setProperty(property, value);
   picker.value = accent || THEMES[settings.theme]?.accent || '#28776e';
   document.querySelector('#preview-title').textContent = settings.title || '你的站点';
   document.querySelector('#preview-tagline').textContent = settings.tagline;
@@ -116,6 +117,7 @@ async function load() {
 form.addEventListener('input', () => { if (baseline) update(); });
 form.addEventListener('change', () => { if (baseline) update(); });
 picker.addEventListener('input', () => { form.elements.accent.value = picker.value; update(); });
+previewScheme.addEventListener('change', () => { if (baseline) update(); });
 document.querySelector('#reset-accent').addEventListener('click', () => { form.elements.accent.value = ''; update(); });
 reset.addEventListener('click', () => { populate(baseline); update(); message('已撤销本页修改，恢复为上次读取或保存的设置。'); });
 reload.addEventListener('click', load);

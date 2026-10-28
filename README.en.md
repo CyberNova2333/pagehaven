@@ -15,7 +15,7 @@
   <a href="#features">Features</a> · <a href="#getting-started">Getting started</a> · <a href="#deployment">Deployment</a> · <a href="#section-1">Architecture</a> · <a href="#limitations">Current limits</a>
 </p>
 
-**Pagehaven is a general-purpose static comic site.** It brings a comic catalog, reader, and dialogue search together in a warm paper-white, ink-blue, and teal theme, for building your own comic library.
+**Pagehaven is a general-purpose static comic site.** It brings a comic catalog, reader, and dialogue search together, with three light and dark palettes built around paper, ink, and teal, for building your own comic library.
 
 Built with Astro, the site can be deployed to Cloudflare Pages, EdgeOne Makers, or GitHub Pages. Images and search databases live in object storage and are read through a CDN; browsing and search do not require an always-running application server. The repository includes no actual comics, hosted accounts, or preconfigured deployment projects.
 
@@ -30,6 +30,7 @@ Chinese is the default README; use the buttons above to switch languages. The we
 - **Personal library:** Save series, manually mark them as Want to read / Reading / Read, filter by status and series title, and resume from the latest reading position.
 - **Page bookmarks:** The standard and enhanced readers share page favorites, with short notes. View bookmarks by series in your library, edit or remove them, and jump directly to the saved page.
 - **Reading backups:** Export or restore saved series, progress, page bookmarks, and notes from your library. Preview before importing, merge while keeping existing records by default, and process everything in the browser.
+- **Light and dark appearance:** Choose Light, Dark, or Follow system across all three palettes. The current browser remembers your choice, while comic images keep their original colors.
 - **Long series and unreliable connections:** The full chapter list loads when first opened, with filtering and current-chapter navigation. Images try backup sources automatically and offer per-page retry after failure, while transcript overlays remain readable.
 - **Dialogue links:** Selectable, copyable text overlays and search results that link directly to a page and text box. The search page shows actual transcript coverage.
 - **Browser-side search:** Download and verify the matching release's SQLite database, filter by series, and paginate results. The database loads only after the first valid query.
@@ -52,6 +53,12 @@ automatically save an edit in progress.
 The library, bookmarks, notes, and progress are stored in the current browser for the current site, with no account
 sync. If browser storage is unavailable, the page explains that changes are kept temporarily on the current page only.
 Save a backup before clearing site data or moving to another device or domain.
+
+### Switch between light and dark appearance
+
+Use the appearance selector in the navigation to choose “浅色” (Light), “深色” (Dark), or “跟随系统” (Follow system). Follow system is the default and responds to system appearance changes. The choice is remembered for the current site and browser across page visits. If browser storage is unavailable, the page shows a notice and the choice still works on the current page.
+
+The library, search, bookmarks, and reading controls share the selected appearance, including enhanced pagination. Comic images are not inverted. A small script reads a saved choice before the body is displayed to reduce a light flash on opening. Without JavaScript, CSS still follows the system and the manual selector remains hidden. This interface preference is excluded from reading-data backups and does not change site configuration or the publishing process.
 
 ### Back up and restore reading data
 
@@ -127,7 +134,7 @@ The tool preserves existing comments and unselected fields and validates the com
 npm run customize
 ```
 
-Open the address printed in the terminal to edit the name, logo, and footer text; choose Paper, Ocean, or Plum colors, a custom accent, and serif or sans-serif headings; show or hide search and library navigation entries; and enable or disable text overlays and enhanced pagination. The preview updates as you edit. Only Save writes `site.config.yaml`. Hiding navigation entries does not remove the corresponding pages, bookmarks, or reading records.
+Open the address printed in the terminal to edit the name, logo, and footer text; choose Paper, Ocean, or Plum colors, a custom accent, and serif or sans-serif headings; show or hide search and library navigation entries; and enable or disable text overlays and enhanced pagination. The preview updates as you edit. Only Save writes `site.config.yaml`. Preview light and dark appearances with the selector beside the preview; it does not change configuration or readers' preferences. Hiding navigation entries does not remove the corresponding pages, bookmarks, or reading records.
 
 This is a temporary maintainer tool, bound to the loopback address by default and not deployed with the public site. If Codespaces requires listening on all interfaces, run `npm run customize -- --host 0.0.0.0`, open its port from the Ports panel, keep the port **private**, and append the printed `#token=…` fragment to the forwarded address. Do not make the forwarded port public or share a token-bearing address; stop the command when finished.
 
