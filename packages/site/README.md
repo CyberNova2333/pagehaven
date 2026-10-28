@@ -38,19 +38,37 @@ npm run build:site     # = 写 gallery.json + text/ → astro build → 平台�
 | `/<series>/<issue>/` | `pages/[series]/[issue]/index.astro` | 话列表：number、title、页数、「有台词」（只在 `features.text_layer` 开时标——flag 关了阅读器没有文字层，列表不该还承诺） |
 | `/<series>/<issue>/<chapter>/` | `pages/[series]/[issue]/[chapter]/index.astro` | 阅读器，见下 |
 | `/search/` | `pages/search/index.astro` | 检索页壳；逻辑由 `packages/search` 接入 |
+| `/library/` | `pages/library/index.astro` | 个人书架；收藏、阅读状态、筛选与继续阅读，noindex |
 | `/404.html` | `pages/404.astro` | noindex |
 
 外壳 `layouts/Base.astro`：`lang` 取 `site.lang`，页面标题使用 `site.title`，提供 viewport、
 纸白墨蓝主题、书页图标与共享内联 CSS。正式页面输出 canonical（`https://<site.domain>` + 路径）
-和 `og:title`；404 与预览页面使用 `noindex`，不输出 canonical。导航与页脚均可回首页。不用 UI 框架。
+和 `og:title`；书架、404 与预览页面使用 `noindex`，不输出 canonical。导航与页脚提供首页、搜索与书架入口。不用 UI 框架。
 共用的纯函数（图片 URL、百分比坐标、框样式、切源的域名替换）在 `lib/gallery.js`，lint 管得到，
 单测在 `test/gallery.test.js`；流水线级的构建测试在 `scripts/test/site-build.test.mjs`。
 
 默认模板没有作品时，首页仍显示站点名称和明确的空目录提示。搜索页分别提示「没有作品」
 或「已有作品但尚未收录台词」，两种情况均不下载检索库。
 
-作品 id 不能是 `search` `api` `index` `series` `404` `cname`——它们是站点固定路由或固定文件，
+作品 id 不能是 `search` `library` `api` `index` `series` `404` `cname`——它们是站点固定路由或固定文件，
 Astro 会静默让静态路由赢；`scripts/lib/site-generated.mjs` 在构建时拦。
+
+## 个人书架
+
+作品页支持加入、移出书架，默认“想读”；“想读／在读／已读”由读者手动调整，翻页不自动
+改变状态。`/library/` 按状态筛选、按作品名搜索，显示当前目录仍有效的最新阅读位置，继续
+阅读链接复用 `#p<n>`。未读作品可从第一话开始，暂无章节的作品也可收藏，但不提供阅读链接。
+移出书架只移除收藏，不清除阅读进度。
+
+每个作品单独使用 `localStorage` 键 `gallery:library:<seriesId>`，值为
+`{ version: 1, status: "want" | "reading" | "read", updatedAt }`。页面只在读者操作时写入；
+坏记录和已从目录移除的作品仅过滤显示，不自动清理。最新阅读位置只读已有
+`gallery:progress:<chapter key>`，以当前章节 URL、标题与页数为准，不迁移旧记录。
+
+数据限于当前浏览器与当前站点，没有账号同步或导入导出；清除站点数据、更换域名不会自动
+恢复。存储访问或写入被拒绝时，修改留在当前页面内存中，并明确提示只能在当前页面临时
+保留。无 JavaScript 时保留站点目录入口，个人书架需要 JavaScript。书架页带 `noindex` 且不进
+sitemap；功能运行于三平台共同的纯静态基线，不需要服务端接口或平台配置。
 
 ## 阅读器
 

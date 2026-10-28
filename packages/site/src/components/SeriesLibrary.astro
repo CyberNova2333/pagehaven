@@ -1,0 +1,31 @@
+---
+import { READING_STATUSES } from '../lib/library.js';
+const { seriesId } = Astro.props;
+---
+
+<div id="series-library" class="library-actions" data-series-id={seriesId} hidden>
+  <button class="btn" type="button" data-library-add>＋ 加入书架</button>
+  <label class="library-status" hidden>
+    阅读状态
+    <select data-library-status aria-label="书架阅读状态">
+      {READING_STATUSES.map((status) => <option value={status.value}>{status.label}</option>)}
+    </select>
+  </label>
+  <button class="btn" type="button" data-library-remove hidden>移出书架</button>
+  <p class="muted" data-library-message role="status" aria-live="polite"></p>
+</div>
+
+<script>
+  import { mountSeriesLibrary } from '../lib/library-controls.js';
+  const root = document.getElementById('series-library');
+  if (root) mountSeriesLibrary(root);
+</script>
+
+<style>
+  .library-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-top: 0.8rem; }
+  .library-actions[hidden], .library-actions [hidden] { display: none; }
+  .library-status { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-size: 0.9rem; }
+  select { font: inherit; padding: 0.55rem 0.8rem; border: 1px solid var(--line); border-radius: 0.8rem; background: var(--surface); color: var(--ink); }
+  p { flex-basis: 100%; margin: 0; font-size: 0.85rem; }
+  p:empty { display: none; }
+</style>

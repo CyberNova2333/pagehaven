@@ -26,7 +26,7 @@ export const SITE_TEXT_DIR = join(SITE_GENERATED_DIR, 'text');
  * 文件系统上 cname/ 目录会与 CNAME 文件相撞）。Astro 只会静默地让静态路由赢，不会报错——
  * 撞上时作品页整个消失，所以在这里拦。
  */
-export const RESERVED_SERIES_IDS = ['search', 'api', 'index', 'series', '404', 'cname'];
+export const RESERVED_SERIES_IDS = ['search', 'library', 'api', 'index', 'series', '404', 'cname'];
 
 /** @param {import('@gallery/core').Gallery} gallery */
 export function assertNoReservedIds(gallery) {

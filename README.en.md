@@ -27,12 +27,22 @@ Chinese is the default README; use the buttons above to switch languages. The we
 
 - **Catalog browsing:** Series / issue / chapter / page navigation, covers, authors, tags, each series' latest chapter, a random chapter, and metadata search. Latest chapters follow issue / chapter order, not publication dates.
 - **Comic reading:** Single-page, long-strip, and double-page modes; reading direction, keyboard and swipe navigation, fullscreen, brightness, and page jumps. Reading progress is saved automatically and can be resumed from the home and series pages.
+- **Personal library:** Save series, manually mark them as Want to read / Reading / Read, filter by status and series title, and resume from the latest reading position.
 - **Long series and unreliable connections:** The full chapter list loads when first opened, with filtering and current-chapter navigation. Images try backup sources automatically and offer per-page retry after failure, while transcript overlays remain readable.
 - **Dialogue links:** Selectable, copyable text overlays and search results that link directly to a page and text box. The search page shows actual transcript coverage.
 - **Browser-side search:** Download and verify the matching release's SQLite database, filter by series, and paginate results. The database loads only after the first valid query.
 - **Content import:** Import LabelPlus transcripts. When no transcript is available, generate an OCR draft, review it, and explicitly accept it before indexing.
 - **Optional enhanced pagination:** Enable the reader option with `features.comimi_reader` for zoom and gesture support. It is disabled by default and can fall back to the standard reader if loading fails.
 - **Static releases:** One HTML file per chapter, with indexes, sitemaps, and platform configuration generated at build time. The release pipeline checks immutable resources, deployment receipts, and version consistency.
+
+Open “我的书架” (My library) from the navigation or footer at `/library/`. Add a series from its page;
+it starts as Want to read. Reading status is manual and does not automatically become Read when you
+turn pages. Removing a series keeps its reading progress. Series without chapters can also be saved
+and become readable once chapters are published.
+
+The library and progress are stored only in the current browser for the current site, with no account
+sync or import/export. Clearing site data or changing domains prevents automatic recovery. If browser
+storage is unavailable, the page explains that changes are kept temporarily on the current page only.
 
 <a id="section-2"></a>
 <a id="section-3"></a>

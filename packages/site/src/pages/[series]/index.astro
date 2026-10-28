@@ -4,6 +4,7 @@ import Base from '../../layouts/Base.astro';
 import siteConfig from '../../generated/site-config.json';
 import gallery from '../../generated/gallery.json';
 import { chapterCount, imageUrl, jsonForScript } from '../../lib/gallery.js';
+import SeriesLibrary from '../../components/SeriesLibrary.astro';
 
 export function getStaticPaths() {
   return gallery.series.map((s) => ({ params: { series: s.id }, props: { series: s } }));
@@ -48,6 +49,7 @@ const STATUSB = { ongoing: '连载中', completed: '已完结', hiatus: '休载'
         {firstChapter && <a class="btn btn-primary" id="start-reading" href={firstChapter.url}>开始阅读 →</a>}
         <a class="btn" href={`${series.url}#chapters`}>目录</a>
       </div>
+      <SeriesLibrary seriesId={series.id} />
     </div>
   </section>
 
