@@ -118,6 +118,23 @@ npm run init -- --help
 出错仍会保留这些写入，并以非零退出。同一章存在多份 `.txt` / `.TXT` 稿时会报错并跳过
 该章；元数据和正式台词文件的扩展名须为小写 `.yaml` / `.yml` / `.json`。
 
+编辑内容后，可先检查数据，无需完整构建：
+
+```bash
+npm run check:data
+npm run --silent check:data -- --json
+```
+
+检查复用构建时的格式和跨文件校验，汇总作品、章节、页数、台词框，并列出无稿和已有稿但
+无可检索文字的章节。缺稿或空稿仅作提示，空内容模板也能通过；目录不存在、路径不是目录、
+内容或参数错误时以非零退出。`DATA_DIR` 可指定其他现有数据目录。命令只读，不生成产物，
+不读取云凭据或验证远端图片；完整构建与 `npm run check` 仍是发布前的必要检查。
+
+JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`emptyText` 与 `issues`。
+`coverage.withText` 统计已有稿的章节，`searchableChapters` / `searchablePages` /
+`searchableBoxes` 统计含非空检索文本的章节、页和框；失败时 `totals` 与 `coverage` 为 `null`。
+机器读取时使用上面的 `--silent` 命令，避免 npm 自身的脚本标题混入标准输出。
+
 <a id="deployment"></a>
 
 ## 部署

@@ -4,7 +4,8 @@
 
 默认模板不附带作品；发布自己的漫画时，先在这里添加对应元数据。
 每个作品一个 `<series>.yaml`，`<series>` 同时是 URL 段与图片 key 的一段。
-schema 由 `@gallery/core` 定义（ARCHITECTURE §4），`npm run check` / `npm test` 校验。
+schema 由 `@gallery/core` 定义（ARCHITECTURE §4），修改后先用 `npm run check:data` 检查，
+无需构建站点；完整检查与测试仍由 `npm run check` / `npm test` 执行。
 元数据扩展名必须小写 `.yaml` 或 `.yml`，正式台词扩展名必须小写 `.json`；大写或混合
 大小写扩展名会明确报错，避免上传的文件被静默忽略。
 

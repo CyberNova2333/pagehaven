@@ -182,6 +182,14 @@ R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 也不误报缺稿。`data/meta` 与 `data/text` 的扩展名强制小写，避免内容在不同文件系统上
 被静默忽略；这些检查由共享数据入口执行，适用于导入与构建。
 
+**决策记录（2026-10-28）：独立内容检查。** `check:data` 复用 `loadGallery` 的 schema
+与跨文件关系校验，先确认 `DATA_DIR` 是现有目录；存在但没有内容的目录仍是有效空库。
+检查只读，不要求站点配置、构建产物、网络或凭据，不负责核对远端图片。报告区分 `hasText`
+表示的已有稿章节和 `tn` 去除首尾空白后非空的可检索框，并汇总其章节、页数；无稿和空稿
+仅提示。`--json` 输出结构化报告，失败时统计为 `null`，保留 `issues`，退出码为 1。
+机器读取通过 npm 时需加 `--silent`，避免命令标题污染 JSON。此入口方便编辑内容时快速
+反馈，完整构建和发布守卫继续由原有 `build`、`check` 执行。
+
 所有流程 = `package.json` scripts，CI 文件只是壳，任何 CI 都能跑：
 
 ```
@@ -199,6 +207,7 @@ build:sitemap      data/meta → dist/sitemap.xml（> 45 000 条时拆成 sitema
 build:config       site.config.yaml → _headers / _redirects / edgeone.json
 check              文件数、单文件、dist 无图片/DB、page_size、配置生成物同步、core 无 node: 导入、
                    sitemap 覆盖每一话（分片 ≤ 50 000 条）、IndexNow key 文件与配置一致
+check:data         只读校验现有数据目录与 meta / text 关系，汇总台词覆盖；--json 输出报告
 release:check      检查目标、环境与正式域名，拒绝 GitHub Pages 的 preview
 release:prepare    生产部署前保存当前指针原文、ETag 与发布身份；清理旧部署记录
 publish:r2         上传 gallery-<v>.sqlite(+chunks.json) / archive/site-<v>.tar.zst / 新图片
