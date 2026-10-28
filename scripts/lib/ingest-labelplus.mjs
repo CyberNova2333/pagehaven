@@ -66,11 +66,13 @@ async function walk(dir, out = []) {
  * 找出全部原始稿：只认 <series>/<issue>/<chapter>.txt 这一层的 .txt（扩展名不分大小写，手机上传
  * 的文件名常常是 .TXT）。放错层级的 .txt 是错误，README 与点文件之外的其它文件是提示——
  * 悄悄忽略的话，维护者会以为交了稿却什么都没发生。
- * @returns {Promise<{drafts: Map<string, string>, warnings: string[], errors: string[]}>}  key → 文件路径
+ * @returns {Promise<{drafts: Map<string, string>, conflicts: Set<string>, warnings: string[], errors: string[]}>}
  */
 async function findDrafts(dataDir) {
   const rawDir = rawLabelPlusDir(dataDir);
   const drafts = new Map();
+  const candidates = new Map();
+  const conflicts = new Set();
   const warnings = [];
   const errors = [];
   const rel = (p) => relative(dataDir, p).split(sep).join('/');
@@ -87,9 +89,16 @@ async function findDrafts(dataDir) {
       errors.push(`${rel(file)}：原始稿必须放在 raw/labelplus/<series>/<issue>/<chapter>.txt（小写字母数字连字符）`);
       continue;
     }
-    drafts.set(key, file);
+    if (!candidates.has(key)) candidates.set(key, []);
+    candidates.get(key).push(file);
   }
-  return { drafts, warnings, errors };
+  for (const [key, files] of candidates) {
+    if (files.length > 1) {
+      conflicts.add(key);
+      errors.push(`${key}：同一话有多份原始稿，无法选择，请只保留一份：${files.map(rel).join('、')}`);
+    } else drafts.set(key, files[0]);
+  }
+  return { drafts, conflicts, warnings, errors };
 }
 
 /**
@@ -97,13 +106,15 @@ async function findDrafts(dataDir) {
  * @param {string} [opts.dataDir]
  * @param {string[]} [opts.chapters]  限定处理的话（chapter key）；空 = 全部有原始稿的话
  * @param {'auto'|'number'|'sequence'} [opts.pageStrategy]
+ * @param {boolean} [opts.dryRun]  只生成计划与诊断，不创建目录或写文件
  * @param {typeof defaultLog} [opts.log]
- * @returns {Promise<{written: string[], unchanged: string[], warnings: string[], errors: string[]}>}
+ * @returns {Promise<{written: string[], unchanged: string[], planned: {chapter: string, action: 'create'|'update'}[], warnings: string[], errors: string[]}>}
  */
 export async function ingestLabelPlus(opts = {}) {
-  const { dataDir = DATA_DIR, chapters = [], pageStrategy = 'auto', log = defaultLog } = opts;
+  const { dataDir = DATA_DIR, chapters = [], pageStrategy = 'auto', dryRun = false, log = defaultLog } = opts;
   const written = [];
   const unchanged = [];
+  const planned = [];
   const warnings = [];
   const errors = [];
   const rel = (p) => relative(dataDir, p).split(sep).join('/');
@@ -111,7 +122,7 @@ export async function ingestLabelPlus(opts = {}) {
   // hasOwn 而不是 in：'toString' in {} 也为真，那样校验形同虚设
   if (!Object.hasOwn(PAGE_STRATEGIES, pageStrategy)) {
     errors.push(`LABELPLUS_PAGES 只能是 ${Object.keys(PAGE_STRATEGIES).join(' / ')}，现在是「${pageStrategy}」`);
-    return { written, unchanged, warnings, errors };
+    return { written, unchanged, planned, warnings, errors };
   }
   const pageOf = PAGE_STRATEGIES[pageStrategy];
 
@@ -127,7 +138,7 @@ export async function ingestLabelPlus(opts = {}) {
   } catch (e) {
     errors.push(...(e.issues ?? [e.message]));
     errors.push('data/ 现有内容不合法，无法与 meta 核对，本次不写任何文件');
-    return { written, unchanged, warnings, errors };
+    return { written, unchanged, planned, warnings, errors };
   }
   const byKey = new Map(gallery.chapters.map((c) => [c.key, c]));
 
@@ -141,6 +152,7 @@ export async function ingestLabelPlus(opts = {}) {
         errors.push(`CHAPTERS 里的「${key}」不是 <series>/<issue>/<chapter>`);
         continue;
       }
+      if (found.conflicts.has(key)) continue;
       if (found.drafts.has(key)) {
         todo.set(key, found.drafts.get(key));
         continue;
@@ -179,7 +191,7 @@ export async function ingestLabelPlus(opts = {}) {
     }
   }
 
-  // ── 5. 逐话核对并写出 ──
+  // ── 5. 逐话核对；预览与实际导入共用计划，只在实际导入时写出 ──
   for (const [key, text] of texts) {
     const file = todo.get(key);
     const chapter = byKey.get(key);
@@ -205,9 +217,16 @@ export async function ingestLabelPlus(opts = {}) {
 
     const out = textFileFor(dataDir, key);
     const content = serializeChapterText(text);
-    if (existsSync(out) && (await readFile(out, 'utf8')) === content) {
+    const exists = existsSync(out);
+    if (exists && (await readFile(out, 'utf8')) === content) {
       unchanged.push(key);
       log.note(`${key}：内容未变，不重写`);
+      continue;
+    }
+    const action = exists ? 'update' : 'create';
+    planned.push({ chapter: key, action });
+    if (dryRun) {
+      log.note(`将${action === 'create' ? '新增' : '更新'} ${key} → ${rel(out)}`);
       continue;
     }
     await mkdir(dirname(out), { recursive: true });
@@ -216,5 +235,5 @@ export async function ingestLabelPlus(opts = {}) {
     const boxes = text.pages.reduce((n, p) => n + p.boxes.length, 0);
     log.ok(`${key} → ${rel(out)}（${text.pages.length} 页、${boxes} 个框）`);
   }
-  return { written, unchanged, warnings, errors };
+  return { written, unchanged, planned, warnings, errors };
 }

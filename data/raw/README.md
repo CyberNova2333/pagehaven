@@ -14,6 +14,7 @@ data/raw/ocr/<series>/<issue>/<chapter>.json          人工校对后的 OCR 稿
 把 LabelPlus 导出的 txt 传到这个位置，然后在 CNB 的 main 分支详情页点「发布」按钮，`chapters` 填
 `<series>/<issue>/<chapter>`（多话逗号分隔）。扩展名 `.TXT` 也认；`data/raw/labelplus/` 下除 README
 与点文件之外的其它文件会被提示「不是 .txt」——不是稿就删掉。
+同一话同时有多份仅扩展名大小写不同的稿时，全部列为冲突，不会自动挑一份导入；请只保留一份。
 
 ## ingest 做什么
 
@@ -24,6 +25,11 @@ data/raw/ocr/<series>/<issue>/<chapter>.json          人工校对后的 OCR 稿
   提示（没台词的页很常见）；meta 里没有这一话 → **错误**（先补 meta）；
 - 写 `data/text/<series>/<issue>/<chapter>.json`，内容没变不重写；
 - 所有错误列全再以非零退出；**提示（⚠）不影响退出码**。
+
+导入前可在 Codespaces 运行 `npm run ingest:labelplus -- --dry-run`，列出将新增、更新、
+保持不变的章节及全部诊断，不创建目录、不写文件。预览沿用下面的环境变量；通过后去掉
+`--dry-run` 才执行导入。普通导入逐章处理，某章失败时其他有效章节仍会写入，最终以非零
+退出；需要先核对整批问题时请先预览。`--help` 显示用法，未知参数会在导入前报错。
 
 `chapters` 里列了、却没有稿的话：meta 里有这一话 → 只提示并跳过（这正是 `ocr`
 输入要补的话，ingest:ocr 在后面拿同一份 `chapters` 跑）；meta 里也没有 → 错误，

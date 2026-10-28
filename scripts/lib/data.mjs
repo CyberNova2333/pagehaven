@@ -23,6 +23,19 @@ async function walk(dir, out = []) {
   return out;
 }
 
+// 文件名会成为跨平台路径；大小写不一致不能在检查时被当作空内容忽略。
+function contentFiles(files, extensions, dataDir, problems) {
+  return files.sort().filter((file) => {
+    const ext = extname(file);
+    if (!extensions.includes(ext.toLowerCase())) return false;
+    if (ext !== ext.toLowerCase()) {
+      problems.push(`${relative(dataDir, file)}: 扩展名必须小写，请改为 ${ext.toLowerCase()}`);
+      return false;
+    }
+    return true;
+  });
+}
+
 /**
  * @param {{dataDir?: string, imagePrefix?: string}} [opts]
  * @returns {Promise<import('@gallery/core').Gallery & {problems: never}>}
@@ -32,7 +45,7 @@ export async function loadGallery({ dataDir = DATA_DIR, imagePrefix = 'img/' } =
   const textDir = join(dataDir, 'text');
   const problems = [];
   const seriesList = [];
-  const metaFiles = (await walk(metaDir)).filter((f) => ['.yaml', '.yml'].includes(extname(f))).sort();
+  const metaFiles = contentFiles(await walk(metaDir), ['.yaml', '.yml'], dataDir, problems);
   for (const f of metaFiles) {
     const source = relative(dataDir, f);
     let raw;
@@ -52,7 +65,7 @@ export async function loadGallery({ dataDir = DATA_DIR, imagePrefix = 'img/' } =
     }
   }
   const texts = new Map();
-  for (const f of (await walk(textDir)).filter((f) => extname(f) === '.json').sort()) {
+  for (const f of contentFiles(await walk(textDir), ['.json'], dataDir, problems)) {
     const source = relative(dataDir, f);
     let raw;
     try {
