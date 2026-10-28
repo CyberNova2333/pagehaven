@@ -145,6 +145,8 @@ export function mountBookmarkLibrary(root, options = {}) {
   root.querySelector('[data-bookmark-toolbar]').hidden = false;
   refresh();
   return {
+    get hasPending() { return store.hasPending; },
+    get isEditing() { return Boolean(editing); },
     destroy() {
       unsubscribe();
       filter.removeEventListener('change', onFilter);

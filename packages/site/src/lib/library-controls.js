@@ -237,6 +237,7 @@ export function mountLibrary(root, options = {}) {
   refresh();
   root.setAttribute('aria-busy', 'false');
   return {
+    get hasPending() { return store.hasPending; },
     destroy() {
       filter.removeEventListener('change', onFilter);
       search.removeEventListener('input', onFilter);

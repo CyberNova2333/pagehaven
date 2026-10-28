@@ -74,9 +74,38 @@ const catalog = gallery.series.map((series) => ({
       <button id="bookmark-more" class="btn" type="button" hidden>显示更多书签</button>
     </section>
 
+    <section id="reading-backup" class="reading-backup card card-pad" aria-labelledby="backup-heading" aria-busy="false" hidden>
+      <div class="backup-heading">
+        <div><p class="eyebrow">Keep your place</p><h2 id="backup-heading">备份与恢复</h2></div>
+        <span class="tag">仅在设备上处理</span>
+      </div>
+      <p class="muted library-help">下载书架、阅读进度、页码书签和备注，换设备或迁移域名时再恢复。只备份已保存的记录，文件不会上传。</p>
+      <div class="backup-actions">
+        <button class="btn btn-primary" id="backup-export" type="button">下载备份</button>
+        <label class="backup-file" for="backup-file"><span>选择备份文件以预览恢复</span><input id="backup-file" type="file" accept="application/json,.json" aria-describedby="backup-help" /></label>
+      </div>
+      <p id="backup-help" class="muted library-help">支持本站导出的 JSON 备份，最多 5 MiB、20,000 条记录。恢复按作品和章节标识匹配；合法的旧目录记录也会保留。</p>
+      <a class="backup-download" id="backup-download" hidden>再次下载刚才的备份</a>
+      <div id="backup-preview" class="backup-preview" hidden>
+        <h3>导入预览</h3>
+        <label for="backup-mode" class="backup-mode">重复记录如何处理
+          <select id="backup-mode">
+            <option value="keep-existing">保留本机已有记录（推荐）</option>
+            <option value="use-backup">相同记录使用备份内容</option>
+          </select>
+        </label>
+        <p class="muted library-help">两种方式都会合并页码收藏，不删除备份之外的记录。“修复”表示用有效备份替换损坏记录。</p>
+        <div class="backup-table-wrap"><table class="backup-table"><caption class="backup-caption">本次导入将如何处理各类记录</caption><thead><tr><th scope="col">记录</th><th scope="col">新增</th><th scope="col">替换</th><th scope="col">保留</th><th scope="col">修复</th></tr></thead><tbody id="backup-summary"></tbody></table></div>
+        <p class="muted library-help" id="backup-details"></p>
+        <div class="backup-actions"><button id="backup-apply" class="btn btn-primary" type="button" disabled>确认导入</button><button id="backup-cancel" class="btn" type="button">取消</button></div>
+      </div>
+      <button id="backup-refresh" class="btn" type="button" hidden>重新预览</button>
+      <p id="backup-feedback" class="library-help" role="status" aria-live="polite"></p>
+    </section>
+
     <p class="library-back"><a class="btn" href="/">浏览作品 →</a></p>
-    <p class="muted library-help">收藏和状态只保存在本浏览器，不会自动跨设备同步。清除站点数据后需要重新添加；移出书架会保留阅读进度。</p>
-    <noscript><p class="library-notice">个人书架需要启用 JavaScript 才能读取浏览器中的收藏。仍可<a href="/">回首页浏览作品</a>。</p></noscript>
+    <p class="muted library-help">收藏和状态只保存在本浏览器，不会自动跨设备同步。清除站点数据前请下载备份；移出书架会保留阅读进度。</p>
+    <noscript><p class="library-notice">个人书架、备份与恢复需要启用 JavaScript 才能读取浏览器中的收藏。仍可<a href="/">回首页浏览作品</a>。</p></noscript>
     <script id="library-catalog" type="application/json" set:html={jsonForScript(catalog)} />
   </section>
 </Base>
@@ -84,10 +113,29 @@ const catalog = gallery.series.map((series) => ({
 <script>
   import { mountLibrary } from '../../lib/library-controls.js';
   import { mountBookmarkLibrary } from '../../lib/library-bookmarks.js';
+  import { mountReadingBackup } from '../../lib/reading-backup-controls.js';
   const root = document.getElementById('library-root');
-  if (root) mountLibrary(root);
   const bookmarks = document.getElementById('library-bookmarks');
-  if (bookmarks) mountBookmarkLibrary(bookmarks);
+  let libraryController;
+  let bookmarkController;
+  const mountViews = () => {
+    if (root) libraryController = mountLibrary(root);
+    if (bookmarks) bookmarkController = mountBookmarkLibrary(bookmarks);
+  };
+  mountViews();
+  const backup = document.getElementById('reading-backup');
+  if (backup) mountReadingBackup(backup, {
+    canTransfer: () => {
+      if (bookmarkController?.isEditing) return '请先保存或取消正在编辑的书签备注，再备份或导入。';
+      if (libraryController?.hasPending || bookmarkController?.hasPending) return '本页有尚未保存到浏览器的修改，请先重试保存，再备份或导入。';
+      return '';
+    },
+    onImported: () => {
+      libraryController?.destroy();
+      bookmarkController?.destroy();
+      mountViews();
+    },
+  });
 </script>
 
 <style is:global>
@@ -118,6 +166,25 @@ const catalog = gallery.series.map((series) => ({
   .library-item select { max-width: 100%; font-size: 0.85rem; }
   .library-notice { border-left: 3px solid var(--highlight); padding: 0.7rem 1rem; background: var(--surface-soft); border-radius: 0.4rem; font-size: 0.9rem; }
   .library-back { margin-top: 1.4rem; }
+  .reading-backup { margin-top: 2.3rem; scroll-margin-top: 8rem; }
+  .backup-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; }
+  .backup-heading h2 { margin: 0; }
+  .backup-heading .eyebrow { margin: 0 0 0.2rem; }
+  .backup-actions { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin: 1rem 0; }
+  .backup-file, .backup-mode { display: grid; gap: 0.35rem; font-size: 0.85rem; min-width: 0; max-width: 100%; }
+  .backup-file input { max-width: 100%; color: var(--text); font: inherit; }
+  .backup-file input::file-selector-button { border: 1px solid var(--line); border-radius: 0.6rem; background: var(--surface-soft); color: var(--ink); padding: 0.55rem 0.8rem; margin-right: 0.6rem; font: inherit; cursor: pointer; }
+  .backup-mode select { padding: 0.6rem; border: 1px solid var(--line); border-radius: 0.6rem; background: var(--surface); color: var(--ink); font: inherit; }
+  .backup-preview { border-top: 1px solid var(--line); margin-top: 1.2rem; padding-top: 0.8rem; }
+  .backup-preview h3 { margin: 0.5rem 0 0.8rem; }
+  .backup-table-wrap { overflow-x: auto; }
+  .backup-table { border-collapse: collapse; width: 100%; text-align: left; font-size: 0.85rem; }
+  .backup-caption { text-align: left; color: var(--text-dim); margin-bottom: 0.5rem; }
+  .backup-table th, .backup-table td { padding: 0.6rem 0.4rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .backup-table td { font-variant-numeric: tabular-nums; }
+  .backup-download { font-size: 0.85rem; }
+  #backup-feedback { overflow-wrap: anywhere; }
+  #backup-feedback:empty { display: none; }
   #library-feedback:empty { display: none; }
   .library-bookmarks { margin-top: 2.3rem; scroll-margin-top: 8rem; }
   .bookmark-list { display: grid; gap: 0.8rem; list-style: none; padding: 0; }
