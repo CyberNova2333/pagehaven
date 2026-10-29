@@ -142,58 +142,58 @@ const catalog = gallery.series.map((series) => ({
   .library-heading { margin-bottom: 1.5rem; }
   .library-heading h1 { margin: 0; }
   .library-heading .lede { margin-bottom: 0.5rem; }
-  .library-help { font-size: 0.85rem; }
+  .library-help { font-size: 14px; }
   .library-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin-bottom: 1rem; }
-  .library-toolbar label { display: grid; gap: 0.35rem; font-size: 0.85rem; }
+  .library-toolbar label { display: grid; gap: 0.35rem; font-size: 14px; }
   .library-toolbar input, .library-toolbar select, .library-item select {
-    padding: 0.65rem 0.8rem; border: 1px solid var(--line); border-radius: 0.8rem;
+    padding: 0.65rem 0.8rem; border: 1px solid var(--line); border-radius: 4px;
     background: var(--surface); color: var(--ink); font: inherit; min-height: 2.7rem;
   }
   .library-search { flex: 1; min-width: min(100%, 12rem); }
   .library-toolbar input { width: 100%; min-width: 0; }
-  .library-toolbar p { margin: 0 0 0.6rem; font-size: 0.85rem; }
+  .library-toolbar p { margin: 0 0 0.6rem; font-size: 14px; }
   .library-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
   .library-item { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; padding: 1.1rem; }
-  .library-cover { display: block; aspect-ratio: 600 / 879; background: var(--cover-bg); border-radius: 0.7rem; overflow: hidden; color: var(--accent-alt); }
+  .library-cover { display: block; aspect-ratio: 600 / 879; background: var(--cover-bg); border-radius: 4px; overflow: hidden; color: var(--accent-alt); }
   .library-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  .library-cover span { display: grid; place-items: center; height: 100%; font-family: var(--font-serif); font-size: 1.5rem; }
-  .library-item h2 { margin: 0 0 0.35rem; font-size: 1.15rem; overflow-wrap: anywhere; }
-  .library-item p { margin: 0.3rem 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+  .library-cover span { display: grid; place-items: center; height: 100%; font-family: var(--font-serif); font-size: 24px; }
+  .library-item h2 { margin: 0 0 0.35rem; font-size: 20px; overflow-wrap: anywhere; }
+  .library-item p { margin: 0.3rem 0; font-size: 14px; overflow-wrap: anywhere; }
   .library-item-body { min-width: 0; }
   .library-item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.7rem; }
-  .library-item-actions .btn { padding: 0.5rem 0.8rem; font-size: 0.85rem; }
-  .library-item-status { display: grid; gap: 0.3rem; font-size: 0.8rem; color: var(--text-dim); }
-  .library-item select { max-width: 100%; font-size: 0.85rem; }
-  .library-notice { border-left: 3px solid var(--highlight); padding: 0.7rem 1rem; background: var(--surface-soft); border-radius: 0.4rem; font-size: 0.9rem; }
+  .library-item-actions .btn { padding: 0.5rem 0.8rem; font-size: 14px; }
+  .library-item-status { display: grid; gap: 0.3rem; font-size: 12px; color: var(--text-dim); }
+  .library-item select { max-width: 100%; font-size: 14px; }
+  .library-notice { border-left: 3px solid var(--highlight); padding: 0.7rem 1rem; background: var(--surface-soft); border-radius: 4px; font-size: 14px; }
   .library-back { margin-top: 1.4rem; }
   .reading-backup { margin-top: 2.3rem; scroll-margin-top: 8rem; }
   .backup-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; }
   .backup-heading h2 { margin: 0; }
   .backup-heading .eyebrow { margin: 0 0 0.2rem; }
   .backup-actions { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin: 1rem 0; }
-  .backup-file, .backup-mode { display: grid; gap: 0.35rem; font-size: 0.85rem; min-width: 0; max-width: 100%; }
+  .backup-file, .backup-mode { display: grid; gap: 0.35rem; font-size: 14px; min-width: 0; max-width: 100%; }
   .backup-file input { max-width: 100%; color: var(--text); font: inherit; }
-  .backup-file input::file-selector-button { border: 1px solid var(--line); border-radius: 0.6rem; background: var(--surface-soft); color: var(--ink); padding: 0.55rem 0.8rem; margin-right: 0.6rem; font: inherit; cursor: pointer; }
-  .backup-mode select { padding: 0.6rem; border: 1px solid var(--line); border-radius: 0.6rem; background: var(--surface); color: var(--ink); font: inherit; }
+  .backup-file input::file-selector-button { border: 1px solid var(--line); border-radius: 4px; background: var(--surface-soft); color: var(--ink); padding: 0.55rem 0.8rem; margin-right: 0.6rem; font: inherit; cursor: pointer; }
+  .backup-mode select { padding: 0.6rem; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); font: inherit; }
   .backup-preview { border-top: 1px solid var(--line); margin-top: 1.2rem; padding-top: 0.8rem; }
   .backup-preview h3 { margin: 0.5rem 0 0.8rem; }
   .backup-table-wrap { overflow-x: auto; }
-  .backup-table { border-collapse: collapse; width: 100%; text-align: left; font-size: 0.85rem; }
+  .backup-table { border-collapse: collapse; width: 100%; text-align: left; font-size: 14px; }
   .backup-caption { text-align: left; color: var(--text-dim); margin-bottom: 0.5rem; }
   .backup-table th, .backup-table td { padding: 0.6rem 0.4rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
   .backup-table td { font-variant-numeric: tabular-nums; }
-  .backup-download { font-size: 0.85rem; }
+  .backup-download { font-size: 14px; }
   #backup-feedback { overflow-wrap: anywhere; }
   #backup-feedback:empty { display: none; }
   #library-feedback:empty { display: none; }
   .library-bookmarks { margin-top: 2.3rem; scroll-margin-top: 8rem; }
   .bookmark-list { display: grid; gap: 0.8rem; list-style: none; padding: 0; }
-  .bookmark-row h3 { margin: 0; font-size: 1.05rem; }
+  .bookmark-row h3 { margin: 0; font-size: 16px; }
   .bookmark-row p { margin: 0.5rem 0; }
   .bookmark-row .bookmark-body { white-space: pre-wrap; overflow-wrap: anywhere; }
   .library-bookmark-editor { margin-bottom: 1rem; }
   .library-bookmark-editor h3 { margin: 0 0 0.7rem; }
-  .library-bookmark-editor textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; padding: 0.7rem; margin: 0.5rem 0; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 0.7rem; }
+  .library-bookmark-editor textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; padding: 0.7rem; margin: 0.5rem 0; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
   #bookmark-feedback:empty { display: none; }
   #library-root [hidden] { display: none; }
   @media (max-width: 48rem) { .library-grid { grid-template-columns: 1fr; } }

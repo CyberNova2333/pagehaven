@@ -13,13 +13,13 @@ function contrast(left, right) {
   return (bright + 0.05) / (dark + 0.05);
 }
 
-test('站点外观：旧配置保持纸色青绿，三套主题共用完整变量契约', () => {
+test('站点外观：旧配置采用品牌蓝，三套预设共用完整变量契约', () => {
   const current = appearanceVariables();
-  assert.equal(current['--accent'], '#28776e');
-  assert.equal(current['--surface'], '#fffdf7');
-  assert.equal(current['--ink'], '#203540');
+  assert.equal(current['--accent'], '#0c5cab');
+  assert.equal(current['--surface'], '#eeeeef');
+  assert.equal(current['--ink'], '#09090b');
   assert.equal(current['--color-scheme'], 'light');
-  assert.equal(current['--text-overlay'], 'rgba(25, 42, 51, 0.88)');
+  assert.equal(current['--text-overlay'], 'rgba(9, 9, 11, 0.88)');
   assert.equal(current['--font-heading'], 'var(--font-serif)');
   for (const [theme, { label, accent }] of Object.entries(THEMES)) {
     assert.ok(label);
@@ -62,10 +62,10 @@ test('站点外观：三套深色主题覆盖完整语义变量，正文与链�
         assert.ok(contrast(dark[text], dark[surface]) >= 4.5, `${theme} ${text} 在 ${surface} 上对比不足`);
       }
     }
-    for (const variable of ['--bg-top', '--bg-mid', '--bg-low', '--surface', '--surface-soft', '--ink', '--text', '--text-dim', '--line', '--glow-one', '--cover-bg', '--shadow', '--reader-bg']) {
+    for (const variable of ['--bg-top', '--bg-mid', '--bg-low', '--surface', '--surface-soft', '--ink', '--text', '--text-dim', '--line', '--cover-bg']) {
       assert.notEqual(dark[variable], sameThemeLight[variable], `${theme} ${variable} 应适配深色`);
     }
-    assert.match(dark['--shadow'], /rgba\(0, 0, 0, /, '深色阴影不使用浅色文字产生白色光晕');
+    assert.equal(dark['--shadow'], 'none', '平面分区不使用装饰投影');
     assert.ok(contrast(dark['--text-overlay-foreground'], dark['--reader-bg']) >= 4.5, '深色文字标注必须使用浅色前景');
   }
 });
