@@ -44,7 +44,7 @@ function update() {
   saveState.classList.toggle('dirty', dirty);
   const accent = /^#[\da-f]{6}$/i.test(settings.accent) ? settings.accent : '';
   for (const [property, value] of Object.entries(appearanceVariables({ theme: settings.theme, accent, font: settings.font }, previewScheme.value))) preview.style.setProperty(property, value);
-  picker.value = accent || THEMES[settings.theme]?.accent || '#28776e';
+  picker.value = accent || THEMES[settings.theme]?.accent || '#0c5cab';
   document.querySelector('#preview-title').textContent = settings.title || '你的站点';
   document.querySelector('#preview-tagline').textContent = settings.tagline;
   for (const [name, id] of [['showLibrary', 'library'], ['showSearch', 'search'], ['textLayer', 'text-layer'], ['enhancedReader', 'enhanced-reader']]) document.querySelector(`#preview-${id}`).hidden = !settings[name];

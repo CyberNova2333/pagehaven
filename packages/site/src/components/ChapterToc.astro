@@ -44,22 +44,22 @@ const { series, issue, chapter } = Astro.props;
 
 <style is:global>
   .reader .toc .toc-static { display: flex; flex-wrap: wrap; gap: 0.8rem; }
-  .reader .toc .toc-current, .reader .toc .toc-status { color: var(--text-dim); font-size: 0.82rem; margin: 0.5rem 0; }
+  .reader .toc .toc-current, .reader .toc .toc-status { color: var(--text-dim); font-size: 14px; margin: 0.5rem 0; }
   .reader .toc .toc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
   .reader .toc .toc-tools[hidden], .reader .toc [data-toc-retry][hidden] { display: none; }
-  .reader .toc .toc-tools label { width: 100%; font-size: 0.85rem; }
+  .reader .toc .toc-tools label { width: 100%; font-size: 14px; }
   .reader .toc .toc-tools input { flex: 1; min-width: 8rem; max-width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
-  .reader .toc .toc-tools .toc-progress-filter { display: flex; align-items: center; gap: 0.4rem; width: auto; font-size: 0.8rem; }
+  .reader .toc .toc-tools .toc-progress-filter { display: flex; align-items: center; gap: 0.4rem; width: auto; font-size: 12px; }
   .reader .toc .toc-tools select { min-width: 0; max-width: 100%; padding: 0.45rem 0.6rem; font: inherit; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); }
-  .reader .toc .toc-progress-summary, .reader .toc .toc-progress-note { margin: 0.5rem 0; color: var(--text-dim); font-size: 0.75rem; }
+  .reader .toc .toc-progress-summary, .reader .toc .toc-progress-note { margin: 0.5rem 0; color: var(--text-dim); font-size: 12px; }
   .reader .toc .toc-progress-summary:empty { display: none; }
   .reader .toc .toc-progress-note { border-left: 2px solid var(--highlight); padding-left: 0.5rem; }
   .reader .toc .toc-progress-note[hidden] { display: none; }
   .reader .toc .toc-chapters { margin: 0.6rem 0 0; padding: 0; list-style: none; max-height: min(20rem, 45vh); overflow: auto; overscroll-behavior: contain; }
   .reader .toc .toc-chapters li { display: grid; gap: 0.1rem; padding: 0.4rem 0.2rem; }
   .reader .toc .toc-chapters a { overflow-wrap: anywhere; }
-  .reader .toc .toc-chapters small { color: var(--text-dim); font-size: 0.75rem; }
-  .reader .toc .toc-progress { width: fit-content; max-width: 100%; color: var(--accent-strong); background: var(--accent-soft); border-radius: 0.4rem; padding: 0.05rem 0.4rem; font-size: 0.72rem; }
+  .reader .toc .toc-chapters small { color: var(--text-dim); font-size: 12px; }
+  .reader .toc .toc-progress { width: fit-content; max-width: 100%; color: var(--accent-strong); background: var(--accent-soft); border-radius: 4px; padding: 0.05rem 0.4rem; font-size: 12px; }
   .reader .toc .toc-progress[data-state="new"], .reader .toc .toc-progress[data-state="unavailable"] { color: var(--text-dim); background: var(--surface-soft); }
   .reader .toc .toc-chapters a[aria-current="page"] { color: var(--accent-strong); font-weight: 700; }
 </style>
