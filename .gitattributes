@@ -8,3 +8,9 @@ tools/*.cmd text eol=crlf
 *.webp -text
 *.sqlite -text
 *.zst -text
+
+# Portable repository maintenance hooks
+tools/repo_maintenance_guard.py text eol=lf
+tools/githooks/pre-commit text eol=lf
+tools/githooks/commit-msg text eol=lf
+tools/githooks/pre-push text eol=lf

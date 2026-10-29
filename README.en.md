@@ -12,7 +12,7 @@
 <p align="center">Good stories, between the pages.</p>
 
 <p align="center">
-  <a href="#features">Features</a> · <a href="#getting-started">Getting started</a> · <a href="#deployment">Deployment</a> · <a href="#section-1">Architecture</a> · <a href="#limitations">Current limits</a>
+  <a href="#Features">Features</a> · <a href="#Getting started">Getting started</a> · <a href="#Deployment">Deployment</a> · <a href="#Architecture">Architecture</a> · <a href="#Current limits">Current limits</a>
 </p>
 
 **Pagehaven is a general-purpose static comic site.** It brings a comic catalog, reader, and dialogue search together, with three light and dark palettes built around paper, ink, and teal, for building your own comic library.
@@ -20,8 +20,6 @@
 Built with Astro, the site can be deployed to Cloudflare Pages, EdgeOne Makers, or GitHub Pages. Images and search databases live in object storage and are read through a CDN; browsing and search do not require an always-running application server. The repository includes no actual comics, hosted accounts, or preconfigured deployment projects.
 
 Chinese is the default README; use the buttons above to switch languages. The website currently has a Chinese interface. The README language switch changes documentation only.
-
-<a id="features"></a>
 
 ## Features
 
@@ -71,10 +69,6 @@ The library, search, bookmarks, and reading controls share the selected appearan
 Files are processed in the browser without uploads, accounts, or a backend. Migration matches series and chapter identifiers. Valid records for removed or not-yet-listed content are retained but remain hidden until the catalog matches; an orphaned note does not recreate a bookmark. Only successfully saved records are backed up. Save temporary changes and finish or cancel an open note edit before transferring data.
 
 Backups are limited to **5 MiB and 20,000 records**, counting each bookmarked page separately. Invalid formats, versions, or contents are rejected; exporting skips damaged old records and reports their count. Changes after preview require another preview. Failed writes attempt to restore data written by that import and report incomplete recovery accurately. Keep the original backup, review the reported result, and retry when appropriate.
-
-<a id="section-2"></a>
-<a id="section-3"></a>
-<a id="getting-started"></a>
 
 ## Getting started
 
@@ -194,8 +188,6 @@ The JSON report contains `ok`, `dataDir`, `totals`, `coverage`, `missingText`, `
 `coverage` are `null`. For machine-readable output, use `--silent` as shown above to suppress npm's
 own script banner.
 
-<a id="deployment"></a>
-
 ## Deployment
 
 The deployment adapters support **Cloudflare Pages, EdgeOne Makers, and GitHub Pages**. `npm run build` only generates files. Production releases are started manually with the release button on the CNB branch page. Pushing `main` runs checks only; there are no automatic or scheduled deployments.
@@ -207,8 +199,6 @@ The CNB release form requires `publish_secrets_url`. Selecting a deployment targ
 Secret-file addresses use HTTPS and the `/-/blob/<ref>/<file>.yml` form; YAML and JSON files are also supported. Do not embed credentials, query parameters, or fragments in these addresses. CNB checks file existence and access permissions. Keep account identifiers and credentials out of the repository.
 
 See the [architecture](docs/ARCHITECTURE.md), [collaboration and pipeline guide](CONTRIBUTING.md), and [release form](.cnb/web_trigger.yml) for platform differences and release parameters. The latest recorded release status is in [`STATUS.md`](STATUS.md).
-
-<a id="section-1"></a>
 
 ## Architecture
 
@@ -228,8 +218,6 @@ flowchart LR
 
 Platform-independent code uses Web-standard APIs. Filesystem access and publishing stay in build scripts. GitHub Pages is the static baseline: core reading and browser-side search should remain available with platform-specific configuration disabled.
 
-<a id="section-4"></a>
-
 ### Repository layout
 
 | Path | Responsibility |
@@ -246,8 +234,6 @@ Platform-independent code uses Web-standard APIs. Filesystem access and publishi
 
 Internal packages keep the `@gallery/*` names, and reading records keep the `gallery:*` storage keys. The project rename does not change these interfaces or existing records.
 
-<a id="limitations"></a>
-
 ## Current limits
 
 - Dialogue search currently downloads the whole database, with a default limit of **30 MiB**. Range-fetch components exist, but the SQLite Range VFS and function-based search are not connected yet.
@@ -256,18 +242,26 @@ Internal packages keep the `@gallery/*` names, and reading records keep the `gal
 - There are no user accounts, comments, or web-based upload administration. The website does not yet have a Chinese/English interface switch.
 - Current deployment entry points target the three static hosts above. A Cloudflare Workers application deployment workflow is not provided yet.
 
-<a id="section-5"></a>
-
 ## Contributing
 
 Work directly on `main`; there is no routine PR workflow. Keep one feature per commit, use a Conventional Commits prefix with a Chinese description, and follow the authorship, signing, and documentation rules. Keep feature descriptions, commands, and limits synchronized between both README languages.
 
 Before committing, run `npm run check`, `npm test`, and `npm run build`. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full rules. Automated collaborators must also read [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md). These maintenance documents are currently authoritative in Chinese.
 
-<a id="section-6"></a>
-
 ## License
 
 The project uses [GPL-3.0](LICENSE). Third-party components retain their own licenses. The optional pagination component's license is included in [`packages/site/public/licenses/comimi.txt`](packages/site/public/licenses/comimi.txt); collaboration-guard provenance is documented in [`tools/NOTICE.md`](tools/NOTICE.md).
 
 The enhanced reader uses `site.title` and `site.logo`, which defaults to the site's favicon. Its reader information panel links to the third-party component's full MIT license. The interface branding changes preserve the original copyright and license notices, which ship with the static output.
+
+## Documentation site
+
+The [Chinese living guide](repo-docs/README.md) follows one real workflow and states what it leaves uncovered. Build or serve it with its separate Node.js dependencies:
+
+```sh
+npm --prefix docs-site ci
+npm --prefix docs-site run docs:dev -- --host 127.0.0.1
+npm --prefix docs-site run docs:build
+```
+
+The documentation site uses the default VitePress theme, with dependencies installed separately from the application. Output defaults to `docs-site/.vitepress/dist/`; append `-- --outDir <external-absolute-directory>` for an isolated build. Markdown remains in `repo-docs/` and is included by the site. Repository source links are shown as exact paths; source files and local resources are not published.

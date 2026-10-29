@@ -12,7 +12,7 @@
 <p align="center">在页间，遇见好故事。</p>
 
 <p align="center">
-  <a href="#features">主要功能</a> · <a href="#怎么跑">开始使用</a> · <a href="#deployment">部署</a> · <a href="#section-1">架构</a> · <a href="#limitations">当前边界</a>
+  <a href="#主要功能">主要功能</a> · <a href="#怎么跑">开始使用</a> · <a href="#部署">部署</a> · <a href="#架构">架构</a> · <a href="#当前边界">当前边界</a>
 </p>
 
 **页间是一个通用的静态漫画站。** 它把作品目录、漫画阅读器和台词检索放在一起，以纸色、墨色与青绿为基础，提供三套深浅配色，适合建立自己的漫画资料库。
@@ -20,8 +20,6 @@
 站点由 Astro 构建，可部署到 Cloudflare Pages、EdgeOne Makers 或 GitHub Pages。图片与检索库保存在对象存储中，经 CDN 读取；浏览与检索不需要常驻应用服务器。仓库默认不附带实际漫画、线上账号或已配置的部署项目。
 
 中文是默认 README；顶部按钮可切换到英文。网站当前默认中文界面，README 的语言切换只切换文档。
-
-<a id="features"></a>
 
 ## 主要功能
 
@@ -67,10 +65,6 @@
 文件不上传服务器，无需账号或后台。迁移按作品与章节标识匹配；当前目录中已移除或尚未收录的合法记录仍会保留，但暂不显示，孤立备注不会重新创建书签。备份只包含已成功保存的记录；本页存在未保存的临时修改或正在编辑的备注时，先完成保存或取消编辑。
 
 支持的备份上限为 **5 MiB、20,000 条记录**，每个收藏页单独计数。格式、版本或内容不合法时拒绝导入；导出跳过损坏的旧记录并提示数量。预览后检测到数据变化时需重新预览。写入失败会尝试恢复本次已写数据，并如实提示恢复不完整的情况；请保留原备份，按提示核对后再重试。
-
-<a id="section-2"></a>
-<a id="section-3"></a>
-<a id="怎么跑"></a>
 
 ## 怎么跑
 
@@ -185,8 +179,6 @@ JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`em
 `searchableBoxes` 统计含非空检索文本的章节、页和框；失败时 `totals` 与 `coverage` 为 `null`。
 机器读取时使用上面的 `--silent` 命令，避免 npm 自身的脚本标题混入标准输出。
 
-<a id="deployment"></a>
-
 ## 部署
 
 现有部署适配器支持 **Cloudflare Pages、EdgeOne Makers、GitHub Pages**。`npm run build` 只产生文件；正式发布由 CNB 分支详情页的「发布」按钮手动触发。推送 `main` 只自动检查，不自动部署，也没有定时发布。
@@ -198,8 +190,6 @@ CNB 发布表单中的 `publish_secrets_url` 必填；选择部署目标时还�
 密钥文件地址使用 HTTPS 和 `/-/blob/<ref>/<file>.yml` 格式，也支持 YAML、JSON；地址中不携带凭据、查询参数或片段。存在性和访问权限由 CNB 检查，账号与凭据不写进仓库。
 
 平台差异和发布参数见 [架构说明](docs/ARCHITECTURE.md)、[协作与流水线说明](CONTRIBUTING.md) 及 [发布表单](.cnb/web_trigger.yml)。最近一次发布状态见 [`STATUS.md`](STATUS.md)。
-
-<a id="section-1"></a>
 
 ## 架构
 
@@ -219,9 +209,6 @@ flowchart LR
 
 平台无关代码只使用 Web 标准 API，文件系统与发布操作留在构建脚本。GitHub Pages 是纯静态验收基线；平台专属配置关闭后，基本阅读与浏览器端搜索仍应可用。
 
-<a id="section-4"></a>
-<a id="目录"></a>
-
 ### 目录
 
 | 路径 | 职责 |
@@ -238,8 +225,6 @@ flowchart LR
 
 内部包名沿用 `@gallery/*`，阅读记录沿用 `gallery:*` 存储键；项目更名不改变这些接口与既有记录。
 
-<a id="limitations"></a>
-
 ## 当前边界
 
 - 台词检索目前整库下载，默认上限 **30 MiB**；Range 组件已经存在，但 SQLite Range VFS 与函数版检索尚未接通。
@@ -248,20 +233,28 @@ flowchart LR
 - 当前没有用户系统、评论或在线上传后台；站点界面尚未提供中英文切换。
 - 当前部署入口是三种静态托管平台，尚未提供 Cloudflare Workers 应用部署流程。
 
-<a id="section-5"></a>
-<a id="参与开发"></a>
-
 ## 参与开发
 
 直接提交 `main`，没有常规 PR 流程。一功能一 commit，使用 Conventional Commits 前缀和中文描述，遵循署名、签名与文档约定。修改双语 README 时，同步更新两种语言的功能描述、命令和限制。
 
 提交前运行 `npm run check`、`npm test` 和 `npm run build`。完整规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，自动化协作者还需阅读 [`CLAUDE.md`](CLAUDE.md) 与 [`AGENTS.md`](AGENTS.md)。这些维护文档目前以中文为准。
 
-<a id="section-6"></a>
-<a id="许可"></a>
-
 ## 许可
 
 项目使用 [GPL-3.0](LICENSE)。第三方组件保留各自许可；可选分页组件的许可位于 [`packages/site/public/licenses/comimi.txt`](packages/site/public/licenses/comimi.txt)，协作守卫来源见 [`tools/NOTICE.md`](tools/NOTICE.md)。
 
 增强阅读器的界面名称跟随 `site.title`，图标使用 `site.logo`，默认即站点 favicon；“阅读器说明”提供第三方组件完整 MIT 许可链接。界面品牌调整保留原版权和许可声明，许可文件随静态产物分发。
+
+## 源码阅读与文档站
+
+从[中文阅读路径](repo-docs/README.md)进入[一次真实主流程](repo-docs/walkthroughs/one-real-run.md)，再查[代码地图](repo-docs/code-map.md)与[源码证据](repo-docs/references/source-evidence.md)。指南明确限定覆盖范围，不把未运行的测试写成通过。
+
+文档站采用 VitePress 默认主题，依赖与业务项目分开安装。默认输出 `docs-site/.vitepress/dist/`；独立核验可在构建命令后加 `-- --outDir <仓库外绝对目录>`。指南正文只维护 `repo-docs/`，站点通过 include 读取；网页中的仓库源码链接显示为精确文件路径，不复制源码或本机资源。
+
+```sh
+npm --prefix docs-site ci
+npm --prefix docs-site run docs:dev -- --host 127.0.0.1
+npm --prefix docs-site run docs:build
+```
+
+文档站采用 VitePress 默认主题；默认输出 `docs-site/.vitepress/dist/`，独立验证使用 `-- --outDir <仓库外绝对目录>`。指南正文由 repo-docs include 引入，源码链接在网页中显示为精确路径。
