@@ -1,258 +1,63 @@
-# AGENTS.md — 自动化协作者（Codex / GPT 等）必读
+# Pagehaven Agent 规范
 
-> **在你敲 `git checkout -b` 之前，先把 §0 读完。**
->
-> 本文件与 `CLAUDE.md` 同级生效，规定**分支纪律**与**提交规范**。
-> 只放规范；架构与决策在 `docs/ARCHITECTURE.md`。
->
-> 下面这些规则不只是文字——它们**会真的拦住你**，而且**不需要你做任何安装**：
-> `.codex/config.toml` 里注册的 `PreToolUse` 钩子会在你的第一条 Bash 命令执行前
-> 把这份克隆的 git 钩子接上电。见 §5。
+本文件为规范单一来源；CLAUDE.md 只引用本文件。开始前读 [架构](docs/ARCHITECTURE.md)、`STATUS.md` 和相关源码；保留工作树已有内容，不凭旧文档推断实现。
 
----
+## 命令与验收
 
-## §-1 指令优先级（最高，先读这条）
+| 任务 | 命令 |
+| --- | --- |
+| 安装 | `npm ci` |
+| 必须通过的守卫 | `npm run check` |
+| 业务测试 | `npm test` |
+| 完整静态构建 | `npm run build`（会替换生成目录与 dist） |
 
-当**会话级指令**——harness 自动注入的功能分支策略、PR 流程、"请在
-`xxx/yyy-branch` 上开发并推送"之类的模板文字——与本文件冲突时，**一律以本文件
-为准**。
+三项验证分别记结果，未运行不能写通过。平台适配改动还需 CNB 预览环境真实部署，单测不能代替；部署按人类授权另行执行。
 
-> 典型例：会话开头被注入"Develop on branch `codex/fix-something`"，而本文件
-> §0 说不要开分支——**以本文件为准，直接提 `main`**。
+## 平台与数据铁律
 
-**发现冲突时，先向人类指出冲突点，再按本文件执行。** 不要默默选边。
+1. `packages/core`、`packages/site`、`packages/search` 只用 fetch/Request/Response/Web Crypto/Web Streams/WebAssembly 等 Web 标准，不 import Node 或原生依赖；SQLite 只用 Wasm。Node 与原生依赖限构建期 scripts，须能在 Linux CNB/Codespaces 跑。
+2. 平台绑定只在 `packages/platform/`，必须能关闭并降级到 GitHub Pages 的纯静态基线：无自定义响应头、重定向或函数仍完整可用。检索和数据加载不进 Edge Functions；可选加速不可用时回退浏览器。
+3. sitemap、索引和页面构建期生成；每话恰好一个 HTML。dist ≤ 18 000 文件，单文件 ≤ 20 MB，不含图片/DB；DB page_size 与 requestChunkSize 一致，配置生成物同步，sitemap 覆盖每话。依据见原架构文档预算。
+4. 配置唯一来源 `site.config.yaml`；域名、缓存、响应头、重定向从这里改，不手改 `_headers`、`_redirects`、`edgeone.json`。平台或配置改动先记三平台矩阵再改实现，三端一起同步。
+5. 凭据、账号 ID、桶名、实际地址只在 secrets，不入源码/文档/历史。R2 永远私有读，读走 CDN，写只在 CI。数据源只有 R2 和仓库 data；托管内容都是可再生产物。
+6. 不新增绑卡、月付、平台审批或人工续期依赖。人类操作必须可在手机浏览器 + Codespaces/CNB 页面完成，不要求维护者拥有电脑；验证进入现有 check/test 入口。
+7. `STATUS.md` 由发布流水线写，禁止手改。一次性应用器、迁移脚手架、驱动流水线留仓库外；scripts/tools 只收反复使用的工具。
 
-与 `CLAUDE.md` 冲突时，以 `CLAUDE.md` 为准。
+## 发布和分支纪律
 
----
+- 默认直接 main、无 PR，除非人类明确要求。用 feature flags 管功能，不为了形式另开 feature 分支。切分支、提交与推送按当前人类授权执行。
+- 仅 `hotfix/*`（修红灯，小时级）和 `surgery/*`（core/构建/三平台大改，≤3天）可例外，先登记 ACTIVE.md，全会话至多一条，优先接续现有分支。
+- 开分支前 `python3 tools/check-branch-hygiene.py --can-branch` 须为 0；收尾 `python3 tools/check-branch-hygiene.py`。远端未删除的非白名单分支 2 小时内有活动时，不许另开。
+- 分支退役先以 archive/<原分支名> tag 归档并确认远端，再用 CNB 归档按钮删除分支；archive tag 不可变，不留长期 archive/research 分支。远端长期仅 main，短期 hotfix/surgery；main 禁强推/删除。
+- 不用 ci/build/driver/success/run-id 分支触发 CI。仅 main push 可自动检查；构建/发布与归档只由人类 web_trigger 按钮触发。禁止 crontab 与自动部署，失败不新增触发分支。
 
-## §0 分支纪律（三条硬规则）
+## 提交、署名和内容卫生
 
-### 规则一：默认不开分支
+- Conventional Commits：`type(scope): 中文描述`，允许 feat/fix/refactor/docs/test/chore/ci/perf/build。一主题一提交，写明为什么；行为/构建/部署/缓存/schema 变更正文以 `文档:` 说明同步或不影响。
+- 作者是实际执笔的人，没有默认值，不确定先确认；Agent 只在末尾完整 `Co-authored-by: Name <email>` 署名。已登记：Codex <noreply@openai.com>、Claude <noreply@anthropic.com>、Kimi <noreply@moonshot.cn>、DeepSeek <noreply@deepseek.com>；新 Agent 首次贡献时登记实际通用名。
+- 非初始提交必须 SSH 签名，不使用 Agent 通用签名密钥；生成密钥只向人类交公钥，私钥不外传。除既有流水线自动 STATUS 提交例外，不以 CI 机器人代作作者。
+- 不改既有提交作者/署名，不写模型档位/版本、会话链接/标记、凭据及其可识别形式、私库名、内部域名/端点/主机或分发细节；外部内容只用中性功能称呼。禁止向 Agent 命名分支推送。
+- 保留原有钩子与分支/红灯闸门，不改 Git 配置或绕过钩子。文档/Agent 专项维护也需守住原项目安全和平台约束。
 
-**本仓库直接提交 `main`，没有 PR 流程**（`CLAUDE.md` §提交约定）。
+## 现有护栏与统一维护衔接
 
-```bash
-git pull --rebase origin main
-# ……改代码……
-npm run check && npm test
-git commit
-git push -u origin main
-```
+现有 `.codex/config.toml` / `.claude/settings.json` 的 PreToolUse 入口指向 `tools/agent-guard.py`，Git 钩子在 `tools/githooks/`；手工安装入口 `bash tools/install-hooks.sh`（Windows 为 tools/install-hooks.cmd）。Python/实现/判据缺失时旧护栏放行并提示，不能据此声称检查已通过。Git 钩子保持 LF，不改成 .bat。
 
-修 bug、加测试、改文档、调配置、重构——**全部直接提 `main`**。
-不要为了"看起来规范"建一条 feature 分支再自己合并。**feature 分支用
-feature flag 替代**（CONTRIBUTING.md §三：`site.config.yaml` 的 `features:`）。
+原护栏的 commit-msg 检查 Conventional+中文、Co-authored-by、文档行；pre-push 检查新增提交、分支纪律及红灯时修复类提交。禁止 --no-verify/-n 和覆盖 core.hooksPath；已有 `[skip-hooks]`、SKIP_MSG_HOOK、SKIP_BRANCH_HOOK、SKIP_REDLIGHT_HOOK 属维护者明示例外，不作为日常替代。
 
-### 规则二：只有两类例外分支，全会话只许开**一条**
+明确用户任务高于仓库模板；项目约束冲突先向人类说明，不静默选择。AGENTS 单一规范来源取代旧的双文件优先链，不影响其中的项目安全要求。
 
-1. `hotfix/*` —— 修主线红灯，寿命以**小时**计；
-2. `surgery/*` —— `packages/core` 数据模型、构建流水线或三平台适配层的大改，
-   寿命 **≤ 3 天**，开工前必须在 `ACTIVE.md` 登记。
+## 维护入口
 
-两类都**用完即删**（合入后立即删；超期会被 `check-branch-hygiene.py` 点名）：
+贡献约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全报告见 [SECURITY.md](SECURITY.md)。
+在新克隆中运行 `python tools/repo_maintenance_guard.py install` 接入补充护栏，再用 `python tools/repo_maintenance_guard.py status` 核对配置。安装保留原有钩子；补充护栏检查暂存内容、提交标题及推送新增历史，检查无法完成时阻止操作。项目原有更严格的署名、签名、分支和验收规则继续适用。安装是配置操作，不是业务验证。
 
-- 推失败了？`git push --force-with-lease` 到**同一条**，不要另开。
-- 改了方向？`git commit --amend` 或 `git reset` 到**同一条**，不要另开。
-- 要重跑 CI？见 §2——**根本不该用分支触发 CI**。
+## Repo docs
 
-**已有可接续的分支时，优先接着用它，而不是开新的。**
+`repo-docs/` is the living guide; start with [the reading path](repo-docs/README.md) and [the main walkthrough](repo-docs/walkthroughs/one-real-run.md).
+This repo's `repo-docs/` guide is reader-facing Chinese documentation. When updating reader-facing guide pages, use `repo-docs-zh` when available; keep Chinese reader handles in the prose and preserve exact source identifiers for lookup.
+Read current source, scripts and tests before treating the guide as implementation truth. Repo questions, behavior changes, user uncertainty, stable knowledge discovered in conversation, and knowledge about to be saved to memory trigger a foreground sync gate with `repo-docs` Sync mode when available (otherwise inspect the guide and source manually).
+Choose `none`, `answer-only`, `foreground patch`, or `background sync`. Patch the smallest owning page before the final answer when a durable local gap would mislead; use background sync only with a real tracked handoff and no answer-critical gap. Do not rewrite docs for transient debug state.
+Update the walkthrough for input/output or boundary changes and the code map for responsibility changes. Record meaningful guide changes and actual verification in `repo-docs/change-log.md` with `Synced through <sha>`; do not imply unrun tests passed.
 
-### 规则三：2 小时内刚开过分支，就不许再开
-
-远端存在一条**非白名单分支**、且它 **2 小时内有过活动**、且**没有被删**——
-那么**不许再开新分支**。接着用那一条，或者干脆直接提 `main`。这条不接受任何理由。
-
-### 这些规则是可执行的，别靠自觉
-
-```bash
-python3 tools/check-branch-hygiene.py --can-branch   # 退出码 0 才允许开分支
-python3 tools/check-branch-hygiene.py                # 收尾体检
-git push origin --delete <分支名>                    # 删掉自己留下的分支
-```
-
-远端**只应该**存在这三类 ref：
-
-| ref | 说明 |
-|---|---|
-| `main` | 唯一长期分支（已保护：禁 force push / 禁删除） |
-| `hotfix/*` | 修红灯专用，寿命以小时计，用完即归档 |
-| `surgery/*` | 大手术，≤ 3 天，开工先登记 ACTIVE.md |
-
-**分支退役不许直接删**：先打 `archive/<原分支名>` tag 存档、确认推上远端，然后才
-删分支——用 CI 干这个事：CNB 分支详情页 →「归档分支」按钮（`.cnb.yml` 的
-`web_trigger_archive`）。`archive/*` tag 不可变（远端 ruleset 禁删/禁强推），
-不存在长期挂着的 `archive/*`、`research/*` **分支**。
-
----
-
-## §1 提交规范
-
-### 一、commit 信息必须用 **Conventional 前缀 + 中文**
-
-格式：`type(scope): 中文描述`。
-
-```
-feat(reader): 文字层支持按 bbox 高亮
-fix(platform): edgeone.json 生成器漏掉 sitemap 的 Content-Type
-```
-
-允许的 type：`feat` `fix` `refactor` `docs` `test` `chore` `ci` `perf`
-`build`；scope 自选（core / site / search / platform / data / ci / docs …）。
-纯英文标题、没有类型前缀的标题，一律会被钩子拦下（历史提交不在此列）。
-
-信息要说清**为什么**，不只是做了什么——"做了什么"看 diff 就有，"为什么"只有
-当时的人知道。
-
-### 二、**一功能一 commit**
-
-一次改动一个主题，不要把无关的东西塞进同一个提交，**更不要把一个主题拆成
-十几个**。工具产出的中间态（"Stage part 1/2/3"、"Fix driver"）在本地
-`commit --amend` / `rebase` 成**一个**再推。中间态不是历史，是垃圾。
-
-### 三、署名固定
-
-- 作者按**实际执笔的人**记。**没有默认值——不确定就问那个人。**
-  署名是归属，猜错了就是把别人的名字签在他没写过的东西上。
-  不知道该记谁 → 问；人不在 → 停在那儿，别提交。
-- **实际执笔的 Agent 用 `Co-authored-by` trailer 署名**，放在信息末尾，
-  必须是完整的 `Name <email>` 形式（钩子按此格式硬拦）。
-  **Agent 永远不做作者**，只做 co-author：
-
-```
-Co-authored-by: Codex <noreply@openai.com>
-```
-
-已登记的署名（新 Agent 首次执笔时在**同一个提交**里把它加进这张表）：
-
-| Agent | trailer |
-|---|---|
-| Codex | `Codex <noreply@openai.com>` |
-| Claude | `Claude <noreply@anthropic.com>` |
-| Kimi | `Kimi <noreply@moonshot.cn>` |
-| DeepSeek | `DeepSeek <noreply@deepseek.com>` |
-
-**不要**让 CI 机器人当作者——那说明你在用 CI 代提交，见 §2。
-（`.cnb.yml` 发布流水线自动写 `STATUS.md` 的提交是唯一例外，它不算人的工作。）
-
-### 四、结尾交代文档
-
-改了行为 / 构建 / 部署 / 缓存策略 / 数据 schema 的，写明对应的文档改动：
-
-```
-文档: 已更新 docs/ARCHITECTURE.md 的「三平台矩阵」
-文档: 纯内部重构，不影响任何文档描述
-```
-
-写「不影响」也算合规——**关键是你想过这件事并留下了判断**。
-
-### 五、不写模型标识
-
-不要把模型名/型号写进 commit、PR、代码注释或任何入库产物。
-
-### 六、不写出处与凭据
-
-注释、文档、提交信息里提到本仓库之外的东西时，只说它在功能上是什么
-（"图片源站"、"CDN 侧"、"部署目标"），不写账号、桶名、token、具体地址。
-地址与凭据一律由 secrets 给，源码与历史里都不出现。
-
----
-
-## §2 🔴 永远不要用分支触发 CI
-
-**禁止**：
-
-- 建 `ci/xxx-<run-id>`、`build/xxx-<日期>`、`*-driver-*`、`*-success` 之类的分支
-  让 workflow 跑起来；
-- 每失败一次就推一条新分支重试；
-- 新增任何 `push:` 或 `crontab:` 触发的**构建 / 发布 / 部署**流水线。
-  `CLAUDE.md` 铁律 6：只有检查类流水线（`.cnb.yml` 里 main 的 `push`）允许自动触发，
-  发布（`web_trigger_release`）只手动，`crontab:` 一律禁止。
-
-**正确做法**：
-
-- 构建/发布由**人类**在 CNB 的分支详情页点「发布」按钮（`.cnb/web_trigger.yml`）；
-- 想验证代码能不能过 CI：`npm run check && npm test`——它与 CNB 检查流水线跑的是
-  同一份脚本；push 到 main 后检查流水线会自动复验并移动 `last-green` tag；
-- 一次性的构建触发器**不要留在远端**。
-
----
-
-## §3 提交前自检：`npm run check` 不是可选的
-
-本仓库**没有"本地"**——维护者没有电脑。自检在 Codespaces 里跑，或者推 main
-后看 CNB 的检查构建：
-
-```bash
-npm ci
-npm run check     # 预算守卫 + 配置生成物同步 + lint
-npm test          # core 解析器 / 归一化 / DB 构建的单测
-npm run build     # 全量静态构建（dry-run，不发布）
-```
-
-三条都过才算过。`check` 失败的典型原因：dist 文件数超线（每页一 HTML 了？）、
-dist 里混进图片或 DB、手改了 `_headers` / `edgeone.json`、`packages/core`
-里出现了 `node:` 导入或原生依赖。
-
-**改了 `packages/platform/` 的东西**，还要在 CNB 的发布流水线里以 `target=<平台>`
-向 preview 环境真实部署一次并在提交信息里写明结果——三平台适配层没有单测能
-替代真部署。
-
----
-
-## §4 不要在仓库里留一次性脚手架
-
-`scripts/` 与 `tools/` 下只放**会被反复用到**的东西：ingest、构建、检查、部署、
-守卫。一次性的应用器（`apply-xxx-<日期>.mjs`、`migrate-once.py`、
-`*-driver-*.yml`）属于施工脚手架——**改动本身进仓库就够了**。
-
----
-
-## §5 这些规则是**强制**的
-
-上面的每一条都不依赖你读没读，**也不依赖你装什么**。
-
-`.codex/config.toml`（以及给 Claude 用的 `.claude/settings.json`）各注册了一个
-`PreToolUse(Bash)` 钩子指向 `tools/agent-guard.py`。它在命令执行**之前**把这份
-克隆的 `core.hooksPath` 指到 `tools/githooks/`。
-
-> git 自己的钩子做不到这一点：`core.hooksPath` 是每份克隆的本地配置，没法从入库
-> 文件里设（clone 即执行任意代码，git 有意堵死了）。项目级 `.codex/` 层没被
-> 信任时，手动补一次：`bash tools/install-hooks.sh`（Windows：`tools\install-hooks.cmd`）。
-
-`agent-guard.py` 自己只直接拦一件事：**绕过 git 钩子**——`git commit --no-verify`
-/ `-n`、`git push --no-verify`、`git -c core.hooksPath=… commit/push`。
-找不到解释器、找不到实现、找不到判据模块——一律**放行并提示**。
-
-| 钩子 | 拦什么 | 对应条款 |
-|---|---|---|
-| `commit-msg` | 标题缺 Conventional 前缀或描述非中文 | §1 一 |
-| | 缺 `Co-authored-by` trailer | §1 三 |
-| | 缺「文档:」交代 | §1 四 |
-| `pre-push` | 本次推送**新增**提交的信息不合规 | §1 |
-| | 红灯期间推 main 且新增提交不全是修复类（`fix(`/`fix:`/`revert` 开头） | 红灯协议 |
-| | 新建名字像 CI 触发器的分支（`ci/*`、`build/*`、`*-driver-*`、`*-success`、带 run-id） | §2 |
-| | 远端已有非白名单分支时再开一条；2 小时内有分支活动时再开一条 | §0 |
-| `agent-guard.py` | `--no-verify` 与 `-c core.hooksPath=…` | 本节 |
-
-**逃生口**（用它意味着你明确知道自己在跳过什么，并准备好向维护者解释）：
-
-```bash
-SKIP_MSG_HOOK=1 git push ...        # 跳过 pre-push 的提交信息检查
-SKIP_BRANCH_HOOK=1 git push ...     # 跳过 pre-push 的分支纪律检查
-SKIP_REDLIGHT_HOOK=1 git push ...   # 跳过红灯闸门（联网查不到状态时它自己会跳过）
-# 跳过 commit-msg：在提交信息里**顶格独占一行**写
-[skip-hooks]
-```
-
-这不是安全边界，是防手滑与防偷懒的护栏。目标是「常见写法一个不漏、正常提交
-一个不误伤」。**文档挡不住不读文档的人，钩子可以。**
-
----
-
-## §6 一句话总结
-
-> 直接提 `main`；真要开分支就全程只开一条，且先跑
-> `check-branch-hygiene.py --can-branch`；不要用分支触发 CI，不写 `crontab:`；
-> 一功能一 commit，中文，带 `Co-authored-by`；推之前 `npm run check && npm test`
-> 全过；收尾时远端只该剩 `main` + `archive/*` tag。
+文档站统一使用 VitePress 默认主题；样式与动效遵循原生主题，构建输出独立于业务界面。
