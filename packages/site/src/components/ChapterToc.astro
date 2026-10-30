@@ -22,6 +22,12 @@ const { series, issue, chapter } = Astro.props;
         <option value="new">暂无进度</option>
       </select>
     </label>
+    <label class="toc-order" for="toc-order">章节顺序
+      <select id="toc-order" data-toc-order disabled>
+        <option value="asc">正序</option>
+        <option value="desc">倒序</option>
+      </select>
+    </label>
     <button type="button" class="btn" data-toc-locate>定位当前章</button>
   </div>
   <p class="toc-progress-summary" data-toc-progress-summary role="status" aria-live="polite"></p>
@@ -60,7 +66,7 @@ const { series, issue, chapter } = Astro.props;
   .reader .toc .toc-tools[hidden], .reader .toc [data-toc-retry][hidden] { display: none; }
   .reader .toc .toc-tools label { width: 100%; font-size: 14px; }
   .reader .toc .toc-tools input { flex: 1; min-width: 8rem; max-width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
-  .reader .toc .toc-tools .toc-progress-filter { display: flex; align-items: center; gap: 0.4rem; width: auto; font-size: 12px; }
+  .reader .toc .toc-tools .toc-progress-filter, .reader .toc .toc-tools .toc-order { display: flex; align-items: center; gap: 0.4rem; width: auto; font-size: 12px; }
   .reader .toc .toc-tools select { min-width: 0; max-width: 100%; padding: 0.45rem 0.6rem; font: inherit; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); }
   .reader .toc .toc-progress-summary, .reader .toc .toc-progress-note { margin: 0.5rem 0; color: var(--text-dim); font-size: 12px; }
   .reader .toc .toc-progress-summary:empty { display: none; }

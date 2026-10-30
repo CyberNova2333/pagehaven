@@ -246,6 +246,12 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     const progressFilter = /<select\b(?=[^>]*\bdata-toc-progress-filter)[^>]*>([\s\S]*?)<\/select>/.exec(tocControls[1]);
     assert.ok(progressFilter, '进度筛选应位于按需目录的增强控件中');
     for (const value of ['all', 'started', 'new']) assert.match(progressFilter[1], new RegExp(`<option\\b[^>]*\\bvalue="${value}"`));
+    const tocOrder = /<select\b(?=[^>]*\bdata-toc-order)(?=[^>]*\bid="toc-order")(?=[^>]*\bdisabled(?:\s|[=>]))[^>]*>([\s\S]*?)<\/select>/.exec(tocControls[1]);
+    assert.ok(tocOrder, '章节顺序只在目录加载成功后启用，并位于初始隐藏的控件区');
+    assert.match(tocControls[1], /<label\b[^>]*\bfor="toc-order"[^>]*>/, '章节顺序必须有关联标签');
+    assert.match(tocOrder[1], /^\s*<option\b[^>]*\bvalue="asc"[^>]*>/, '正序应为默认第一项');
+    for (const value of ['asc', 'desc']) assert.match(tocOrder[1], new RegExp(`<option\\b[^>]*\\bvalue="${value}"`));
+    assert.doesNotMatch(tocOrder[1], /<option\b(?=[^>]*\bvalue="desc")(?=[^>]*\bselected(?:\s|[=>]))[^>]*>/, '倒序不应成为默认选项');
     assert.match(html, /<p\b(?=[^>]*\bdata-toc-progress-summary)[^>]*>/, '目录应提供独立的阅读进度汇总');
     assert.match(html, /<p\b(?=[^>]*\bdata-toc-progress-note)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '存储限制提示只在实际受限时显示');
     const tocPagination = /<nav\b(?=[^>]*\bdata-toc-pagination)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>([\s\S]*?)<\/nav>/.exec(html);
