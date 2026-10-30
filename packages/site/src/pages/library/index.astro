@@ -61,6 +61,13 @@ const catalog = gallery.series.map((series) => ({
     </div>
 
     <p id="library-storage-note" class="library-notice" role="status" aria-live="polite" hidden></p>
+    <div id="library-pending" class="library-notice" hidden>
+      <p>书架有尚未保存的修改，包括未成功移除的作品。可以重试保存，或放弃这些临时操作并重新读取已保存的记录。</p>
+      <div class="library-item-actions">
+        <button id="library-retry" class="btn" type="button">重试保存书架修改</button>
+        <button id="library-discard" class="btn" type="button">放弃书架未保存修改</button>
+      </div>
+    </div>
     <p id="library-feedback" class="muted" role="status" aria-live="polite"></p>
     <div id="library-empty" class="card card-pad" role="status">启用浏览器脚本后，即可查看收藏的作品与阅读进度。</div>
     <ul id="library-list" class="library-grid" aria-label="书架作品" hidden></ul>
@@ -96,6 +103,13 @@ const catalog = gallery.series.map((series) => ({
         <p id="bookmark-count" class="muted" role="status" aria-live="polite"></p>
       </div>
       <p id="bookmark-storage-note" class="library-notice" role="status" aria-live="polite" hidden></p>
+      <div id="bookmark-pending" class="library-notice" hidden>
+        <p>页码书签有尚未保存的修改，包括未成功移除的书签。可以重试保存，或放弃这些临时操作并重新读取已保存的记录。</p>
+        <div class="library-item-actions">
+          <button id="bookmark-retry" class="btn" type="button">重试保存书签修改</button>
+          <button id="bookmark-discard" class="btn" type="button">放弃书签未保存修改</button>
+        </div>
+      </div>
       <p id="bookmark-feedback" class="muted" role="status" aria-live="polite"></p>
       <div id="bookmark-editor" class="card card-pad library-bookmark-editor" hidden>
         <h3 id="bookmark-editor-title"></h3>

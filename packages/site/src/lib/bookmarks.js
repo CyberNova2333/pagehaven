@@ -10,7 +10,7 @@ const validTotal = (total) => Number.isSafeInteger(total) && total > 0;
 const validPage = (n, total) => Number.isSafeInteger(n) && n > 0 && n <= total;
 const pageId = (key, n) => `${key}/p${n}`;
 
-function pagesFromIds(ids, key, total) {
+function pagesFromIds(ids, key, total = Number.MAX_SAFE_INTEGER) {
   if (!Array.isArray(ids)) return new Set();
   const prefix = `${key}/p`;
   return new Set(ids.flatMap((id) => {
@@ -50,10 +50,9 @@ export function createBookmarkStore({ getStorage = () => window.localStorage, no
       return lastKnown.get(key) ?? null;
     }
   }
-  function pages(key, total, operation) {
-    const values = pagesFromIds(parseJson(readRaw(FAVORITES_PREFIX + key, operation)), key, total);
+  function pages(key, operation) {
+    const values = pagesFromIds(parseJson(readRaw(FAVORITES_PREFIX + key, operation)), key);
     for (const [n, present] of pendingPages.get(key) ?? []) {
-      if (!validPage(n, total)) continue;
       if (present) values.add(n);
       else values.delete(n);
     }
@@ -89,9 +88,7 @@ export function createBookmarkStore({ getStorage = () => window.localStorage, no
       else pendingNotes.set(noteKey, raw);
       persisted = saved && persisted;
     }
-    for (const notify of [...subscribers]) {
-      try { notify({ chapterKey: key }); } catch { /* 一个视图失效不阻断其他视图与保存结果。 */ }
-    }
+    notify(key);
     return { persisted };
   }
   function removedNotes(key, previous, desired, operation) {
@@ -103,17 +100,32 @@ export function createBookmarkStore({ getStorage = () => window.localStorage, no
     }
     return notes;
   }
+  function notify(key) {
+    for (const subscriber of [...subscribers]) {
+      try { subscriber({ chapterKey: key }); } catch { /* 一个视图失效不阻断其他视图与保存结果。 */ }
+    }
+  }
+  const noteChapter = (noteKey) => noteKey.slice(NOTE_PREFIX.length, noteKey.lastIndexOf('/p'));
+  const pendingChapters = () => new Set([...pendingPages.keys(), ...[...pendingNotes.keys()].map(noteChapter)]);
+  function noteAt(key, n) {
+    const noteKey = NOTE_PREFIX + pageId(key, n);
+    return { n, ...parseNote(pendingNotes.has(noteKey) ? pendingNotes.get(noteKey) : readRaw(noteKey)) };
+  }
 
   return {
     get limited() { return limited; },
     get hasPending() { return pendingPages.size > 0 || pendingNotes.size > 0; },
+    ids(key, total) {
+      if (!validChapter(key) || !validTotal(total)) return [];
+      return [...pages(key)].filter((n) => validPage(n, total)).sort((a, b) => a - b).map((n) => pageId(key, n));
+    },
+    get(key, total, n) {
+      if (!validChapter(key) || !validTotal(total) || !validPage(n, total)) return null;
+      return pages(key).has(n) ? noteAt(key, n) : null;
+    },
     list(key, total) {
       if (!validChapter(key) || !validTotal(total)) return [];
-      return [...pages(key, total)].sort((a, b) => a - b).map((n) => {
-        const noteKey = NOTE_PREFIX + pageId(key, n);
-        const raw = pendingNotes.has(noteKey) ? pendingNotes.get(noteKey) : readRaw(noteKey);
-        return { n, ...parseNote(raw) };
-      });
+      return [...pages(key)].filter((n) => validPage(n, total)).sort((a, b) => a - b).map((n) => noteAt(key, n));
     },
     set(key, total, n, note = '') {
       validate(key, total, n, true);
@@ -121,7 +133,7 @@ export function createBookmarkStore({ getStorage = () => window.localStorage, no
       const updatedAt = now();
       if (!Number.isSafeInteger(updatedAt) || updatedAt < 0) throw new TypeError('书签更新时间无效');
       const operation = { readFailed: false };
-      const previous = pages(key, total, operation);
+      const previous = pages(key, operation);
       const desired = new Set(previous).add(n);
       return commit(key, previous, desired,
         new Map([[NOTE_PREFIX + pageId(key, n), JSON.stringify({ version: 1, note, updatedAt })]]), operation, new Map([[n, true]]));
@@ -129,7 +141,7 @@ export function createBookmarkStore({ getStorage = () => window.localStorage, no
     remove(key, total, n) {
       validate(key, total, n, true);
       const operation = { readFailed: false };
-      const previous = pages(key, total, operation);
+      const previous = pages(key, operation);
       const desired = new Set(previous);
       desired.delete(n);
       const notes = removedNotes(key, new Set([...previous, n]), desired, operation);
@@ -139,9 +151,44 @@ export function createBookmarkStore({ getStorage = () => window.localStorage, no
       validate(key, total);
       if (!Array.isArray(ids)) throw new TypeError('书签列表必须是数组');
       const operation = { readFailed: false };
-      const previous = pages(key, total, operation);
-      const desired = pagesFromIds(ids, key, total);
+      const previous = pages(key, operation);
+      // 全量替换仅针对当前可见页，合法旧页仍供备份和后续内容恢复。
+      const desired = new Set([...previous].filter((n) => n > total));
+      for (const n of pagesFromIds(ids, key, total)) desired.add(n);
       return commit(key, previous, desired, removedNotes(key, previous, desired, operation), operation);
+    },
+    updateFavorites(key, total, beforeIds, afterIds) {
+      validate(key, total);
+      if (!Array.isArray(beforeIds) || !Array.isArray(afterIds)) throw new TypeError('书签列表必须是数组');
+      const before = pagesFromIds(beforeIds, key, total);
+      const after = pagesFromIds(afterIds, key, total);
+      const touched = new Map();
+      for (const n of before) if (!after.has(n)) touched.set(n, false);
+      for (const n of after) if (!before.has(n)) touched.set(n, true);
+      const operation = { readFailed: false };
+      const previous = pages(key, operation);
+      const desired = new Set(previous);
+      for (const [n, present] of touched) { if (present) desired.add(n); else desired.delete(n); }
+      const removed = new Set([...touched].filter(([, present]) => !present).map(([n]) => n));
+      const notes = removedNotes(key, new Set([...previous, ...removed]), desired, operation);
+      return commit(key, previous, desired, notes, operation, touched);
+    },
+    retryPending() {
+      let persisted = true;
+      for (const key of pendingChapters()) {
+        const operation = { readFailed: false };
+        const desired = pages(key, operation);
+        const notes = new Map([...pendingNotes].filter(([noteKey]) => noteChapter(noteKey) === key));
+        const result = commit(key, desired, desired, notes, operation);
+        persisted = result.persisted && persisted;
+      }
+      return { persisted };
+    },
+    discardPending() {
+      const chapters = pendingChapters();
+      pendingPages.clear();
+      pendingNotes.clear();
+      for (const key of chapters) notify(key);
     },
     subscribe(notify) {
       if (typeof notify !== 'function') throw new TypeError('书签订阅必须是函数');

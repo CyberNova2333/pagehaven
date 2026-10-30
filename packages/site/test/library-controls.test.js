@@ -149,7 +149,7 @@ function libraryFixture({ data = catalog(), records = {}, denied = false, denied
   const access = { denied };
   const getStorage = () => { if (access.denied) throw new Error('Storage denied'); return storage; };
   const root = element('section');
-  const nodes = Object.fromEntries(['list', 'empty', 'filter', 'search', 'sort', 'count', 'storage-note', 'feedback', 'catalog', 'toolbar'].map((name) => [name, element(name)]));
+  const nodes = Object.fromEntries(['list', 'empty', 'filter', 'search', 'sort', 'count', 'storage-note', 'feedback', 'catalog', 'toolbar', 'pending', 'retry', 'discard'].map((name) => [name, element(name)]));
   for (const [name, tag] of Object.entries({ list: 'ul', empty: 'p', search: 'input', count: 'p', more: 'button', refresh: 'button', toolbar: 'div' })) {
     nodes[`history-${name}`] = element(tag);
   }
@@ -833,4 +833,44 @@ test('书架概览回调异常不阻断功能，销毁的旧任务不能污染�
   assert.equal(restored.length, 1, '旧回调不会再次更新新概览');
   assert.equal(f.readLink('sample').href, '/sample/v/c2/#p3');
   mounted.destroy();
+});
+
+test('书架删除失败后保留全局重试入口，存储恢复可完成删除并解除备份保护', () => {
+  const f = libraryFixture({ records: { [shelfKey('sample')]: saved('want', 1) } });
+  f.storage.denyWrite = true;
+  f.row('sample').querySelector('[data-library-action="remove"]').fire('click');
+  assert.equal(f.row('sample'), undefined);
+  assert.equal(f.controller.hasPending, true);
+  assert.equal(f.nodes.pending.hidden, false);
+  f.nodes.retry.fire('click');
+  assert.equal(f.controller.hasPending, true);
+  f.storage.denyWrite = false;
+  f.win.fire('pageshow');
+  assert.equal(f.nodes.pending.hidden, false, '恢复窗口不能隐式丢弃待保存意图');
+  f.nodes.retry.fire('click');
+  assert.equal(f.storage.data.has(shelfKey('sample')), false);
+  assert.equal(f.controller.hasPending, false);
+  assert.equal(f.nodes.pending.hidden, true);
+  assert.equal(f.summaries.at(-1).pending, false);
+  assert.equal(f.nodes.search, f.nodes.search.ownerDocument.activeElement);
+  f.controller.destroy();
+  const writes = f.storage.operations.length;
+  f.nodes.retry.fire('click'); f.nodes.discard.fire('click');
+  assert.equal(f.storage.operations.length, writes, '销毁后不能重试或放弃其他实例的状态');
+});
+
+test('放弃书架失败删除恢复已保存记录，不清理磁盘或其他窗口的新状态', () => {
+  const f = libraryFixture({ records: { [shelfKey('sample')]: saved('want', 1) } });
+  f.storage.denyWrite = true;
+  f.row('sample').querySelector('[data-library-action="remove"]').fire('click');
+  f.storage.data.set(shelfKey('sample'), JSON.stringify(saved('read', 3)));
+  const writes = f.storage.operations.length;
+  f.nodes.discard.fire('click');
+  assert.equal(f.controller.hasPending, false);
+  assert.equal(f.nodes.pending.hidden, true);
+  assert.ok(f.row('sample'));
+  assert.equal(f.store.read('sample').status, 'read');
+  assert.equal(f.storage.operations.length, writes);
+  assert.match(f.nodes.feedback.textContent, /已放弃/);
+  f.controller.destroy();
 });

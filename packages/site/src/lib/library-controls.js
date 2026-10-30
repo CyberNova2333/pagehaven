@@ -111,6 +111,9 @@ export function mountLibrary(root, options = {}) {
   const count = root.querySelector('#library-count');
   const storageNote = root.querySelector('#library-storage-note');
   const feedback = root.querySelector('#library-feedback');
+  const pending = root.querySelector('#library-pending');
+  const retry = root.querySelector('#library-retry');
+  const discard = root.querySelector('#library-discard');
   const historyList = root.querySelector('#history-list');
   const historyEmpty = root.querySelector('#history-empty');
   const historySearch = root.querySelector('#history-search');
@@ -300,6 +303,7 @@ export function mountLibrary(root, options = {}) {
       });
     } catch { /* 概览失效不阻断书架、最近阅读及备份保护。 */ }
     feedback.textContent = message;
+    if (pending) pending.hidden = !store.hasPending;
     render();
     renderHistory(historyHadVisibleFocus);
     if (focusedSeries && focusedControl) {
@@ -321,12 +325,32 @@ export function mountLibrary(root, options = {}) {
     if (event.key === null || libraryKeys.has(event.key) || progressKeys.has(event.key)) storageRefresh.request();
   };
   const onShow = () => refresh();
+  const returnFromRecovery = () => {
+    if (!store.hasPending) {
+      search.focus({ preventScroll: true });
+      search.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+    }
+  };
+  const onRetry = () => {
+    if (destroyed) return;
+    const result = store.retryPending();
+    refresh(result.persisted ? '本页书架修改已保存。' : '仍有书架修改未能保存，请重试或放弃本页未保存修改。');
+    returnFromRecovery();
+  };
+  const onDiscard = () => {
+    if (destroyed) return;
+    store.discardPending();
+    refresh('已放弃本页未保存的书架修改，重新显示浏览器中已保存的记录。');
+    returnFromRecovery();
+  };
   filter.addEventListener('change', onFilter);
   search.addEventListener('input', onFilter);
   sort?.addEventListener('change', onFilter);
   historySearch?.addEventListener('input', onHistoryFilter);
   historyMore?.addEventListener('click', onHistoryMore);
   historyRefresh?.addEventListener('click', onShow);
+  retry?.addEventListener('click', onRetry);
+  discard?.addEventListener('click', onDiscard);
   win.addEventListener('storage', onStorage);
   win.addEventListener('pageshow', onShow);
   win.addEventListener('focus', onShow);
@@ -346,6 +370,8 @@ export function mountLibrary(root, options = {}) {
       historySearch?.removeEventListener('input', onHistoryFilter);
       historyMore?.removeEventListener('click', onHistoryMore);
       historyRefresh?.removeEventListener('click', onShow);
+      retry?.removeEventListener('click', onRetry);
+      discard?.removeEventListener('click', onDiscard);
       win.removeEventListener('storage', onStorage);
       win.removeEventListener('pageshow', onShow);
       win.removeEventListener('focus', onShow);
