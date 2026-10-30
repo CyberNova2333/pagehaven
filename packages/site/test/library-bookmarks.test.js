@@ -83,7 +83,7 @@ function fixture({ records = {}, data = catalog(), denied = false, deniedKeys = 
   const fire = win.fire.bind(win);
   win.fire = (type, details) => { fire(type, details); if (type === 'storage' && autoFlushStorage) win.flushTimers(); };
   win.localStorage = storage;
-  const names = ['list', 'empty', 'filter', 'search', 'count', 'storage-note', 'feedback', 'more', 'editor', 'editor-title', 'note', 'save', 'cancel', 'toolbar', 'catalog'];
+  const names = ['list', 'empty', 'filter', 'search', 'count', 'storage-note', 'feedback', 'more', 'editor', 'editor-title', 'note', 'save', 'cancel', 'toolbar', 'catalog', 'pending', 'retry', 'discard'];
   const nodes = Object.fromEntries(names.map((name) => [name, element(name)]));
   nodes.search.value = searchValue;
   nodes.catalog.textContent = typeof data === 'string' ? data : JSON.stringify(data);
@@ -645,4 +645,52 @@ test('缺少搜索标记时仍可显示和筛选已有页书签', () => {
   f.nodes.filter.value = 'zeta'; f.nodes.filter.fire('change');
   assert.equal(f.nodes.list.hidden, true);
   assert.doesNotThrow(() => f.controller.destroy());
+});
+
+test('最后一个书签删除失败后仍可重试，恢复存储后清除pending与备份阻止状态', () => {
+  const f = fixture({ records: { [favoriteKey]: [markId(1)], [noteKey(1)]: { version: 1, note: '已保存备注', updatedAt: 1 } } });
+  f.storage.denied = true;
+  f.action(markId(1), 'remove').fire('click');
+  assert.equal(f.row(markId(1)), undefined);
+  assert.equal(f.controller.hasPending, true);
+  assert.equal(f.nodes.pending.hidden, false);
+  f.nodes.retry.fire('click');
+  assert.equal(f.controller.hasPending, true);
+  f.storage.denied = false;
+  f.win.fire('pageshow');
+  assert.equal(f.nodes.pending.hidden, false);
+  f.nodes.retry.fire('click');
+  assert.equal(f.controller.hasPending, false);
+  assert.equal(f.nodes.pending.hidden, true);
+  assert.equal(f.storage.values.has(noteKey(1)), false);
+  assert.deepEqual(JSON.parse(f.storage.values.get(favoriteKey)), []);
+  assert.equal(f.summaries.at(-1).pending, false);
+  assert.equal(f.doc.activeElement, f.nodes.search);
+  f.controller.destroy();
+  const writes = f.storage.writes.length;
+  f.nodes.retry.fire('click'); f.nodes.discard.fire('click');
+  assert.equal(f.storage.writes.length, writes);
+});
+
+test('放弃书签临时结果恢复持久状态，恢复操作不能丢弃正在编辑的草稿', () => {
+  const f = fixture({ records: { [favoriteKey]: [markId(1), markId(2)] } });
+  f.storage.denied = true;
+  f.action(markId(1), 'remove').fire('click');
+  f.action(markId(2), 'edit').fire('click');
+  f.nodes.note.value = '正在编辑的草稿';
+  f.nodes.discard.fire('click'); f.nodes.retry.fire('click');
+  assert.equal(f.controller.hasPending, true);
+  assert.equal(f.nodes.note.value, '正在编辑的草稿');
+  assert.equal(f.controller.isEditing, true);
+  assert.equal(f.doc.activeElement, f.nodes.note);
+  assert.match(f.nodes.feedback.textContent, /先保存或取消/);
+  f.nodes.cancel.fire('click');
+  const writes = f.storage.writes.length;
+  f.nodes.discard.fire('click');
+  assert.equal(f.controller.hasPending, false);
+  assert.equal(f.nodes.pending.hidden, true);
+  assert.deepEqual(visibleIds(f), [markId(1), markId(2)]);
+  assert.equal(f.storage.writes.length, writes, '放弃临时操作只重读，不回写');
+  assert.match(f.nodes.feedback.textContent, /已放弃/);
+  f.controller.destroy();
 });

@@ -14,6 +14,9 @@ export function mountBookmarkLibrary(root, options = {}) {
   const count = root.querySelector('#bookmark-count');
   const storageNote = root.querySelector('#bookmark-storage-note');
   const feedback = root.querySelector('#bookmark-feedback');
+  const pending = root.querySelector('#bookmark-pending');
+  const retry = root.querySelector('#bookmark-retry');
+  const discard = root.querySelector('#bookmark-discard');
   const more = root.querySelector('#bookmark-more');
   const editor = root.querySelector('#bookmark-editor');
   const editorTitle = root.querySelector('#bookmark-editor-title');
@@ -37,6 +40,7 @@ export function mountBookmarkLibrary(root, options = {}) {
   };
   const rowId = (row) => `${row.chapter.key}/p${row.n}`;
   function limited() {
+    if (pending) pending.hidden = !store.hasPending;
     storageNote.hidden = !store.limited;
     storageNote.textContent = store.limited ? '浏览器存储受限，未保存的书签修改仅在当前页面临时保留。' : '';
   }
@@ -156,9 +160,32 @@ export function mountBookmarkLibrary(root, options = {}) {
     if (event.key === null || event.key?.startsWith(FAVORITES_PREFIX) || event.key?.startsWith(NOTE_PREFIX)) storageRefresh.request();
   };
   const onShow = () => refresh();
+  function recover(discardChanges) {
+    if (destroyed) return;
+    if (editing) {
+      feedback.textContent = '请先保存或取消正在编辑的备注，再处理未保存修改。';
+      note.focus();
+      return;
+    }
+    if (discardChanges) {
+      writing = true;
+      try { store.discardPending(); } finally { writing = false; }
+      refresh();
+      feedback.textContent = '已放弃本页未保存的书签修改，重新显示浏览器中已保存的记录。';
+    } else perform(() => store.retryPending(), '本页书签修改已保存。');
+    if (!store.hasPending) {
+      const target = search ?? filter;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+    }
+  }
+  const onRetry = () => recover(false);
+  const onDiscard = () => recover(true);
   const unsubscribe = store.subscribe(() => { if (!writing) refresh(); });
   filter.addEventListener('change', onFilter);
   search?.addEventListener('input', onFilter);
+  retry?.addEventListener('click', onRetry);
+  discard?.addEventListener('click', onDiscard);
   more.addEventListener('click', onMore);
   save.addEventListener('click', onSave);
   cancel.addEventListener('click', onCancel);
@@ -177,6 +204,8 @@ export function mountBookmarkLibrary(root, options = {}) {
       unsubscribe();
       filter.removeEventListener('change', onFilter);
       search?.removeEventListener('input', onFilter);
+      retry?.removeEventListener('click', onRetry);
+      discard?.removeEventListener('click', onDiscard);
       more.removeEventListener('click', onMore);
       save.removeEventListener('click', onSave);
       cancel.removeEventListener('click', onCancel);

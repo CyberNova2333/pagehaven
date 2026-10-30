@@ -31,6 +31,18 @@ export function createLibraryStore({ getStorage = () => window.localStorage, now
   return {
     get limited() { return limited; },
     get hasPending() { return pending.size > 0; },
+    retryPending() {
+      for (const [seriesId, entry] of [...pending]) {
+        try {
+          const storage = getStorage();
+          if (entry === null) storage.removeItem(keyFor(seriesId));
+          else storage.setItem(keyFor(seriesId), JSON.stringify(entry));
+          pending.delete(seriesId);
+        } catch { limited = true; }
+      }
+      return { persisted: pending.size === 0 };
+    },
+    discardPending() { pending.clear(); },
     read(seriesId) {
       if (!isId(seriesId)) return null;
       if (pending.has(seriesId)) {

@@ -259,6 +259,45 @@ test('进度快照：单项读取受限仍保留可读章节，坏内容跳过�
   assert.ok(f.operations.every(([type]) => type === 'get'));
 });
 
+test('失败操作可显式重试，保留原更新时间，只重试仍未保存的作品', () => {
+  const f = storageFixture([[LIBRARY_PREFIX + 'zeta', serialized('want', 1)]]);
+  const denied = new Set(['sample', 'zeta']);
+  const storage = { ...f.storage,
+    setItem(key, value) { if (denied.has(key.slice(LIBRARY_PREFIX.length))) throw new Error('quota'); f.storage.setItem(key, value); },
+    removeItem(key) { if (denied.has(key.slice(LIBRARY_PREFIX.length))) throw new Error('denied'); f.storage.removeItem(key); },
+  };
+  const store = createLibraryStore({ getStorage: () => storage, now: () => 20 });
+  store.set('sample', 'reading'); store.remove('zeta');
+  assert.equal(store.hasPending, true);
+  assert.deepEqual(store.retryPending(), { persisted: false });
+  denied.delete('sample');
+  assert.deepEqual(store.retryPending(), { persisted: false });
+  assert.deepEqual(JSON.parse(f.data.get(LIBRARY_PREFIX + 'sample')), record('reading', 20));
+  f.data.set(LIBRARY_PREFIX + 'sample', serialized('read', 99));
+  denied.clear();
+  assert.deepEqual(store.retryPending(), { persisted: true });
+  assert.equal(store.hasPending, false);
+  assert.equal(f.data.has(LIBRARY_PREFIX + 'zeta'), false);
+  assert.deepEqual(JSON.parse(f.data.get(LIBRARY_PREFIX + 'sample')), record('read', 99), '后续重试不能覆盖已成功项的新变化');
+});
+
+test('放弃书架临时操作不回写磁盘，可重新读取其他窗口的最新状态', () => {
+  const f = storageFixture([[LIBRARY_PREFIX + 'sample', serialized('want', 1)]]);
+  const storage = { ...f.storage, removeItem() { throw new Error('denied'); } };
+  const store = createLibraryStore({ getStorage: () => storage });
+  store.remove('sample');
+  assert.equal(store.read('sample'), null);
+  f.data.set(LIBRARY_PREFIX + 'sample', serialized('read', 5));
+  const operations = f.operations.length;
+  store.discardPending();
+  assert.equal(f.operations.length, operations);
+  assert.equal(store.hasPending, false);
+  assert.deepEqual(store.read('sample'), record('read', 5));
+  const reads = f.operations.length;
+  assert.deepEqual(store.retryPending(), { persisted: true });
+  assert.equal(f.operations.length, reads, '没有待保存内容时重试不读写');
+});
+
 test('进度快照：无法取得存储与 getItem 异常明确标记受限，空目录不访问存储', () => {
   const catalog = [series(chapter('c1'))];
   const getterDenied = Object.defineProperty({}, 'getItem', { get() { throw new Error('无法访问存储'); } });

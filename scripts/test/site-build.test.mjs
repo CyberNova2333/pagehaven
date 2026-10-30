@@ -360,6 +360,12 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.ok(bookmarkToolbar, '书签搜索与作品筛选在读取个人记录前保持隐藏');
     assert.match(bookmarkToolbar[1], /<label\b[^>]*\bfor="bookmark-search"[^>]*>/);
     assert.match(bookmarkToolbar[1], /<input\b(?=[^>]*\bid="bookmark-search")(?=[^>]*\btype="search")(?=[^>]*\bautocomplete="off")[^>]*>/);
+    for (const scope of ['library', 'bookmark']) {
+      assert.match(library, new RegExp(`<div\\b(?=[^>]*\\bid="${scope}-pending")(?=[^>]*\\bhidden(?:\\s|[=>]))[^>]*>`), '未保存恢复入口初始隐藏，由实际pending状态显示');
+      for (const action of ['retry', 'discard']) {
+        assert.match(library, new RegExp(`<button\\b(?=[^>]*\\bid="${scope}-${action}")(?=[^>]*\\btype="button")[^>]*>`));
+      }
+    }
     assert.ok(library.includes('<meta name="robots" content="noindex">'));
     assert.ok(!library.includes('rel="canonical"'), '书架不应声明公开内容 canonical');
     assert.ok(!library.includes('property="og:url"'));

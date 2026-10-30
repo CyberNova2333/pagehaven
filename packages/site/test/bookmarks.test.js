@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FAVORITES_PREFIX, NOTE_PREFIX, MAX_NOTE_LENGTH, createBookmarkStore, getReaderBookmarkStore } from '../src/lib/bookmarks.js';
+import { planReadingImport, applyReadingImport, exportReadingBackup } from '../src/lib/reading-backup.js';
 
 const chapter = 'sample/v/c';
 const favoriteKey = FAVORITES_PREFIX + chapter;
@@ -13,6 +14,8 @@ function fixture(records = {}) {
   const operations = [];
   const f = { data, operations, readDenied: false, writeDenied: false, removeDenied: false, deniedKey: '', writeDeniedKey: '' };
   f.storage = {
+    get length() { return data.size; },
+    key(index) { return [...data.keys()][index] ?? null; },
     getItem(key) {
       operations.push(['get', key]);
       if (f.readDenied || key === f.deniedKey) throw new Error('read denied');
@@ -201,4 +204,106 @@ test('操作通知、解绑和阅读页共享实例不引入初始化写入', ()
   unsubscribe();
   shared.remove(chapter, 6, 1);
   assert.equal(events.length, 2);
+});
+
+test('备份恢复的合法旧页只在显示时过滤，备注编辑、移除与可见收藏替换均保留旧成员', () => {
+  const f = fixture();
+  const backup = { format: 'pagehaven-reading-backup', version: 1, createdAt: 1,
+    library: [], progress: [], bookmarks: [{ chapterKey: chapter, pages: [2, 99] }],
+    notes: [{ chapterKey: chapter, n: 99, note: '旧页备注', updatedAt: 1 }] };
+  assert.equal(applyReadingImport(planReadingImport(backup, f.storage), f.storage).ok, true);
+  assert.deepEqual(f.store.list(chapter, 3).map(({ n }) => n), [2]);
+  f.store.set(chapter, 3, 2, '只编辑当前页');
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(2), id(99)]);
+  f.store.replace(chapter, 3, [id(1)]);
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(1), id(99)]);
+  f.store.remove(chapter, 3, 1);
+  assert.deepEqual(f.store.list(chapter, 3), []);
+  assert.deepEqual(exportReadingBackup(f.storage).backup.bookmarks, [{ chapterKey: chapter, pages: [99] }]);
+  assert.equal(JSON.parse(f.data.get(noteKey(99))).note, '旧页备注');
+});
+
+test('增强收藏差量与最新持久成员合并，不删除外部新增页也不复活外部删除页', () => {
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(2), id(3), id(99)]),
+    [noteKey(2)]: noteRecord('明确取消'), [noteKey(3)]: noteRecord('外部新增备注') });
+  f.store.updateFavorites(chapter, 6, [id(1), id(2)], [id(1), id(2), id(4)]);
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(2), id(3), id(4), id(99)]);
+  assert.equal(JSON.parse(f.data.get(noteKey(3))).note, '外部新增备注');
+  f.store.updateFavorites(chapter, 6, [id(2), id(3), id(4)], [id(3), id(4)]);
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(3), id(4), id(99)]);
+  assert.equal(f.data.has(noteKey(2)), false);
+  assert.equal(f.data.has(noteKey(3)), true);
+  assert.throws(() => f.store.updateFavorites(chapter, 6, null, []), TypeError);
+});
+
+test('全局重试能保存已从列表消失的删除，合并外部成员并只通知一次', () => {
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(1), id(99)]), [noteKey(1)]: noteRecord('待删除') });
+  f.writeDenied = f.removeDenied = true;
+  f.store.remove(chapter, 6, 1);
+  assert.equal(f.store.hasPending, true);
+  assert.deepEqual(f.store.list(chapter, 6), []);
+  assert.deepEqual(f.store.retryPending(), { persisted: false });
+  f.writeDenied = f.removeDenied = false;
+  f.data.set(favoriteKey, JSON.stringify([id(1), id(3), id(99)]));
+  const changes = [];
+  f.store.subscribe((change) => changes.push(change));
+  assert.deepEqual(f.store.retryPending(), { persisted: true });
+  assert.equal(f.store.hasPending, false);
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(3), id(99)]);
+  assert.equal(f.data.has(noteKey(1)), false);
+  assert.deepEqual(changes, [{ chapterKey: chapter }]);
+  f.store.retryPending();
+  assert.equal(changes.length, 1, '没有待保存项时不重新通知');
+});
+
+test('重试跨章节的部分备注失败保留原始时间，不重写无关备注', () => {
+  const other = 'other/v/c';
+  const otherNote = `${NOTE_PREFIX}${other}/p1`;
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(1)]), [noteKey(1)]: noteRecord('外部保留') });
+  f.writeDenied = true;
+  f.store.set(chapter, 6, 2, '本页待保存');
+  f.store.set(other, 2, 1, '另一章待保存');
+  f.writeDenied = false;
+  f.writeDeniedKey = otherNote;
+  const changes = [];
+  f.store.subscribe((change) => changes.push(change.chapterKey));
+  assert.deepEqual(f.store.retryPending(), { persisted: false });
+  assert.equal(f.store.hasPending, true);
+  assert.deepEqual(new Set(changes), new Set([chapter, other]));
+  assert.equal(changes.length, 2);
+  assert.deepEqual(JSON.parse(f.data.get(noteKey(2))), { version: 1, note: '本页待保存', updatedAt: 25 });
+  assert.equal(JSON.parse(f.data.get(noteKey(1))).note, '外部保留');
+  f.writeDeniedKey = '';
+  f.store.retryPending();
+  assert.equal(f.store.hasPending, false);
+  assert.equal(JSON.parse(f.data.get(otherNote)).updatedAt, 25);
+});
+
+test('放弃临时修改清除隐藏删除与备注覆盖，仅通知不写存储', () => {
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(1), id(2)]), [noteKey(1)]: noteRecord('原始备注') });
+  f.writeDenied = f.removeDenied = true;
+  f.store.remove(chapter, 6, 1);
+  f.store.set(chapter, 6, 2, '临时备注');
+  const writes = f.operations.filter(([kind]) => kind !== 'get').length;
+  const changes = [];
+  f.store.subscribe((change) => changes.push(change));
+  f.store.discardPending();
+  assert.equal(f.store.hasPending, false);
+  assert.deepEqual(changes, [{ chapterKey: chapter }]);
+  assert.equal(f.operations.filter(([kind]) => kind !== 'get').length, writes);
+  assert.deepEqual(f.store.list(chapter, 6), [{ n: 1, note: '原始备注', updatedAt: 10 }, { n: 2, note: '', updatedAt: 0 }]);
+});
+
+test('只取收藏 ID 和当前页备注不读取其他页的备注', () => {
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(1), id(2), id(99)]), [noteKey(2)]: noteRecord('当前页') });
+  assert.deepEqual(f.store.ids(chapter, 6), [id(1), id(2)]);
+  assert.deepEqual(f.operations, [['get', favoriteKey]]);
+  f.operations.length = 0;
+  assert.deepEqual(f.store.get(chapter, 6, 2), { n: 2, note: '当前页', updatedAt: 10 });
+  assert.deepEqual(f.operations, [['get', favoriteKey], ['get', noteKey(2)]]);
+  f.operations.length = 0;
+  assert.equal(f.store.get(chapter, 6, 3), null);
+  assert.deepEqual(f.operations, [['get', favoriteKey]]);
+  assert.equal(f.store.get(chapter, 6, 99), null);
+  assert.deepEqual(f.store.ids('../v/c', 6), []);
 });
