@@ -90,6 +90,9 @@ const catalog = gallery.series.map((series) => ({
             {catalog.map((series) => <option value={series.id}>{series.title}</option>)}
           </select>
         </label>
+        <label class="library-search" for="bookmark-search">查找书签
+          <input id="bookmark-search" type="search" placeholder="备注、作品、作者、期名或章节" autocomplete="off" />
+        </label>
         <p id="bookmark-count" class="muted" role="status" aria-live="polite"></p>
       </div>
       <p id="bookmark-storage-note" class="library-notice" role="status" aria-live="polite" hidden></p>
@@ -139,7 +142,7 @@ const catalog = gallery.series.map((series) => ({
 
     <p class="library-back"><a class="btn" href="/">浏览作品 →</a></p>
     <p class="muted library-help">收藏和状态只保存在本浏览器，不会自动跨设备同步。清除站点数据前请下载备份；移出书架会保留阅读进度。</p>
-    <noscript><p class="library-notice">个人书架、阅读数据概览、最近阅读、备份与恢复需要启用 JavaScript 才能读取浏览器中的收藏和进度。仍可<a href="/">回首页浏览作品</a>。</p></noscript>
+    <noscript><p class="library-notice">个人书架、阅读数据概览、最近阅读、页码书签、备份与恢复需要启用 JavaScript 才能读取浏览器中的收藏和进度。仍可<a href="/">回首页浏览作品</a>。</p></noscript>
     <script id="library-catalog" type="application/json" set:html={jsonForScript(catalog)} />
   </section>
 </Base>
