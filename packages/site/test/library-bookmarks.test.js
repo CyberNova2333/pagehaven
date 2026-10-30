@@ -58,7 +58,7 @@ function catalog(pages = 6) {
   ];
 }
 
-function fixture({ records = {}, data = catalog(), denied = false } = {}) {
+function fixture({ records = {}, data = catalog(), denied = false, autoFlushStorage = true } = {}) {
   const values = new Map(Object.entries(records).map(([name, value]) => [name, typeof value === 'string' ? value : JSON.stringify(value)]));
   const storage = {
     values, reads: 0, writes: [], denied,
@@ -68,6 +68,19 @@ function fixture({ records = {}, data = catalog(), denied = false } = {}) {
   };
   const root = element('section');
   const win = element('window');
+  const timers = new Map();
+  let timerId = 0;
+  win.setTimeout = (callback, delay) => { timers.set(++timerId, { callback, delay }); return timerId; };
+  win.clearTimeout = (id) => timers.delete(id);
+  win.flushTimers = () => {
+    for (const [id, timer] of [...timers]) {
+      if (!timers.delete(id)) continue;
+      timer.callback();
+    }
+  };
+  win.timers = timers;
+  const fire = win.fire.bind(win);
+  win.fire = (type, details) => { fire(type, details); if (type === 'storage' && autoFlushStorage) win.flushTimers(); };
   win.localStorage = storage;
   const names = ['list', 'empty', 'filter', 'count', 'storage-note', 'feedback', 'more', 'editor', 'editor-title', 'note', 'save', 'cancel', 'toolbar', 'catalog'];
   const nodes = Object.fromEntries(names.map((name) => [name, element(name)]));
@@ -210,4 +223,70 @@ test('空书签目录与坏目录提供提示，打开时不创建记录', () =>
   assert.match(invalid.nodes.empty.textContent, /目录暂时无法读取/);
   assert.equal(invalid.nodes.toolbar.hidden, true);
   assert.deepEqual(invalid.storage.writes, []);
+});
+
+test('书签批量存储事件只刷新一次并读取最终备注，保留焦点及正在编辑的草稿', () => {
+  const f = fixture({ autoFlushStorage: false, records: {
+    [favoriteKey]: [markId(1)], [noteKey(1)]: { version: 1, note: '初始备注', updatedAt: 1 },
+  } });
+  const oldLink = f.action(markId(1), 'read');
+  oldLink.focus();
+  const reads = f.storage.reads;
+  f.win.fire('storage', { key: 'another-app:setting' });
+  assert.equal(f.win.timers.size, 0);
+  for (let i = 0; i < 1000; i++) {
+    f.storage.values.set(noteKey(1), JSON.stringify({ version: 1, note: `外部备注 ${i}`, updatedAt: i + 2 }));
+    f.win.fire('storage', { key: noteKey(1) });
+    if (i % 10 === 0) f.win.fire('storage', { key: favoriteKey });
+  }
+  assert.equal(f.storage.reads, reads);
+  assert.equal(f.win.timers.size, 1);
+  assert.equal(f.action(markId(1), 'read'), oldLink);
+  f.win.flushTimers();
+  assert.equal(f.storage.reads, reads + 3, '两个作品的收藏及一个有效备注各读取一次');
+  assert.ok(f.row(markId(1)).textContent.includes('外部备注 999'));
+  assert.equal(f.doc.activeElement, f.action(markId(1), 'read'));
+  assert.deepEqual(f.storage.writes, []);
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.note.value = '本页未保存草稿';
+  f.nodes.note.focus();
+  f.storage.values.set(noteKey(1), JSON.stringify({ version: 1, note: '另一个标签页的备注', updatedAt: 2000 }));
+  f.win.fire('storage', { key: noteKey(1) });
+  f.win.flushTimers();
+  assert.equal(f.nodes.note.value, '本页未保存草稿');
+  assert.equal(f.doc.activeElement, f.nodes.note);
+  assert.equal(f.controller.isEditing, true);
+  f.controller.destroy();
+});
+
+test('书签同步恢复或显式保存取消排队刷新，销毁后旧回调不能影响重挂界面', () => {
+  const f = fixture({ autoFlushStorage: false, records: { [favoriteKey]: [markId(1)] } });
+  for (const type of ['pageshow', 'focus']) {
+    f.win.fire('storage', { key: null });
+    const staleBeforeShow = [...f.win.timers.values()][0].callback;
+    f.win.fire(type);
+    assert.equal(f.win.timers.size, 0);
+    const afterShow = f.storage.reads;
+    staleBeforeShow(); f.win.flushTimers();
+    assert.equal(f.storage.reads, afterShow);
+  }
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.note.value = '明确保存的备注';
+  f.win.fire('storage', { key: favoriteKey });
+  f.nodes.save.fire('click');
+  assert.equal(f.win.timers.size, 0);
+  assert.equal(JSON.parse(f.storage.values.get(noteKey(1))).note, '明确保存的备注');
+  const afterSave = f.storage.reads;
+  f.win.flushTimers();
+  assert.equal(f.storage.reads, afterSave);
+  f.win.fire('storage', { key: noteKey(1) });
+  const stale = [...f.win.timers.values()][0].callback;
+  f.controller.destroy();
+  assert.equal(f.win.timers.size, 0);
+  const mounted = mountBookmarkLibrary(f.root, { store: f.store });
+  const remountedReads = f.storage.reads;
+  stale(); f.win.flushTimers();
+  assert.equal(f.storage.reads, remountedReads);
+  assert.ok(f.row(markId(1)).textContent.includes('明确保存的备注'));
+  mounted.destroy();
 });

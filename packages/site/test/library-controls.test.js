@@ -62,6 +62,23 @@ function descendants(node) {
   return node.children.flatMap((child) => [child, ...descendants(child)]);
 }
 
+// 普通单事件回归自动推进刷新窗口；批量回归关闭它并显式推进同一手动时钟。
+function installStorageClock(win, autoFlushStorage) {
+  const timers = new Map();
+  let timerId = 0;
+  win.setTimeout = (callback, delay) => { timers.set(++timerId, { callback, delay }); return timerId; };
+  win.clearTimeout = (id) => timers.delete(id);
+  win.flushTimers = () => {
+    for (const [id, timer] of [...timers]) {
+      if (!timers.delete(id)) continue;
+      timer.callback();
+    }
+  };
+  win.timers = timers;
+  const fire = win.fire.bind(win);
+  win.fire = (type, event) => { fire(type, event); if (type === 'storage' && autoFlushStorage) win.flushTimers(); };
+}
+
 function storageFixture(records = {}) {
   const data = new Map(Object.entries(records).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]));
   const operations = [];
@@ -89,9 +106,10 @@ const saved = (status = 'want', updatedAt = 10) => ({ version: 1, status, update
 const shelfKey = (id) => LIBRARY_PREFIX + id;
 const progressKey = (id) => `gallery:progress:${id}`;
 
-function seriesFixture({ records = {}, denied = false } = {}) {
+function seriesFixture({ records = {}, denied = false, autoFlushStorage = true } = {}) {
   const storage = storageFixture(records);
   const win = element('window');
+  installStorageClock(win, autoFlushStorage);
   Object.defineProperty(win, 'localStorage', { get() { if (denied) throw new Error('Storage denied'); return storage; } });
   const root = element('div');
   root.hidden = true;
@@ -123,10 +141,11 @@ function catalog() {
   ];
 }
 
-function libraryFixture({ data = catalog(), records = {}, denied = false, deniedKeys = [] } = {}) {
+function libraryFixture({ data = catalog(), records = {}, denied = false, deniedKeys = [], autoFlushStorage = true } = {}) {
   const storage = storageFixture(records);
   storage.denyReadKeys = new Set(deniedKeys);
   const win = element('window');
+  installStorageClock(win, autoFlushStorage);
   const access = { denied };
   const getStorage = () => { if (access.denied) throw new Error('Storage denied'); return storage; };
   const root = element('section');
@@ -612,5 +631,121 @@ test('共享刷新响应相关事件与按钮，销毁及备份恢复重挂载�
   const status = f.row('sample').querySelector('select');
   status.value = 'read'; status.fire('change');
   assert.equal(mounted.hasPending, true, '新增历史视图不应绕过备份的未保存修改检查');
+  mounted.destroy();
+});
+
+test('作品控件将同一窗口的千条外部状态事件合并为一次读取，页面恢复取消旧任务', () => {
+  const f = seriesFixture({ records: { [shelfKey('sample')]: saved('want') }, autoFlushStorage: false });
+  const before = f.storage.reads;
+  f.nodes.status.focus();
+  for (let i = 0; i < 1000; i++) {
+    f.storage.data.set(shelfKey('sample'), JSON.stringify(saved(i === 999 ? 'read' : 'reading', i)));
+    f.win.fire('storage', { key: shelfKey('sample') });
+  }
+  assert.equal(f.storage.reads, before);
+  assert.equal(f.nodes.status.value, 'want');
+  assert.equal(f.win.timers.size, 1);
+  assert.equal([...f.win.timers.values()][0].delay, 50);
+  f.win.flushTimers();
+  assert.equal(f.storage.reads, before + 1);
+  assert.equal(f.nodes.status.value, 'read');
+  assert.equal(f.root.ownerDocument.activeElement, f.nodes.status);
+  assert.deepEqual(f.storage.operations, []);
+
+  f.storage.data.delete(shelfKey('sample'));
+  for (const type of ['pageshow', 'focus']) {
+    f.win.fire('storage', { key: shelfKey('sample') });
+    const stale = [...f.win.timers.values()][0].callback;
+    f.win.fire(type);
+    assert.equal(f.nodes.add.hidden, false);
+    assert.equal(f.win.timers.size, 0);
+    const reads = f.storage.reads;
+    stale(); f.win.flushTimers();
+    assert.equal(f.storage.reads, reads, '旧回调迟到不能覆盖同步恢复后的界面');
+  }
+  const resumedReads = f.storage.reads;
+  f.win.fire('storage', { key: null });
+  f.controller.destroy();
+  assert.equal(f.win.timers.size, 0);
+  f.win.flushTimers();
+  assert.equal(f.storage.reads, resumedReads);
+});
+
+test('书架和最近阅读把批量已知键事件合为同次快照，未知键不排任务，最终值和焦点保持一致', () => {
+  const key = 'sample/v/c1';
+  const f = libraryFixture({ autoFlushStorage: false, records: {
+    [shelfKey('sample')]: saved('want'),
+    [progressKey(key)]: { url: `/${key}/`, n: 1, ts: 1 },
+  } });
+  for (const name of ['other-app:key', shelfKey('removed'), progressKey('removed/v/c1'), progressKey(key) + '/extra']) {
+    f.win.fire('storage', { key: name });
+  }
+  assert.equal(f.win.timers.size, 0, '只响应当前目录中确切的收藏或进度键');
+  const old = f.historyRead(key);
+  old.focus();
+  const reads = f.storage.reads;
+  const readKeys = f.storage.readKeys.length;
+  for (let i = 0; i < 1000; i++) {
+    f.storage.data.set(progressKey(key), JSON.stringify({ url: `/${key}/`, n: i % 2 + 1, ts: i + 2 }));
+    f.win.fire('storage', { key: progressKey(key) });
+    if (i % 50 === 0) f.win.fire('storage', { key: shelfKey('sample') });
+  }
+  assert.equal(f.win.timers.size, 1);
+  assert.equal(f.storage.reads, reads);
+  assert.equal(f.historyRead(key), old, '等待期间不重建历史节点');
+  f.win.flushTimers();
+  const progressReads = f.storage.readKeys.slice(readKeys).filter((name) => name.startsWith('gallery:progress:'));
+  assert.deepEqual(progressReads, [progressKey('sample/v/c1'), progressKey('sample/v/c2'), progressKey('zeta/v/c1')]);
+  assert.equal(f.readLink('sample').href, '/sample/v/c1/#p2');
+  assert.equal(f.historyRead(key).href, '/sample/v/c1/#p2');
+  assert.notEqual(f.historyRead(key), old);
+  assert.equal(f.root.ownerDocument.activeElement, f.historyRead(key));
+  assert.deepEqual(f.storage.operations, []);
+  const after = f.storage.reads;
+  f.win.flushTimers();
+  assert.equal(f.storage.reads, after, '合并刷新完成后没有剩余任务');
+  f.storage.data.delete(progressKey(key));
+  f.win.fire('storage', { key: null });
+  assert.equal(f.win.timers.size, 1, '清空事件仍要求重新读取当前目录');
+  f.win.flushTimers();
+  assert.equal(f.nodes['history-list'].children.length, 0);
+  assert.equal(f.root.ownerDocument.activeElement, f.nodes['history-search']);
+  f.controller.destroy();
+});
+
+test('显式刷新与未保存的本页状态抢先处理排队事件，销毁重挂不执行旧快照', () => {
+  const key = progressKey('sample/v/c1');
+  const f = libraryFixture({ autoFlushStorage: false, records: { [shelfKey('sample')]: saved('want') } });
+  for (const resume of [() => f.nodes['history-refresh'].fire('click'), () => f.win.fire('pageshow'), () => f.win.fire('focus')]) {
+    f.storage.data.set(key, JSON.stringify({ url: '/sample/v/c1/', n: 2, ts: 10 }));
+    f.win.fire('storage', { key });
+    const stale = [...f.win.timers.values()][0].callback;
+    resume();
+    assert.equal(f.readLink('sample').href, '/sample/v/c1/#p2');
+    assert.equal(f.win.timers.size, 0);
+    const reads = f.storage.reads;
+    stale(); f.win.flushTimers();
+    assert.equal(f.storage.reads, reads);
+  }
+  f.win.fire('storage', { key });
+  f.storage.denyWrite = true;
+  const status = f.row('sample').querySelector('select');
+  status.value = 'reading'; status.fire('change');
+  assert.equal(f.controller.hasPending, true);
+  assert.equal(f.row('sample').querySelector('select').value, 'reading');
+  assert.equal(f.win.timers.size, 0, '显式本页修改已读取新快照，旧延迟任务必须取消');
+  const readsAfterEdit = f.storage.reads;
+  f.win.flushTimers();
+  assert.equal(f.storage.reads, readsAfterEdit);
+  f.win.fire('storage', { key });
+  const stale = [...f.win.timers.values()][0].callback;
+  f.controller.destroy();
+  assert.equal(f.win.timers.size, 0);
+  const mounted = mountLibrary(f.root, { getStorage: f.getStorage, store: f.store });
+  const remountedReads = f.storage.reads;
+  stale(); f.win.flushTimers();
+  assert.equal(f.storage.reads, remountedReads);
+  assert.equal(mounted.hasPending, true, '排队刷新和重挂不能绕过未保存状态保护');
+  assert.equal(f.win.listenerCount(), 3);
   mounted.destroy();
 });

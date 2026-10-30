@@ -1,5 +1,6 @@
 import { createBookmarkStore, FAVORITES_PREFIX, NOTE_PREFIX, MAX_NOTE_LENGTH } from './bookmarks.js';
 import { readLibraryCatalog } from './library-controls.js';
+import { createStorageRefresh } from './storage-refresh.js';
 
 /** 页书签独立于作品书架；只把当前目录中的收藏呈现为站内页码链接。 */
 export function mountBookmarkLibrary(root, options = {}) {
@@ -25,6 +26,8 @@ export function mountBookmarkLibrary(root, options = {}) {
   let limit = 50;
   let editing = null;
   let writing = false;
+  let destroyed = false;
+  const storageRefresh = createStorageRefresh(win, () => refresh());
   const element = (tag, text, className) => {
     const node = doc.createElement(tag);
     if (text !== undefined) node.textContent = text;
@@ -108,6 +111,8 @@ export function mountBookmarkLibrary(root, options = {}) {
     if (focusedId && focusedAction) focusRow(focusedId, focusedAction);
   }
   function refresh() {
+    storageRefresh.cancel();
+    if (destroyed) return;
     rows = catalog.flatMap((series) => series.issues.flatMap((issue) => issue.chapters.flatMap((chapter) =>
       store.list(chapter.key, chapter.pages).map((mark) => ({ ...mark, series, issue, chapter })))));
     render();
@@ -131,7 +136,7 @@ export function mountBookmarkLibrary(root, options = {}) {
   const onFilter = () => { limit = 50; render(); };
   const onMore = () => { limit += 50; render(); more.hidden ? filter.focus() : more.focus(); };
   const onStorage = (event) => {
-    if (event.key === null || event.key?.startsWith(FAVORITES_PREFIX) || event.key?.startsWith(NOTE_PREFIX)) refresh();
+    if (event.key === null || event.key?.startsWith(FAVORITES_PREFIX) || event.key?.startsWith(NOTE_PREFIX)) storageRefresh.request();
   };
   const onShow = () => refresh();
   const unsubscribe = store.subscribe(() => { if (!writing) refresh(); });
@@ -142,12 +147,15 @@ export function mountBookmarkLibrary(root, options = {}) {
   editor.addEventListener('keydown', onKey);
   win.addEventListener('storage', onStorage);
   win.addEventListener('pageshow', onShow);
+  win.addEventListener('focus', onShow);
   root.querySelector('[data-bookmark-toolbar]').hidden = false;
   refresh();
   return {
     get hasPending() { return store.hasPending; },
     get isEditing() { return Boolean(editing); },
     destroy() {
+      destroyed = true;
+      storageRefresh.destroy();
       unsubscribe();
       filter.removeEventListener('change', onFilter);
       more.removeEventListener('click', onMore);
@@ -156,6 +164,7 @@ export function mountBookmarkLibrary(root, options = {}) {
       editor.removeEventListener('keydown', onKey);
       win.removeEventListener('storage', onStorage);
       win.removeEventListener('pageshow', onShow);
+      win.removeEventListener('focus', onShow);
     },
   };
 }

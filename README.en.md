@@ -56,6 +56,8 @@ The library, bookmarks, notes, and progress are stored in the current browser fo
 sync. If browser storage is unavailable, the page explains that changes are kept temporarily on the current page only.
 Save a backup before clearing site data or moving to another device or domain.
 
+Library, bookmark, and progress updates arriving close together from other tabs refresh the view together. Returning to the window or refreshing records reads the latest data immediately; bookmark notes being edited keep their drafts.
+
 ### Switch between light and dark appearance
 
 Use the appearance selector in the navigation to choose “浅色” (Light), “深色” (Dark), or “跟随系统” (Follow system). Follow system is the default and responds to system appearance changes. The choice is remembered for the current site and browser across page visits. If browser storage is unavailable, the page shows a notice and the choice still works on the current page.

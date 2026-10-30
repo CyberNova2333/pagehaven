@@ -1,4 +1,5 @@
 // 完整目录只在打开时读取作品索引；HTML 保留静态目录链接，失败不妨碍继续阅读。
+import { createStorageRefresh } from './storage-refresh.js';
 const ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const isId = (value) => typeof value === 'string' && ID.test(value);
 const PROGRESS_PREFIX = 'gallery:progress:';
@@ -72,6 +73,8 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   let timer = null;
   let destroyed = false;
   const progress = new Map();
+  const progressKeys = new Set();
+  const storageRefresh = createStorageRefresh(win, () => refreshProgress());
 
   function clearJumpError() {
     jumpInvalid = false;
@@ -115,6 +118,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
     } catch { return { state: 'unavailable' }; }
   }
   function refreshProgress(selectCurrent = false) {
+    storageRefresh.cancel();
     if (destroyed || toc.hidden || phase !== 'ready') return;
     let storage;
     try { storage = readStorage(); } catch { /* 各行显示无法读取，当前页仍可使用本页核心进度。 */ }
@@ -278,6 +282,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
       const loadedCurrent = loaded.find((row) => row.key === chapterKey);
       if (!loadedCurrent) throw new Error('目录缺少当前章');
       rows = loaded;
+      for (const row of rows) progressKeys.add(PROGRESS_PREFIX + row.key);
       currentRow = loadedCurrent;
       phase = 'ready';
       controls.hidden = false;
@@ -300,7 +305,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   function visibilityChanged() {
     if (destroyed) return;
     toggle?.setAttribute('aria-expanded', String(!toc.hidden));
-    if (toc.hidden) return;
+    if (toc.hidden) { storageRefresh.cancel(); return; }
     if (phase === 'idle') void load();
     else if (phase === 'ready') { refreshProgress(true); locateCurrent(); }
   }
@@ -351,7 +356,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   const onRetry = () => { if (!toc.hidden) void load(); };
   const onStorage = (event) => {
     if (phase !== 'ready' || toc.hidden) return;
-    if (event.key === null || rows.some((row) => event.key === PROGRESS_PREFIX + row.key)) refreshProgress();
+    if (event.key === null || progressKeys.has(event.key)) storageRefresh.request();
   };
   const onShow = () => refreshProgress();
   const unsubscribe = core?.subscribe?.(() => {
@@ -389,6 +394,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   return {
     destroy() {
       destroyed = true;
+      storageRefresh.destroy();
       if (order) order.disabled = true;
       if (pageInput) pageInput.disabled = true;
       if (pageGo) pageGo.disabled = true;
