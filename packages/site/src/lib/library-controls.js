@@ -1,4 +1,5 @@
 import { createLibraryStore, readReadingProgress, LIBRARY_PREFIX, READING_STATUSES } from './library.js';
+import { createStorageRefresh } from './storage-refresh.js';
 
 const ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const TEMPORARY_NOTE = '浏览器未允许保存书架，本页操作仅临时保留；离开或刷新页面后可能丢失。';
@@ -15,8 +16,10 @@ export function mountSeriesLibrary(root, options = {}) {
   const status = root.querySelector('[data-library-status]');
   const remove = root.querySelector('[data-library-remove]');
   const message = root.querySelector('[data-library-message]');
+  const storageRefresh = createStorageRefresh(win, () => refresh());
 
   function refresh(feedback = '') {
+    storageRefresh.cancel();
     const active = root.ownerDocument.activeElement;
     const entry = store.read(seriesId);
     add.hidden = Boolean(entry);
@@ -43,21 +46,24 @@ export function mountSeriesLibrary(root, options = {}) {
     refresh('已移出书架，阅读进度仍会保留。');
     add.focus();
   };
-  const onStorage = (event) => { if (event.key === null || event.key === LIBRARY_PREFIX + seriesId) refresh(); };
+  const onStorage = (event) => { if (event.key === null || event.key === LIBRARY_PREFIX + seriesId) storageRefresh.request(); };
   const onShow = () => refresh();
   add.addEventListener('click', onAdd);
   status.addEventListener('change', onStatus);
   remove.addEventListener('click', onRemove);
   win.addEventListener('storage', onStorage);
   win.addEventListener('pageshow', onShow);
+  win.addEventListener('focus', onShow);
   refresh();
   return {
     destroy() {
+      storageRefresh.destroy();
       add.removeEventListener('click', onAdd);
       status.removeEventListener('change', onStatus);
       remove.removeEventListener('click', onRemove);
       win.removeEventListener('storage', onStorage);
       win.removeEventListener('pageshow', onShow);
+      win.removeEventListener('focus', onShow);
     },
   };
 }
@@ -124,6 +130,9 @@ export function mountLibrary(root, options = {}) {
   let historyLimit = 20;
   let progressLimited = false;
   let destroyed = false;
+  const libraryKeys = new Set(catalog.map((series) => LIBRARY_PREFIX + series.id));
+  const progressKeys = new Set(catalog.flatMap((series) => series.issues.flatMap((issue) => issue.chapters.map((chapter) => `gallery:progress:${chapter.key}`))));
+  const storageRefresh = createStorageRefresh(win, () => refresh());
 
   const element = (tag, className, text) => {
     const node = doc.createElement(tag);
@@ -267,6 +276,7 @@ export function mountLibrary(root, options = {}) {
     } else if (active === historyMore && historyMore.hidden) historySearch.focus({ preventScroll: !hadVisibleFocus });
   }
   function refresh(message = '') {
+    storageRefresh.cancel();
     if (destroyed) return;
     const active = doc.activeElement;
     const historyHadVisibleFocus = historyFocusVisible(active);
@@ -302,7 +312,7 @@ export function mountLibrary(root, options = {}) {
     (next ?? historySearch).focus();
   };
   const onStorage = (event) => {
-    if (event.key === null || event.key?.startsWith(LIBRARY_PREFIX) || event.key?.startsWith('gallery:progress:')) refresh();
+    if (event.key === null || libraryKeys.has(event.key) || progressKeys.has(event.key)) storageRefresh.request();
   };
   const onShow = () => refresh();
   filter.addEventListener('change', onFilter);
@@ -323,6 +333,7 @@ export function mountLibrary(root, options = {}) {
     get hasPending() { return store.hasPending; },
     destroy() {
       destroyed = true;
+      storageRefresh.destroy();
       filter.removeEventListener('change', onFilter);
       search.removeEventListener('input', onFilter);
       sort?.removeEventListener('change', onFilter);

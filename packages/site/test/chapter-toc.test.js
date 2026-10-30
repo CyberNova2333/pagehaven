@@ -69,7 +69,7 @@ function element(tag = '') {
   };
 }
 
-function fixture({ fetcher = async () => response(), hidden = true, seriesId = 'sample', chapterKey = 'sample/v1/c2', records = {}, currentPage } = {}) {
+function fixture({ fetcher = async () => response(), hidden = true, seriesId = 'sample', chapterKey = 'sample/v1/c2', records = {}, currentPage, autoFlushStorage = true } = {}) {
   const toc = element('aside');
   toc.id = 'toc';
   toc.hidden = hidden;
@@ -85,6 +85,7 @@ function fixture({ fetcher = async () => response(), hidden = true, seriesId = '
   nodes.order.disabled = true;
   const toggle = element('button');
   const timers = new Map();
+  const timerDelays = new Map();
   let timerId = 0;
   const values = new Map(Object.entries(records).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]));
   const storage = { values, reads: [], mutations: 0, denied: new Set(), deniedAll: false,
@@ -99,14 +100,23 @@ function fixture({ fetcher = async () => response(), hidden = true, seriesId = '
   } };
   const window = Object.assign(element('window'), {
     localStorage: storage,
-    setTimeout(callback) { timers.set(++timerId, callback); return timerId; },
-    clearTimeout(id) { timers.delete(id); },
+    setTimeout(callback, delay) { timers.set(++timerId, callback); timerDelays.set(timerId, delay); return timerId; },
+    clearTimeout(id) { timers.delete(id); timerDelays.delete(id); },
     MutationObserver: class {
       constructor(callback) { this.callback = callback; }
       observe(target, options) { assert.deepEqual(options.attributeFilter, ['hidden']); this.target = target; target.observers.add(this.callback); }
       disconnect() { this.target.observers.delete(this.callback); }
     },
   });
+  const flushRefreshTimers = () => {
+    for (const [id, callback] of [...timers]) {
+      if (timerDelays.get(id) !== 50 || !timers.delete(id)) continue;
+      timerDelays.delete(id);
+      callback();
+    }
+  };
+  const fire = window.fire.bind(window);
+  window.fire = (type, event) => { fire(type, event); if (type === 'storage' && autoFlushStorage) flushRefreshTimers(); };
   toc.ownerDocument = {
     defaultView: window, activeElement: null,
     getElementById: (id) => id === 'toc-btn' ? toggle : id === 'reader' ? reader : null,
@@ -117,7 +127,7 @@ function fixture({ fetcher = async () => response(), hidden = true, seriesId = '
   toc.querySelector = (selector) => nodes[selector.slice('[data-toc-'.length, -1)];
   const calls = [];
   const api = mountChapterToc(toc, { fetcher: (url, options) => { calls.push({ url, ...options }); return fetcher(url, options); }, timeoutMs: 100 });
-  return { toc, nodes, toggle, timers, calls, api, window, storage, subscribers,
+  return { toc, nodes, toggle, timers, timerDelays, flushRefreshTimers, calls, api, window, storage, subscribers,
     live(page) { livePage = page; for (const callback of subscribers) callback(); },
     links: () => nodes.list.children.map((item) => item.children[0]),
     indicators: () => nodes.list.children.map((item) => item.children[2]),
@@ -1118,4 +1128,70 @@ test('隐藏、加载中和失败时顺序切换无操作；重新打开沿用�
   changeOrder(loaded, 'asc');
   assert.ok(loaded.nodes.list.children.every((row, i) => row === reopened[i]));
   assert.equal(loaded.storage.reads.length, afterReads);
+});
+
+test('可见目录合并千条已知进度事件，只扫描一次并保持焦点和当前行局部更新', async () => {
+  const f = fixture({ hidden: false, currentPage: 2, autoFlushStorage: false });
+  await settle();
+  for (const key of ['another-app:key', progressKey('removed/v/c'), progressKey('sample/v1/c1') + '/extra']) f.window.fire('storage', { key });
+  assert.equal(f.timers.size, 0, '未知键不创建计时器，也不必线性扫描整部目录');
+  const reads = f.storage.reads.length;
+  const before = [...f.nodes.list.children];
+  f.links()[0].focus();
+  for (let i = 0; i < 1000; i++) {
+    f.storage.values.set(progressKey('sample/v1/c1'), JSON.stringify(savedProgress('sample/v1/c1', i % 5 + 1)));
+    f.window.fire('storage', { key: progressKey('sample/v1/c1') });
+  }
+  assert.equal(f.timers.size, 1);
+  assert.equal(f.storage.reads.length, reads);
+  assert.ok(f.nodes.list.children.every((row, i) => row === before[i]));
+  f.live(4);
+  assert.equal(f.links()[1].href, '/sample/v1/c2/#p4');
+  assert.ok(f.nodes.list.children.every((row, i) => row === before[i]), '队列等待期间本页翻页仍只更新当前行');
+  f.flushRefreshTimers();
+  assert.equal(f.storage.reads.length, reads + 3);
+  assert.equal(f.links()[0].href, '/sample/v1/c1/#p5');
+  assert.equal(f.links()[1].href, '/sample/v1/c2/#p4', '刷新使用当前实际页码，不回退到旧存储值');
+  assert.equal(f.toc.ownerDocument.activeElement, f.links()[0]);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.storage.mutations, 0);
+  const after = f.storage.reads.length;
+  f.flushRefreshTimers();
+  assert.equal(f.storage.reads.length, after);
+  f.api.destroy();
+});
+
+test('目录关闭、同步恢复和销毁都取消排队快照，旧回调不能覆盖重新打开后的目录', async () => {
+  const f = fixture({ hidden: false, autoFlushStorage: false });
+  await settle();
+  for (const type of ['pageshow', 'focus']) {
+    f.window.fire('storage', { key: null });
+    const stale = [...f.timers.values()][0];
+    f.window.fire(type);
+    assert.equal(f.timers.size, 0);
+    const reads = f.storage.reads.length;
+    stale(); f.flushRefreshTimers();
+    assert.equal(f.storage.reads.length, reads);
+  }
+  f.window.fire('storage', { key: progressKey('sample/v1/c1') });
+  const staleBeforeHide = [...f.timers.values()][0];
+  f.toc.hidden = true;
+  assert.equal(f.timers.size, 0);
+  const hiddenReads = f.storage.reads.length;
+  staleBeforeHide(); f.flushRefreshTimers();
+  f.window.fire('storage', { key: null });
+  assert.equal(f.timers.size, 0);
+  assert.equal(f.storage.reads.length, hiddenReads);
+  f.storage.values.set(progressKey('sample/v1/c1'), JSON.stringify(savedProgress('sample/v1/c1', 3)));
+  f.toc.hidden = false;
+  assert.equal(f.links()[0].href, '/sample/v1/c1/#p3');
+  assert.equal(f.calls.length, 1);
+  f.window.fire('storage', { key: null });
+  const staleBeforeDestroy = [...f.timers.values()][0];
+  f.api.destroy();
+  assert.equal(f.timers.size, 0);
+  const destroyedReads = f.storage.reads.length;
+  staleBeforeDestroy(); f.flushRefreshTimers();
+  assert.equal(f.storage.reads.length, destroyedReads);
+  assert.equal(f.window.listenerCount(), 0);
 });
