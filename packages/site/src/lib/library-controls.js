@@ -1,7 +1,8 @@
-import { createLibraryStore, latestSeriesProgress, LIBRARY_PREFIX, READING_STATUSES } from './library.js';
+import { createLibraryStore, readReadingProgress, LIBRARY_PREFIX, READING_STATUSES } from './library.js';
 
 const ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const TEMPORARY_NOTE = '浏览器未允许保存书架，本页操作仅临时保留；离开或刷新页面后可能丢失。';
+const PROGRESS_NOTE = '部分阅读记录暂时无法读取，最近阅读与继续阅读可能不完整；原记录不会被改动。';
 const statusLabel = (value) => READING_STATUSES.find((status) => status.value === value)?.label ?? '';
 
 /** 作品页只在明确操作时收藏或修改状态，阅读进度由原阅读器维护。 */
@@ -100,17 +101,29 @@ export function mountLibrary(root, options = {}) {
   const empty = root.querySelector('#library-empty');
   const filter = root.querySelector('#library-filter');
   const search = root.querySelector('#library-search');
+  const sort = root.querySelector('#library-sort');
   const count = root.querySelector('#library-count');
   const storageNote = root.querySelector('#library-storage-note');
   const feedback = root.querySelector('#library-feedback');
+  const historyList = root.querySelector('#history-list');
+  const historyEmpty = root.querySelector('#history-empty');
+  const historySearch = root.querySelector('#history-search');
+  const historyCount = root.querySelector('#history-count');
+  const historyMore = root.querySelector('#history-more');
+  const historyRefresh = root.querySelector('#history-refresh');
   let catalog;
   try { catalog = readLibraryCatalog(root.querySelector('#library-catalog')); }
   catch {
     empty.textContent = '书架目录暂时无法读取，请刷新页面重试；也可回首页继续浏览作品。';
+    if (historyEmpty) historyEmpty.textContent = '最近阅读目录暂时无法读取，请刷新页面重试。';
     root.setAttribute('aria-busy', 'false');
     return;
   }
   let entries = [];
+  let historyRows = [];
+  let historyLimit = 20;
+  let progressLimited = false;
+  let destroyed = false;
 
   const element = (tag, className, text) => {
     const node = doc.createElement(tag);
@@ -196,6 +209,9 @@ export function mountLibrary(root, options = {}) {
     const query = search.value.trim().normalize('NFKC').toLowerCase();
     const visible = entries.filter(({ series, entry }) => (filter.value === 'all' || entry.status === filter.value)
       && `${series.title} ${series.authors.join(' ')}`.normalize('NFKC').toLowerCase().includes(query));
+    if (sort?.value === 'recent') visible.sort((left, right) => Number(Boolean(right.progress)) - Number(Boolean(left.progress))
+      || (right.progress?.ts ?? 0) - (left.progress?.ts ?? 0)
+      || right.entry.updatedAt - left.entry.updatedAt || left.order - right.order);
     list.replaceChildren(...visible.map(card));
     list.hidden = visible.length === 0;
     empty.hidden = visible.length > 0;
@@ -203,46 +219,119 @@ export function mountLibrary(root, options = {}) {
       : catalog.length ? '书架还是空的。在作品页点击“加入书架”，把想读的故事留在这里。'
         : '当前还没有作品。内容发布后，即可在作品页加入书架。';
     count.textContent = `共 ${entries.length} 部作品 · 显示 ${visible.length} 部`;
-    storageNote.hidden = !store.limited;
-    storageNote.textContent = store.limited ? TEMPORARY_NOTE : '';
+    storageNote.hidden = !store.limited && !progressLimited;
+    storageNote.textContent = [store.limited ? TEMPORARY_NOTE : '', progressLimited ? PROGRESS_NOTE : ''].filter(Boolean).join(' ');
+  }
+  function historyCard(item) {
+    const { series, issue, chapter, n, ts } = item;
+    const row = element('li', 'history-row card card-pad');
+    row.dataset.historyKey = chapter.key;
+    const heading = element('h3');
+    const read = element('a', '', `${series.title} · ${chapter.title}`);
+    read.dataset.historyAction = 'read';
+    read.href = `${chapter.url}#p${n}`;
+    heading.append(read);
+    row.append(heading, element('p', 'muted', `${issue.title} · 第 ${n} / ${chapter.pages} 页`));
+    const date = new Date(ts);
+    const knownTime = ts > 0 && Number.isFinite(date.getTime());
+    const time = element('time', 'muted', knownTime ? date.toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }) : '阅读时间未记录');
+    if (knownTime) time.setAttribute('datetime', date.toISOString());
+    row.append(time);
+    return row;
+  }
+  function historyFocusVisible(active = doc.activeElement) {
+    if (!active || (!historyList?.contains(active) && active !== historyMore)) return false;
+    const rect = active.getBoundingClientRect?.();
+    return Boolean(rect && rect.height > 0 && rect.bottom > 0 && rect.top < win.innerHeight);
+  }
+  function renderHistory(hadVisibleFocus = historyFocusVisible()) {
+    if (!historyList) return;
+    const active = doc.activeElement;
+    const focusedKey = historyList.contains(active) ? active.closest('[data-history-key]')?.dataset.historyKey : null;
+    const query = (historySearch?.value ?? '').trim().normalize('NFKC').toLowerCase();
+    const matches = historyRows.filter(({ series, issue, chapter }) => `${series.title} ${series.authors.join(' ')} ${issue.title} ${chapter.title}`.normalize('NFKC').toLowerCase().includes(query));
+    const focusedIndex = focusedKey ? matches.findIndex((item) => item.chapter.key === focusedKey) : -1;
+    if (focusedIndex >= historyLimit) historyLimit = Math.ceil((focusedIndex + 1) / 20) * 20;
+    historyList.replaceChildren(...matches.slice(0, historyLimit).map(historyCard));
+    historyList.hidden = matches.length === 0;
+    historyEmpty.hidden = matches.length > 0;
+    historyEmpty.textContent = historyRows.length ? '没有匹配的阅读记录。试试其他作品、期名或章节名。'
+      : progressLimited ? '阅读记录暂时无法完整读取。可点击“刷新记录”重试；原有记录不会被改动。'
+        : catalog.length ? '还没有可用的阅读记录。开始阅读后，可从这里继续，作品无需加入书架。'
+          : '当前还没有作品。内容发布后，即可在这里查看最近阅读。';
+    historyCount.textContent = `共 ${historyRows.length} 话 · 显示 ${Math.min(historyLimit, matches.length)} / ${matches.length} 话`;
+    historyMore.hidden = matches.length <= historyLimit;
+    if (focusedKey) {
+      const next = historyList.querySelector(`[data-history-key="${focusedKey}"] a`);
+      (next ?? historySearch).focus({ preventScroll: !hadVisibleFocus });
+    } else if (active === historyMore && historyMore.hidden) historySearch.focus({ preventScroll: !hadVisibleFocus });
   }
   function refresh(message = '') {
+    if (destroyed) return;
     const active = doc.activeElement;
+    const historyHadVisibleFocus = historyFocusVisible(active);
     const focusedSeries = list.contains(active) ? active.closest('[data-series-id]')?.dataset.seriesId : null;
     const focusedControl = active?.tagName === 'SELECT' ? 'select'
       : active?.dataset.libraryAction ? `[data-library-action="${active.dataset.libraryAction}"]` : null;
     let storage;
-    try { storage = getStorage(); } catch { /* 书架读写会显示当前浏览器的存储限制。 */ }
+    let storageDenied = false;
+    try { storage = getStorage(); } catch { storageDenied = true; }
+    const snapshot = storageDenied ? { rows: [], latest: new Map(), limited: true } : readReadingProgress(catalog, storage);
+    historyRows = snapshot.rows;
+    progressLimited = storageDenied || snapshot.limited;
     entries = catalog.flatMap((series, order) => {
       const entry = store.read(series.id);
-      return entry ? [{ series, entry, progress: latestSeriesProgress(series, storage), order }] : [];
+      return entry ? [{ series, entry, progress: snapshot.latest.get(series.id) ?? null, order }] : [];
     }).sort((left, right) => right.entry.updatedAt - left.entry.updatedAt || left.order - right.order);
     feedback.textContent = message;
     render();
+    renderHistory(historyHadVisibleFocus);
     if (focusedSeries && focusedControl) {
       const next = list.querySelector(`[data-series-id="${focusedSeries}"] ${focusedControl}`);
       (next ?? filter).focus({ preventScroll: true });
     }
   }
-  const onFilter = () => render();
+  const onFilter = () => { if (!destroyed) render(); };
+  const onHistoryFilter = () => { if (!destroyed) { historyLimit = 20; renderHistory(); } };
+  const onHistoryMore = () => {
+    if (destroyed || !historyList) return;
+    const previousLimit = historyLimit;
+    historyLimit += 20;
+    renderHistory();
+    const next = historyList.children[previousLimit]?.querySelector('a');
+    (next ?? historySearch).focus();
+  };
   const onStorage = (event) => {
     if (event.key === null || event.key?.startsWith(LIBRARY_PREFIX) || event.key?.startsWith('gallery:progress:')) refresh();
   };
   const onShow = () => refresh();
   filter.addEventListener('change', onFilter);
   search.addEventListener('input', onFilter);
+  sort?.addEventListener('change', onFilter);
+  historySearch?.addEventListener('input', onHistoryFilter);
+  historyMore?.addEventListener('click', onHistoryMore);
+  historyRefresh?.addEventListener('click', onShow);
   win.addEventListener('storage', onStorage);
   win.addEventListener('pageshow', onShow);
+  win.addEventListener('focus', onShow);
   root.querySelector('[data-library-toolbar]').hidden = false;
+  const historyToolbar = root.querySelector('[data-history-toolbar]');
+  if (historyToolbar) historyToolbar.hidden = false;
   refresh();
   root.setAttribute('aria-busy', 'false');
   return {
     get hasPending() { return store.hasPending; },
     destroy() {
+      destroyed = true;
       filter.removeEventListener('change', onFilter);
       search.removeEventListener('input', onFilter);
+      sort?.removeEventListener('change', onFilter);
+      historySearch?.removeEventListener('input', onHistoryFilter);
+      historyMore?.removeEventListener('click', onHistoryMore);
+      historyRefresh?.removeEventListener('click', onShow);
       win.removeEventListener('storage', onStorage);
       win.removeEventListener('pageshow', onShow);
+      win.removeEventListener('focus', onShow);
     },
   };
 }

@@ -327,11 +327,31 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     for (const id of ['library-root', 'library-catalog', 'library-list', 'library-filter', 'library-search', 'library-count', 'library-empty', 'library-storage-note', 'library-bookmarks', 'bookmark-count', 'bookmark-list', 'bookmark-empty', 'bookmark-storage-note', 'bookmark-filter']) {
       assert.ok(library.includes(`id="${id}"`), `书架页缺 #${id}`);
     }
+    const libraryToolbar = /<div\b(?=[^>]*\bdata-library-toolbar)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>([\s\S]*?)<\/div>/.exec(library);
+    assert.ok(libraryToolbar, '书架筛选与排序仅在脚本读取个人记录后显示');
+    const librarySort = /<select\b(?=[^>]*\bid="library-sort")[^>]*>([\s\S]*?)<\/select>/.exec(libraryToolbar[1]);
+    assert.ok(librarySort, '书架必须提供独立的排列顺序选择器');
+    assert.match(librarySort[1], /^\s*<option\b[^>]*\bvalue="updated"[^>]*>/, '默认沿用最近更新书架顺序');
+    assert.match(librarySort[1], /<option\b[^>]*\bvalue="recent"[^>]*>/);
+    assert.match(libraryToolbar[1], /<label\b[^>]*\bfor="library-sort"[^>]*>/);
+    const history = /<section\b(?=[^>]*\bid="reading-history")(?=[^>]*\baria-labelledby="history-heading")[^>]*>([\s\S]*?)<\/section>/.exec(library);
+    assert.ok(history, '最近阅读应有独立章节列表，与作品收藏分开');
+    for (const id of ['history-heading', 'history-search', 'history-count', 'history-empty', 'history-list', 'history-more', 'history-refresh']) {
+      assert.ok(history[1].includes(`id="${id}"`), `最近阅读缺 #${id}`);
+    }
+    assert.match(history[1], /<div\b(?=[^>]*\bdata-history-toolbar)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '历史查询控件初始隐藏');
+    assert.match(history[1], /<input\b(?=[^>]*\bid="history-search")(?=[^>]*\btype="search")[^>]*>/);
+    assert.match(history[1], /<label\b[^>]*\bfor="history-search"[^>]*>/);
+    assert.match(history[1], /<\w+\b(?=[^>]*\bid="history-count")(?=[^>]*\brole="status")(?=[^>]*\baria-live="polite")[^>]*>/);
+    assert.match(history[1], /<ul\b(?=[^>]*\bid="history-list")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>\s*<\/ul>/, '静态页面不能内嵌个人历史记录');
+    assert.match(history[1], /<button\b(?=[^>]*\bid="history-more")(?=[^>]*\btype="button")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/);
+    assert.match(history[1], /<button\b(?=[^>]*\bid="history-refresh")(?=[^>]*\btype="button")[^>]*>/);
     assert.match(library, /<select\b(?=[^>]*\bid="bookmark-filter")[^>]*>/, '集中书签应提供作品筛选');
     assert.ok(library.includes('<meta name="robots" content="noindex">'));
     assert.ok(!library.includes('rel="canonical"'), '书架不应声明公开内容 canonical');
     assert.ok(!library.includes('property="og:url"'));
     assert.match(library, /<noscript>[\s\S]*?书架[\s\S]*?<\/noscript>/, '禁用脚本时要解释书架的使用条件');
+    assert.match(library, /<noscript>[\s\S]*?最近阅读[\s\S]*?<\/noscript>/, '禁用脚本时要解释最近阅读需要浏览器记录访问');
     for (const id of ['reading-backup', 'backup-export', 'backup-file', 'backup-mode', 'backup-preview', 'backup-summary', 'backup-apply', 'backup-cancel', 'backup-feedback', 'backup-download']) {
       assert.ok(library.includes(`id="${id}"`), `阅读备份缺 #${id}`);
     }
