@@ -293,6 +293,12 @@ export function mountLibrary(root, options = {}) {
       const entry = store.read(series.id);
       return entry ? [{ series, entry, progress: snapshot.latest.get(series.id) ?? null, order }] : [];
     }).sort((left, right) => right.entry.updatedAt - left.entry.updatedAt || left.order - right.order);
+    try {
+      options.onSummary?.({
+        savedSeries: entries.length, progressSeries: snapshot.latest.size, progressChapters: historyRows.length,
+        limited: store.limited || progressLimited, pending: store.hasPending,
+      });
+    } catch { /* 概览失效不阻断书架、最近阅读及备份保护。 */ }
     feedback.textContent = message;
     render();
     renderHistory(historyHadVisibleFocus);

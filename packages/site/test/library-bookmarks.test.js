@@ -58,11 +58,11 @@ function catalog(pages = 6) {
   ];
 }
 
-function fixture({ records = {}, data = catalog(), denied = false, autoFlushStorage = true } = {}) {
+function fixture({ records = {}, data = catalog(), denied = false, deniedKeys = [], autoFlushStorage = true, onSummary } = {}) {
   const values = new Map(Object.entries(records).map(([name, value]) => [name, typeof value === 'string' ? value : JSON.stringify(value)]));
   const storage = {
-    values, reads: 0, writes: [], denied,
-    getItem(name) { this.reads++; return values.get(name) ?? null; },
+    values, reads: 0, writes: [], denied, denyReadKeys: new Set(deniedKeys),
+    getItem(name) { this.reads++; if (this.denyReadKeys.has(name)) throw new Error('read denied'); return values.get(name) ?? null; },
     setItem(name, value) { if (this.denied) throw new Error('quota'); this.writes.push(['set', name]); values.set(name, value); },
     removeItem(name) { if (this.denied) throw new Error('denied'); this.writes.push(['remove', name]); values.delete(name); },
   };
@@ -94,10 +94,14 @@ function fixture({ records = {}, data = catalog(), denied = false, autoFlushStor
   };
   for (const node of [root, win, ...Object.values(nodes)]) node.ownerDocument = doc;
   const store = createBookmarkStore({ getStorage: () => storage, now: () => 30 });
-  const controller = mountBookmarkLibrary(root, { store });
+  const summaries = [];
+  const controller = mountBookmarkLibrary(root, { store, onSummary(summary) {
+    summaries.push({ ...summary });
+    onSummary?.(summary);
+  } });
   const row = (id) => nodes.list.children.find((node) => node.dataset.bookmarkId === id);
   const action = (id, type) => row(id)?.querySelector(`[data-bookmark-action="${type}"]`);
-  return { root, nodes, doc, win, store, storage, controller, row, action };
+  return { root, nodes, doc, win, store, storage, controller, row, action, summaries };
 }
 
 test('书架集中显示当前目录的旧页收藏，无需收藏作品，越界和旧目录只过滤不改写', () => {
@@ -213,12 +217,14 @@ test('书签超过 50 条按批显示，显示更多和筛选都不重复读取�
 
 test('空书签目录与坏目录提供提示，打开时不创建记录', () => {
   const f = fixture({ data: [] });
+  assert.deepEqual(f.summaries, [{ bookmarks: 0, notes: 0, limited: false, pending: false }]);
   assert.equal(f.nodes.list.hidden, true);
   assert.match(f.nodes.empty.textContent, /还没有页码书签/);
   assert.equal(f.nodes.toolbar.hidden, false);
   assert.deepEqual(f.storage.writes, []);
   f.controller.destroy();
   const invalid = fixture({ data: '{bad' });
+  assert.deepEqual(invalid.summaries, [], '目录不可读时不发布假零值概览');
   assert.equal(invalid.controller, undefined);
   assert.match(invalid.nodes.empty.textContent, /目录暂时无法读取/);
   assert.equal(invalid.nodes.toolbar.hidden, true);
@@ -288,5 +294,83 @@ test('书签同步恢复或显式保存取消排队刷新，销毁后旧回调�
   stale(); f.win.flushTimers();
   assert.equal(f.storage.reads, remountedReads);
   assert.ok(f.row(markId(1)).textContent.includes('明确保存的备注'));
+  mounted.destroy();
+});
+
+test('书签概览只统计当前有效收藏页及文字备注，筛选和编辑草稿不改变总量', () => {
+  const zeta = 'zeta/v/c/p2';
+  const f = fixture({ records: {
+    [favoriteKey]: [markId(1), markId(2), markId(3), markId(4), markId(5), markId(99)],
+    [FAVORITES_PREFIX + 'zeta/v/c']: [zeta],
+    [FAVORITES_PREFIX + 'removed/v/c']: ['removed/v/c/p1'],
+    [noteKey(1)]: { version: 1, note: '有效备注', updatedAt: 1 },
+    [noteKey(2)]: { version: 1, note: ' \n ', updatedAt: 2 },
+    [noteKey(3)]: { version: 1, note: '', updatedAt: 3 },
+    [noteKey(4)]: '{bad',
+    [noteKey(5)]: { version: 1, note: '无效时间', updatedAt: -1 },
+    [noteKey(6)]: { version: 1, note: '没有收藏该页的独立备注', updatedAt: 6 },
+    [NOTE_PREFIX + zeta]: { version: 1, note: '另一作品备注', updatedAt: 7 },
+  } });
+  const total = { bookmarks: 6, notes: 2, limited: false, pending: false };
+  assert.deepEqual(f.summaries, [total]);
+  assert.equal(f.storage.reads, 8, '两个收藏键与六个有效收藏页的备注各读一次，不为概览重扫');
+  const reads = f.storage.reads;
+  f.nodes.filter.value = 'zeta'; f.nodes.filter.fire('change');
+  f.nodes.more.fire('click');
+  assert.equal(f.nodes.list.children.length, 1);
+  f.action(zeta, 'edit').fire('click');
+  f.nodes.note.value = '尚未保存的编辑草稿';
+  assert.deepEqual(f.summaries, [total]);
+  assert.equal(f.storage.reads, reads);
+  assert.deepEqual(f.storage.writes, []);
+  f.nodes.cancel.fire('click');
+  f.controller.destroy();
+});
+
+test('书签概览跟随保存和移除，并标记内存修改及部分读取结果', () => {
+  const f = fixture({ records: { [favoriteKey]: [markId(1)] } });
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.note.value = '明确保存'; f.nodes.save.fire('click');
+  assert.deepEqual(f.summaries.at(-1), { bookmarks: 1, notes: 1, limited: false, pending: false });
+  f.action(markId(1), 'remove').fire('click');
+  assert.deepEqual(f.summaries.at(-1), { bookmarks: 0, notes: 0, limited: false, pending: false });
+  f.storage.denied = true;
+  f.store.set(key, 6, 2, '未落盘备注');
+  assert.equal(f.controller.hasPending, true);
+  assert.equal(f.storage.values.has(noteKey(2)), false);
+  assert.deepEqual(f.summaries.at(-1), { bookmarks: 1, notes: 1, limited: true, pending: true });
+  f.controller.destroy();
+
+  const zeta = 'zeta/v/c/p2';
+  const partial = fixture({ records: {
+    [favoriteKey]: [markId(1)], [FAVORITES_PREFIX + 'zeta/v/c']: [zeta],
+    [NOTE_PREFIX + zeta]: { version: 1, note: '可读备注', updatedAt: 1 },
+  }, deniedKeys: [favoriteKey] });
+  assert.deepEqual(partial.summaries.at(-1), { bookmarks: 1, notes: 1, limited: true, pending: false });
+  assert.deepEqual(partial.storage.writes, []);
+  partial.controller.destroy();
+});
+
+test('书签概览异常不影响明确保存，旧任务销毁后不再报告并能重读恢复数据', () => {
+  const f = fixture({ autoFlushStorage: false, records: { [favoriteKey]: [markId(1)] },
+    onSummary() { throw new Error('概览视图失效'); },
+  });
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.note.value = '仍可保存'; f.nodes.save.fire('click');
+  assert.equal(JSON.parse(f.storage.values.get(noteKey(1))).note, '仍可保存');
+  f.win.fire('storage', { key: favoriteKey });
+  const stale = [...f.win.timers.values()][0].callback;
+  f.controller.destroy();
+  const oldReports = f.summaries.length;
+  f.storage.values.set(favoriteKey, JSON.stringify([markId(2)]));
+  f.storage.values.set(noteKey(2), JSON.stringify({ version: 1, note: '恢复的备注', updatedAt: 60 }));
+  const restored = [];
+  const mounted = mountBookmarkLibrary(f.root, { onSummary: (value) => restored.push({ ...value }) });
+  assert.deepEqual(restored, [{ bookmarks: 1, notes: 1, limited: false, pending: false }]);
+  stale(); f.win.flushTimers();
+  assert.equal(f.summaries.length, oldReports);
+  assert.equal(restored.length, 1);
+  assert.equal(f.row(markId(1)), undefined);
+  assert.ok(f.row(markId(2)).textContent.includes('恢复的备注'));
   mounted.destroy();
 });

@@ -26,6 +26,7 @@ Chinese is the default README; use the buttons above to switch languages. The we
 - **Catalog browsing:** Series / issue / chapter / page navigation, covers, authors, tags, each series' latest chapter, a random chapter, and metadata search. Latest chapters follow issue / chapter order, not publication dates.
 - **Comic reading:** Single-page, long-strip, and double-page modes; reading direction, keyboard and swipe navigation, fullscreen, brightness, and page jumps. Reading progress is saved automatically and can be resumed from the home and series pages.
 - **Personal library and recent reading:** Save series, manually mark them as Want to read / Reading / Read, filter by status and title, and sort by library updates or recent reading. A separate recent-chapter list lets you resume series without saving them to the library.
+- **Reading data overview:** Count saved series, series and chapters with progress, page bookmarks, and bookmarks with text notes using data already loaded by the page. Storage limitations and unsaved changes are reported separately.
 - **Page bookmarks:** The standard and enhanced readers share page favorites, with short notes. View bookmarks by series in your library, edit or remove them, and jump directly to the saved page.
 - **Reading backups:** Export or restore saved series, progress, page bookmarks, and notes from your library. Preview before importing, merge while keeping existing records by default, and process everything in the browser.
 - **Light and dark appearance:** Choose Light, Dark, or Follow system across all three palettes. The current browser remembers your choice, while comic images keep their original colors.
@@ -45,6 +46,8 @@ turn pages. Removing a series keeps its reading progress. Series without chapter
 and become readable once chapters are published.
 
 “最近阅读” (Recent reading) shows the last saved position of each chapter, including series outside your library. Search by series, author, issue, or chapter; start with 20 records and expand for more. It reuses existing progress, keeps no separate visit log, and does not automatically change library membership or reading status.
+
+“阅读数据概览” (Reading data overview) summarizes displayable records using the current catalog and recovery rules. Search, filters, and pagination do not change its totals. Detached notes and editor drafts are excluded; backups apply separate validation and retain valid older records, so their counts can differ.
 
 While reading, bookmark the current page and add a note of up to 200 characters. Manage these in the
 page-bookmark section of My library. A series does not need to be saved to your library first, and
