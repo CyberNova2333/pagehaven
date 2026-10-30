@@ -80,6 +80,7 @@ Pages 读取权限，页面发布来源必须是 `gh-pages` 根目录。
 | 函数入口 | `functions/`（Workers 运行时，`export default { fetch }`） | `edge-functions/`（isolate，`onRequest`）、`cloud-functions/`（真 Node） | 无 |
 | 可选增强分页 | 同源浏览器模块，纯静态可用 | 同左 | 同左；不依赖自定义响应头或函数 |
 | 站点自定义 | YAML 在构建期生成名称、Logo、主题和功能设置；同一份静态产物 | 同左；不增加响应头或重定向 | 同左；维护者编辑器不随站点部署 |
+| 静态跳转兜底 | 构建前检查规范路径与 dist 边界，输出属性转义；正常路径保持静态 HTML | 同左；不改变平台响应规则 | 同左；纯静态跳转页同样受检查 |
 | 切换动作 | 改站点域名 CNAME，TTL 300 | 同左 | 同左 |
 
 `features.comimi_reader` 默认关闭；开启后只在阅读设置中提供“增强分页”选项，由用户手动启用。

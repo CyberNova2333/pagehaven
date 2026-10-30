@@ -18,10 +18,12 @@ import { readManifest, galleryFingerprint } from './lib/manifest.mjs';
 import { releaseFingerprint } from './lib/release.mjs';
 import { DATA_DIR, DIST_DIR, OUT_DIR, PLATFORM_GENERATED_DIR, ROOT, SITE_DIR } from './lib/paths.mjs';
 import { writeSiteConfigJson, writeSiteGalleryJson } from './lib/site-generated.mjs';
+import { metaRefresh, redirectOutputPaths } from './lib/static-output.mjs';
 import { step, ok, note, warn } from './lib/log.mjs';
 
 step('build:site');
 const config = await loadSiteConfig();
+const redirects = config.redirects.map((rd) => ({ ...rd, ...redirectOutputPaths(DIST_DIR, rd.from) }));
 await writeSiteConfigJson(config, { preview: process.env.DEPLOY_ENV === 'preview' });
 // 数据进站点的唯一通道：模型写成 src/generated/ 下的 JSON，页面用 import / import.meta.glob 读。
 // 0 话时也照建——gallery.json 是空树、text/ 是空目录，动态路由生成不出页面，其余页面照常。
@@ -74,17 +76,11 @@ if (config.deploy.github.cname) {
   await writeFile(join(DIST_DIR, 'CNAME'), `${config.site.domain}\n`);
   ok('dist/CNAME');
 }
-for (const rd of config.redirects) {
+for (const rd of redirects) {
   // 只在目标路径还没有页面时才写兜底页：真页面永远优先于跳转页
-  const dir = join(DIST_DIR, rd.from);
-  const file = join(dir, 'index.html');
+  const { dir, file } = rd;
   if (existsSync(file)) continue;
   await mkdir(dir, { recursive: true });
-  await writeFile(file, metaRefresh(rd.to));
+  await writeFile(file, metaRefresh(rd.to, config.site.lang));
   ok(`dist${rd.from}/index.html（meta refresh → ${rd.to}）`);
-}
-
-function metaRefresh(to) {
-  const esc = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-  return `<!doctype html><html lang="${config.site.lang}"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=${esc(to)}"><link rel="canonical" href="${esc(to)}"><title>跳转中</title></head><body><a href="${esc(to)}">${esc(to)}</a></body></html>\n`;
 }

@@ -28,6 +28,7 @@
 | --- | --- | --- | --- |
 | [职责入口](../scripts/lib/manifest.mjs) | 加载内容并定义跨步骤清单契约 | `buildManifest / galleryFingerprint` | 清单、建库与站点步骤共享 |
 | [README 章节链接校验](../scripts/lib/readme-links.mjs) | 校验双语导航是否指向标题生成的 CNB 锚点 | `checkReadmeLinks` | `scripts/check.mjs`；回归见 `scripts/test/readme-links.test.mjs` |
+| [静态跳转输出边界](../scripts/lib/static-output.mjs) | 预检重定向的规范路径及输出根边界，转义跳转页属性 | `redirectOutputPaths / metaRefresh` | `scripts/build-site.mjs`；回归见 `scripts/test/static-output.test.mjs` |
 
 相关验证：`scripts/test/build-manifest.test.mjs`。本轮只检查可读证据，业务测试没有执行。
 
