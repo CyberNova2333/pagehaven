@@ -23,6 +23,17 @@ function index() {
 }
 const response = (data = index()) => ({ ok: true, json: async () => data });
 
+function longIndex(count) {
+  return {
+    id: 'sample', title: '作品', issues: [{ id: 'v1', title: '第一期', number: 1,
+      chapters: Array.from({ length: count }, (_, index) => {
+        const n = index + 1;
+        return { id: `c${n}`, key: `sample/v1/c${n}`, url: `/sample/v1/c${n}/`, number: n, title: n % 2 ? '奇数章' : '偶数章', pages: 8 };
+      }),
+    }],
+  };
+}
+
 // DOM 桩只提供标准契约；所有加载、校验、渲染和清理均执行生产模块。
 function element(tag = '') {
   const listeners = new Map();
@@ -30,7 +41,7 @@ function element(tag = '') {
   const observers = new Set();
   let hidden = false;
   return {
-    tag, id: '', dataset: {}, children: [], value: '', textContent: '', scrollTop: 0, clientHeight: 100,
+    tag, id: '', dataset: {}, children: [], value: '', textContent: '', scrollTop: 0, clientHeight: 100, disabled: false,
     get hidden() { return hidden; },
     set hidden(value) { hidden = value; for (const observer of observers) observer(); },
     observers,
@@ -52,17 +63,19 @@ function element(tag = '') {
     listenerCount() { return [...listeners.values()].reduce((sum, entries) => sum + entries.size, 0); },
     fire(type, event = {}) { for (const listener of listeners.get(type) ?? []) listener({ target: this, ...event }); },
     focus(options) { this.focused = options; if (this.ownerDocument) this.ownerDocument.activeElement = this; },
+    scrollIntoView() { throw new Error('目录只能移动自己的滚动条，不能滚动漫画主体'); },
     getBoundingClientRect() { return tag === 'a' ? { top: 300, bottom: 320, height: 20 } : { top: 0, bottom: 100, height: 100 }; },
   };
 }
 
-function fixture({ fetcher = async () => response(), hidden = true, seriesId = 'sample', records = {}, currentPage } = {}) {
+function fixture({ fetcher = async () => response(), hidden = true, seriesId = 'sample', chapterKey = 'sample/v1/c2', records = {}, currentPage } = {}) {
   const toc = element('aside');
   toc.id = 'toc';
   toc.hidden = hidden;
-  toc.dataset = { seriesId, chapterKey: 'sample/v1/c2' };
-  const nodes = Object.fromEntries(['filter', 'controls', 'status', 'retry', 'locate', 'list', 'progress-filter', 'progress-summary', 'progress-note'].map((name) => [name, element(name)]));
-  nodes.controls.hidden = nodes.retry.hidden = true;
+  toc.dataset = { seriesId, chapterKey };
+  const nodes = Object.fromEntries(['filter', 'controls', 'status', 'retry', 'locate', 'list', 'progress-filter', 'progress-summary', 'progress-note', 'pagination', 'page-prev', 'page-next', 'page-status'].map((name) => [name, element(name)]));
+  nodes.controls.hidden = nodes.retry.hidden = nodes.pagination.hidden = true;
+  nodes.pagination.append(nodes['page-prev'], nodes['page-status'], nodes['page-next']);
   nodes['progress-filter'].value = 'all';
   const toggle = element('button');
   const timers = new Map();
@@ -256,7 +269,7 @@ test('无效作品标识不发起请求；销毁取消请求、定时器和监�
   assert.equal(f.calls[0].signal.aborted, true);
   assert.equal(f.toc.observers.size, 0);
   assert.equal(f.timers.size, 0);
-  for (const node of [f.nodes.filter, f.nodes.locate, f.nodes.retry]) assert.equal(node.listenerCount(), 0);
+  for (const node of [f.nodes.filter, f.nodes.locate, f.nodes.retry, f.nodes['page-prev'], f.nodes['page-next']]) assert.equal(node.listenerCount(), 0);
   pending.resolve(response());
   await settle();
   assert.equal(f.links().length, 0);
@@ -450,4 +463,214 @@ test('外部刷新保持章节链接焦点，筛除该章后返回筛选器，�
   f.window.fire('focus');
   assert.equal(f.storage.reads.length, reads);
   assert.equal(f.nodes['progress-filter'].listenerCount(), 0);
+});
+
+test('两万话目录只渲染当前组的一百话，换组复用索引与进度缓存', async () => {
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c10001', currentPage: 2,
+    fetcher: async () => response(longIndex(20000)),
+  });
+  await settle();
+  assert.equal(f.links().length, 100);
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c10001');
+  assert.equal(f.links().at(-1).dataset.tocChapterKey, 'sample/v1/c10100');
+  assert.equal(f.links()[0].getAttribute('aria-current'), 'page');
+  assert.match(f.nodes['page-status'].textContent, /101\s*\/\s*200/);
+  assert.match(f.nodes.status.textContent, /10001.*10100.*20000/);
+  assert.equal(f.nodes.pagination.hidden, false);
+  const reads = f.storage.reads.length;
+  const rendered = [...f.nodes.list.children];
+  f.live(5);
+  assert.equal(f.links()[0].href, '/sample/v1/c10001/#p5');
+  assert.ok(f.nodes.list.children.every((row, index) => row === rendered[index]), '当前页变化不重建分组');
+  f.nodes.list.scrollTop = 500;
+  f.nodes['page-prev'].fire('click');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c9901');
+  assert.equal(f.links().length, 100);
+  assert.equal(f.nodes.list.scrollTop, 0);
+  f.live(6);
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c9901', '当前章不在本组时也不跳组');
+  f.nodes['page-next'].fire('click');
+  assert.equal(f.links()[0].href, '/sample/v1/c10001/#p6');
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.storage.reads.length, reads, '换组和当前页更新只使用内存缓存');
+  f.api.destroy();
+});
+
+test('分组首尾按钮禁用且不越界，按钮到达边界时焦点移到可用按钮', async () => {
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c1', fetcher: async () => response(longIndex(201)) });
+  await settle();
+  assert.equal(f.nodes['page-prev'].disabled, true);
+  assert.equal(f.nodes['page-next'].disabled, false);
+  f.nodes['page-prev'].fire('click');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c1');
+  f.nodes['page-next'].focus();
+  f.nodes['page-next'].fire('click');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c101');
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes['page-next']);
+  f.nodes['page-next'].fire('click');
+  assert.equal(f.links().length, 1);
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c201');
+  assert.equal(f.nodes['page-next'].disabled, true);
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes['page-prev']);
+  f.nodes['page-next'].fire('click');
+  assert.equal(f.links().length, 1, '程序化点击禁用按钮也不能越过末组');
+  f.nodes['page-prev'].fire('click');
+  f.nodes['page-prev'].fire('click');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c1');
+  assert.equal(f.nodes['page-prev'].disabled, true);
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes['page-next']);
+  assert.equal(f.nodes.list.scrollTop, 0);
+  f.api.destroy();
+});
+
+test('不超过一百话时不显示分组控件，超过后才显示', async () => {
+  for (const count of [1, 100, 101]) {
+    const f = fixture({ hidden: false, chapterKey: 'sample/v1/c1', fetcher: async () => response(longIndex(count)) });
+    await settle();
+    assert.equal(f.links().length, Math.min(100, count));
+    assert.equal(f.nodes.pagination.hidden, count <= 100);
+    f.api.destroy();
+  }
+});
+
+test('文字与进度筛选重置首组并组合过滤，定位当前章清空筛选并选回其组', async () => {
+  const records = Object.fromEntries(Array.from({ length: 220 }, (_, index) => {
+    const key = `sample/v1/c${index + 1}`;
+    return [progressKey(key), savedProgress(key, 3)];
+  }));
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c201', records, fetcher: async () => response(longIndex(250)) });
+  await settle();
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c201');
+  const reads = f.storage.reads.length;
+  f.nodes.filter.value = '章';
+  f.nodes.filter.fire('input');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c1');
+  f.nodes['page-next'].fire('click');
+  f.nodes['progress-filter'].value = 'started';
+  f.nodes['progress-filter'].fire('change');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c1');
+  assert.match(f.nodes['page-status'].textContent, /1\s*\/\s*3/);
+  f.nodes['page-next'].fire('click');
+  f.nodes.filter.value = '偶数章';
+  f.nodes.filter.fire('input');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c2');
+  assert.equal(f.links().at(-1).dataset.tocChapterKey, 'sample/v1/c200');
+  assert.match(f.nodes['page-status'].textContent, /1\s*\/\s*2/);
+  f.nodes['progress-filter'].value = 'new';
+  f.nodes['progress-filter'].fire('change');
+  assert.equal(f.links().length, 15);
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c222');
+  assert.equal(f.nodes.pagination.hidden, true);
+  f.nodes.locate.focus();
+  f.nodes.locate.fire('click');
+  assert.equal(f.nodes.filter.value, '');
+  assert.equal(f.nodes['progress-filter'].value, 'all');
+  assert.match(f.nodes['page-status'].textContent, /3\s*\/\s*3/);
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c201');
+  assert.equal(f.links().length, 50);
+  assert.equal(f.toc.ownerDocument.activeElement, f.links()[0]);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.storage.reads.length, reads);
+  f.api.destroy();
+});
+
+test('外部进度刷新保留组序，筛选结果缩小时夹紧组序并恢复隐藏按钮焦点', async () => {
+  const records = Object.fromEntries(Array.from({ length: 220 }, (_, index) => {
+    const key = `sample/v1/c${index + 1}`;
+    return [progressKey(key), savedProgress(key, 1)];
+  }));
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c1', records, fetcher: async () => response(longIndex(250)) });
+  await settle();
+  f.nodes['progress-filter'].value = 'started';
+  f.nodes['progress-filter'].fire('change');
+  f.nodes['page-next'].fire('click');
+  f.nodes['page-next'].fire('click');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c201');
+  f.nodes['page-prev'].focus();
+  f.storage.values.set(progressKey('sample/v1/c250'), JSON.stringify(savedProgress('sample/v1/c250', 2)));
+  f.window.fire('storage', { key: progressKey('sample/v1/c250') });
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c201');
+  assert.equal(f.links().length, 21);
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes['page-prev']);
+  for (let n = 101; n <= 250; n++) f.storage.values.delete(progressKey(`sample/v1/c${n}`));
+  f.window.fire('storage', { key: null });
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c1');
+  assert.equal(f.links().length, 100);
+  assert.equal(f.nodes.pagination.hidden, true);
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes.filter);
+  f.api.destroy();
+});
+
+test('仍匹配的焦点章节因前序记录变化而跨组时跟随焦点，不匹配时返回筛选', async () => {
+  const records = Object.fromEntries(Array.from({ length: 250 }, (_, index) => {
+    const key = `sample/v1/c${index + 1}`;
+    return [progressKey(key), savedProgress(key, 2)];
+  }));
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c1', records, fetcher: async () => response(longIndex(250)) });
+  await settle();
+  f.nodes['progress-filter'].value = 'started';
+  f.nodes['progress-filter'].fire('change');
+  f.nodes['page-next'].fire('click');
+  f.links()[0].focus();
+  f.nodes.list.scrollTop = 0;
+  f.storage.values.delete(progressKey('sample/v1/c1'));
+  f.window.fire('storage', { key: progressKey('sample/v1/c1') });
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c2');
+  assert.equal(f.links().at(-1).dataset.tocChapterKey, 'sample/v1/c101');
+  assert.equal(f.toc.ownerDocument.activeElement, f.links().at(-1));
+  assert.ok(f.nodes.list.scrollTop > 0, '焦点章节移到另一组末尾时应在目录内滚动到可见位置');
+  assert.match(f.nodes['page-status'].textContent, /1\s*\/\s*3/);
+  f.storage.values.delete(progressKey('sample/v1/c101'));
+  f.window.fire('storage', { key: progressKey('sample/v1/c101') });
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes['progress-filter']);
+  f.api.destroy();
+});
+
+test('矮屏定位使用目录外框和列表的可见交集，只滚动列表', async () => {
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c201', fetcher: async () => response(longIndex(250)) });
+  f.nodes.list.getBoundingClientRect = () => ({ top: 60, bottom: 260, height: 200 });
+  f.toc.getBoundingClientRect = () => ({ top: 0, bottom: 100, height: 100 });
+  await settle();
+  assert.equal(f.nodes.list.scrollTop, 230, '目标应居中于实际可见的 40px，而非完整列表高度');
+  assert.equal(f.toc.scrollTop, 0, '不移动目录外框或漫画页面');
+  f.api.destroy();
+});
+
+test('列表滚到首尾仍被裁切时，仅由目录外框补足定位距离', async () => {
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c201', fetcher: async () => response(longIndex(250)) });
+  f.nodes.list.getBoundingClientRect = () => ({ top: 60, bottom: 260, height: 200 });
+  f.toc.getBoundingClientRect = () => ({ top: 0, bottom: 100, height: 100 });
+  let scroll = 0;
+  Object.defineProperty(f.nodes.list, 'scrollTop', { get: () => scroll, set: (value) => { scroll = Math.max(0, Math.min(value, 200)); } });
+  await settle();
+  assert.equal(f.nodes.list.scrollTop, 200);
+  assert.equal(f.toc.scrollTop, 30, '列表无法完成的 30px 由目录外框承担');
+  f.api.destroy();
+});
+
+test('隐藏面板不响应分组操作，重新打开定位当前组，销毁后分组按钮无监听', async () => {
+  const f = fixture({ chapterKey: 'sample/v1/c201', fetcher: async () => response(longIndex(250)) });
+  f.nodes['page-next'].fire('click');
+  await settle();
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.storage.reads.length, 0);
+  f.toc.hidden = false;
+  await settle();
+  f.nodes['page-prev'].fire('click');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c101');
+  f.toc.hidden = true;
+  const reads = f.storage.reads.length;
+  const links = f.links();
+  f.nodes['page-prev'].fire('click');
+  f.nodes['page-next'].fire('click');
+  assert.equal(f.links()[0], links[0]);
+  assert.equal(f.storage.reads.length, reads);
+  f.toc.hidden = false;
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c201');
+  assert.equal(f.calls.length, 1);
+  f.api.destroy();
+  for (const name of ['page-prev', 'page-next']) assert.equal(f.nodes[name].listenerCount(), 0);
+  const after = f.links();
+  f.nodes['page-prev'].fire('click');
+  assert.equal(f.links()[0], after[0]);
 });
