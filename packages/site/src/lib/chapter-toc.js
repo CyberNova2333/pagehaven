@@ -50,6 +50,10 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   const previousPage = toc.querySelector('[data-toc-page-prev]');
   const nextPage = toc.querySelector('[data-toc-page-next]');
   const pageStatus = toc.querySelector('[data-toc-page-status]');
+  const pageForm = toc.querySelector('[data-toc-page-form]');
+  const pageInput = toc.querySelector('[data-toc-page-input]');
+  const pageGo = toc.querySelector('[data-toc-page-go]');
+  const pageError = toc.querySelector('[data-toc-page-error]');
   const toggle = doc.getElementById('toc-btn');
   const core = doc.getElementById('reader')?.galleryReader;
   const readStorage = getStorage ?? (() => win.localStorage);
@@ -58,6 +62,8 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   let rows = [];
   let pageIndex = 0;
   let matchedCount = 0;
+  let jumpDraft = false;
+  let jumpInvalid = false;
   let currentRow = null;
   let currentLink = null;
   let currentIndicator = null;
@@ -65,6 +71,29 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   let timer = null;
   let destroyed = false;
   const progress = new Map();
+
+  function clearJumpError() {
+    jumpInvalid = false;
+    pageInput?.removeAttribute('aria-invalid');
+    if (pageError) { pageError.hidden = true; pageError.textContent = ''; }
+  }
+  function resetJump() {
+    jumpDraft = false;
+    clearJumpError();
+  }
+  function requestedGroup(totalPages) {
+    const value = pageInput?.value.trim() ?? '';
+    const number = /^[0-9]+$/.test(value) ? Number(value) : 0;
+    return positiveInteger(number) && number <= totalPages ? number : null;
+  }
+  function showJumpError(totalPages) {
+    jumpInvalid = true;
+    pageInput?.setAttribute('aria-invalid', 'true');
+    if (pageError) {
+      pageError.hidden = false;
+      pageError.textContent = `请输入 1 到 ${totalPages} 之间的整数。`;
+    }
+  }
 
   function currentProgress() {
     const row = currentRow;
@@ -153,6 +182,17 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
     if (previousPage) previousPage.disabled = pageIndex === 0;
     if (nextPage) nextPage.disabled = pageIndex === totalPages - 1;
     if (pageStatus) pageStatus.textContent = matchedCount ? `第 ${pageIndex + 1} / ${totalPages} 组` : '';
+    if (matchedCount <= PAGE_SIZE) resetJump();
+    if (pageInput) {
+      pageInput.max = String(totalPages);
+      pageInput.disabled = matchedCount <= PAGE_SIZE;
+      if (!jumpDraft) pageInput.value = String(pageIndex + 1);
+    }
+    if (pageGo) pageGo.disabled = matchedCount <= PAGE_SIZE;
+    if (jumpInvalid) {
+      if (requestedGroup(totalPages) !== null) clearJumpError();
+      else showJumpError(totalPages);
+    }
     const started = rows.filter((row) => progress.get(row.key)?.state === 'started').length;
     const fresh = rows.filter((row) => progress.get(row.key)?.state === 'new').length;
     const unavailable = rows.length - started - fresh;
@@ -166,13 +206,14 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
       (focusedLink ?? progressFilter ?? filter).focus({ preventScroll: true });
       if (focusedLink && previousIndex !== pageIndex) revealLink(focusedLink);
     }
-    else if (pagination && (active === previousPage || active === nextPage || active === pageStatus)) {
+    else if (pagination && (active === previousPage || active === nextPage || active === pageStatus || active === pageInput || active === pageGo)) {
       // 当前按钮变成禁用或整个分页区消失时，焦点仍落在可操作、可见的控件上。
       const target = pagination.hidden ? filter
         : active.disabled ? (!previousPage.disabled ? previousPage : !nextPage.disabled ? nextPage : pageStatus)
         : active;
       target.focus({ preventScroll: true });
     }
+    return links.values().next().value;
   }
 
   function revealLink(link, focus = false) {
@@ -181,9 +222,14 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
     const target = link.getBoundingClientRect();
     const viewport = list.getBoundingClientRect();
     const panel = toc.getBoundingClientRect();
-    const top = Math.max(viewport.top, panel.top);
-    const bottom = Math.min(viewport.bottom, panel.bottom);
-    // 矮屏时列表还会被目录外框裁切，定位须使用两者交集。
+    const visibleTop = Math.max(viewport.top, panel.top);
+    const visibleBottom = Math.min(viewport.bottom, panel.bottom);
+    const canFit = visibleBottom - visibleTop >= target.height;
+    const top = canFit ? visibleTop : viewport.top;
+    const bottom = canFit ? visibleBottom : viewport.bottom;
+    const previousListScroll = list.scrollTop;
+    const previousPanelScroll = toc.scrollTop;
+    // 可见交集不足一行时，先保证链接在列表内部完整可见，再露出目录外框中的这一行。
     if (bottom > top && (target.top < top || target.bottom > bottom)) {
       const desired = list.scrollTop + target.top - top - (bottom - top) / 2 + target.height / 2;
       list.scrollTop = desired;
@@ -191,6 +237,9 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
       const remaining = desired - list.scrollTop;
       if (Math.abs(remaining) > 1) toc.scrollTop += remaining;
     }
+    const moved = list.scrollTop - previousListScroll + toc.scrollTop - previousPanelScroll;
+    if (target.top - moved < panel.top) toc.scrollTop += target.top - moved - panel.top;
+    else if (target.bottom - moved > panel.bottom) toc.scrollTop += target.bottom - moved - panel.bottom;
     if (focus) link.focus({ preventScroll: true });
   }
   function locateCurrent(focus = false) {
@@ -203,6 +252,9 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
     retry.hidden = true;
     controls.hidden = true;
     if (pagination) pagination.hidden = true;
+    resetJump();
+    if (pageInput) pageInput.disabled = true;
+    if (pageGo) pageGo.disabled = true;
     toc.setAttribute('aria-busy', 'true');
     status.textContent = '目录加载中…';
     controller = new AbortController();
@@ -249,11 +301,13 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   }
   const onFilter = () => {
     if (destroyed || toc.hidden || phase !== 'ready') return;
+    resetJump();
     pageIndex = 0;
     render({ resetScroll: true, preserveFocus: false });
   };
   const onLocate = () => {
     if (destroyed || toc.hidden || phase !== 'ready') return;
+    resetJump();
     filter.value = '';
     if (progressFilter) progressFilter.value = 'all';
     render({ selectCurrent: true, resetScroll: true, preserveFocus: false });
@@ -263,11 +317,32 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
     if (destroyed || toc.hidden || phase !== 'ready') return;
     const target = Math.max(0, Math.min(pageIndex + delta, Math.ceil(matchedCount / PAGE_SIZE) - 1));
     if (pageIndex === target) return;
+    resetJump();
     pageIndex = target;
     render({ resetScroll: true, preserveFocus: false });
   }
   const onPreviousPage = () => changePage(-1);
   const onNextPage = () => changePage(1);
+  const onJumpInput = () => {
+    if (destroyed || toc.hidden || phase !== 'ready' || matchedCount <= PAGE_SIZE) return;
+    jumpDraft = true;
+    clearJumpError();
+  };
+  const onJump = (event) => {
+    event.preventDefault();
+    if (destroyed || toc.hidden || phase !== 'ready' || matchedCount <= PAGE_SIZE || !pageInput) return;
+    const totalPages = Math.ceil(matchedCount / PAGE_SIZE);
+    const group = requestedGroup(totalPages);
+    if (group === null) {
+      showJumpError(totalPages);
+      pageInput.focus({ preventScroll: true });
+      return;
+    }
+    resetJump();
+    pageIndex = group - 1;
+    const firstLink = render({ resetScroll: true, preserveFocus: false });
+    revealLink(firstLink, true);
+  };
   const onRetry = () => { if (!toc.hidden) void load(); };
   const onStorage = (event) => {
     if (phase !== 'ready' || toc.hidden) return;
@@ -295,6 +370,8 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   retry.addEventListener('click', onRetry);
   previousPage?.addEventListener('click', onPreviousPage);
   nextPage?.addEventListener('click', onNextPage);
+  pageForm?.addEventListener('submit', onJump);
+  pageInput?.addEventListener('input', onJumpInput);
   win.addEventListener('storage', onStorage);
   win.addEventListener('pageshow', onShow);
   win.addEventListener('focus', onShow);
@@ -306,6 +383,8 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   return {
     destroy() {
       destroyed = true;
+      if (pageInput) pageInput.disabled = true;
+      if (pageGo) pageGo.disabled = true;
       controller?.abort();
       win.clearTimeout(timer);
       observer.disconnect();
@@ -316,6 +395,8 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
       retry.removeEventListener('click', onRetry);
       previousPage?.removeEventListener('click', onPreviousPage);
       nextPage?.removeEventListener('click', onNextPage);
+      pageForm?.removeEventListener('submit', onJump);
+      pageInput?.removeEventListener('input', onJumpInput);
       win.removeEventListener('storage', onStorage);
       win.removeEventListener('pageshow', onShow);
       win.removeEventListener('focus', onShow);
