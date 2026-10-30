@@ -24,7 +24,7 @@ const catalog = gallery.series.map((series) => ({
     <header class="library-heading">
       <p class="eyebrow">Your reading corner</p>
       <h1>我的书架</h1>
-      <p class="lede">把想读的故事留在这里，下次从上次读到的那一页继续。</p>
+      <p class="lede">把想读的故事留在这里，也可从最近阅读继续上次读到的那一页。</p>
       <p class="muted library-help">在作品页点击“加入书架”，再选择想读、在读或已读。书架保存在当前浏览器中。</p>
     </header>
 
@@ -38,6 +38,12 @@ const catalog = gallery.series.map((series) => ({
       <label class="library-search" for="library-search">查找作品
         <input id="library-search" type="search" placeholder="作品名称或作者" autocomplete="off" />
       </label>
+      <label for="library-sort">排列顺序
+        <select id="library-sort">
+          <option value="updated">最近更新书架</option>
+          <option value="recent">最近阅读</option>
+        </select>
+      </label>
       <p id="library-count" class="muted" role="status" aria-live="polite"></p>
     </div>
 
@@ -45,6 +51,21 @@ const catalog = gallery.series.map((series) => ({
     <p id="library-feedback" class="muted" role="status" aria-live="polite"></p>
     <div id="library-empty" class="card card-pad" role="status">启用浏览器脚本后，即可查看收藏的作品与阅读进度。</div>
     <ul id="library-list" class="library-grid" aria-label="书架作品" hidden></ul>
+
+    <section id="reading-history" class="reading-history" aria-labelledby="history-heading">
+      <h2 id="history-heading">最近阅读</h2>
+      <p class="muted library-help">按最近阅读的章节继续，作品无需加入书架。每话保留最后一次已保存的位置，仅显示当前目录仍有效的记录。</p>
+      <div class="library-toolbar card card-pad" data-history-toolbar hidden>
+        <label class="library-search" for="history-search">查找阅读记录
+          <input id="history-search" type="search" placeholder="作品、作者、期名或章节名" autocomplete="off" />
+        </label>
+        <button id="history-refresh" type="button" class="btn">刷新记录</button>
+        <p id="history-count" class="muted" role="status" aria-live="polite"></p>
+      </div>
+      <p id="history-empty" class="card card-pad" role="status">启用浏览器脚本后，即可查看最近阅读。</p>
+      <ul id="history-list" class="history-list" aria-label="最近阅读的章节" hidden></ul>
+      <button id="history-more" class="btn" type="button" hidden>显示更多阅读记录</button>
+    </section>
 
     <section id="library-bookmarks" class="library-bookmarks" aria-labelledby="bookmark-heading">
       <h2 id="bookmark-heading">页码书签</h2>
@@ -105,7 +126,7 @@ const catalog = gallery.series.map((series) => ({
 
     <p class="library-back"><a class="btn" href="/">浏览作品 →</a></p>
     <p class="muted library-help">收藏和状态只保存在本浏览器，不会自动跨设备同步。清除站点数据前请下载备份；移出书架会保留阅读进度。</p>
-    <noscript><p class="library-notice">个人书架、备份与恢复需要启用 JavaScript 才能读取浏览器中的收藏。仍可<a href="/">回首页浏览作品</a>。</p></noscript>
+    <noscript><p class="library-notice">个人书架、最近阅读、备份与恢复需要启用 JavaScript 才能读取浏览器中的收藏和进度。仍可<a href="/">回首页浏览作品</a>。</p></noscript>
     <script id="library-catalog" type="application/json" set:html={jsonForScript(catalog)} />
   </section>
 </Base>
@@ -187,6 +208,11 @@ const catalog = gallery.series.map((series) => ({
   #backup-feedback:empty { display: none; }
   #library-feedback:empty { display: none; }
   .library-bookmarks { margin-top: 2.3rem; scroll-margin-top: 8rem; }
+  .reading-history { margin-top: 2.3rem; scroll-margin-top: 8rem; }
+  .history-list { display: grid; gap: 0.8rem; list-style: none; padding: 0; }
+  .history-row h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+  .history-row p { margin: 0.5rem 0; overflow-wrap: anywhere; }
+  .history-row time { font-size: 14px; }
   .bookmark-list { display: grid; gap: 0.8rem; list-style: none; padding: 0; }
   .bookmark-row h3 { margin: 0; font-size: 16px; }
   .bookmark-row p { margin: 0.5rem 0; }

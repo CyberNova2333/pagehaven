@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LIBRARY_PREFIX, READING_STATUSES, createLibraryStore, latestSeriesProgress } from '../src/lib/library.js';
+import { LIBRARY_PREFIX, READING_STATUSES, createLibraryStore, latestSeriesProgress, readReadingProgress } from '../src/lib/library.js';
 
 function storageFixture(entries = []) {
   const data = new Map(entries);
@@ -185,4 +185,136 @@ test('书架进度：不接受其他作品、伪造目录链接或无效页数�
   assert.equal(latestSeriesProgress({ id: 'sample', issues: [] }, f.storage), null);
   assert.equal(latestSeriesProgress({ id: 'Sample', issues: [{ chapters: [c] }] }, f.storage), null);
   assert.deepEqual(f.operations, []);
+});
+
+test('进度快照：一次扫描当前目录，同时提供跨作品最近章节和逐作品恢复结果', () => {
+  const c1 = chapter('c1', [{}, {}, {}]);
+  const c2 = chapter('c2', 2);
+  const c3 = chapter('c3');
+  const c4 = { id: 'c1', key: 'other/v/c1', url: '/other/v/c1/', title: '当前另一章', pages: 4 };
+  const first = { ...series(c1, c2, c3), title: '当前作品' };
+  const second = { id: 'other', title: '另一作品', issues: [{ id: 'v', title: '另一卷', chapters: [c4] }] };
+  const catalog = [first, second];
+  const freeze = (value) => {
+    if (value && typeof value === 'object') {
+      for (const child of Object.values(value)) freeze(child);
+      Object.freeze(value);
+    }
+  };
+  freeze(catalog);
+  const f = storageFixture([
+    [progressKey(c1), JSON.stringify({ url: c1.url, n: 2, ts: 10, title: '旧标题' })],
+    [progressKey(c2), JSON.stringify({ url: c2.url, n: 99, ts: 10, series: '旧作品', issue: '旧期' })],
+    [progressKey(c4), JSON.stringify({ url: c4.url, n: 3, ts: 20 })],
+    ['gallery:progress:removed/v/c1', JSON.stringify({ url: '/removed/v/c1/', n: 1, ts: 999 })],
+    ['unrelated:secret', '不应读取'],
+  ]);
+  const before = new Map(f.data);
+  const storage = { ...f.storage,
+    get length() { throw new Error('不可枚举存储'); },
+    key() { throw new Error('不可枚举存储'); },
+  };
+  const result = readReadingProgress(catalog, storage);
+  assert.deepEqual(result.rows, [
+    { series: second, issue: second.issues[0], chapter: c4, n: 3, ts: 20 },
+    { series: first, issue: first.issues[0], chapter: c2, n: 2, ts: 10 },
+    { series: first, issue: first.issues[0], chapter: c1, n: 2, ts: 10 },
+  ]);
+  assert.equal(result.rows[0].series, second);
+  assert.equal(result.rows[1].issue, first.issues[0]);
+  assert.equal(result.rows[1].chapter, c2, '保留当前目录对象，不使用存储中的标题');
+  assert.deepEqual([...result.latest], [
+    ['sample', { chapter: c2, n: 2, ts: 10 }],
+    ['other', { chapter: c4, n: 3, ts: 20 }],
+  ]);
+  assert.equal(result.limited, false);
+  assert.deepEqual(f.operations, [c1, c2, c3, c4].map((c) => ['get', progressKey(c)]));
+  assert.deepEqual(f.data, before, '读取最近章节不修改进度、书架或无关记录');
+});
+
+test('进度快照：单项读取受限仍保留可读章节，坏内容跳过且不冒充读取失败', () => {
+  const chapters = Array.from({ length: 6 }, (_, i) => chapter(`c${i + 1}`));
+  const f = storageFixture([
+    [progressKey(chapters[0]), '{broken'],
+    [progressKey(chapters[1]), '[]'],
+    [progressKey(chapters[2]), JSON.stringify({ url: 'https://outside.example.org/', n: 1, ts: 999 })],
+    [progressKey(chapters[3]), JSON.stringify({ url: chapters[3].url, n: 1, ts: 20 })],
+    [progressKey(chapters[4]), JSON.stringify({ url: chapters[4].url, n: 3, ts: 10 })],
+  ]);
+  let denied = true;
+  const storage = { getItem(key) {
+    if (denied && key === progressKey(chapters[3])) throw new Error('单项不可读');
+    return f.storage.getItem(key);
+  } };
+  const catalog = [series(...chapters)];
+  const partial = readReadingProgress(catalog, storage);
+  assert.equal(partial.limited, true);
+  assert.deepEqual(partial.rows.map((row) => row.chapter), [chapters[4]]);
+  assert.deepEqual(partial.latest.get('sample'), { chapter: chapters[4], n: 3, ts: 10 });
+  denied = false;
+  const recovered = readReadingProgress(catalog, storage);
+  assert.equal(recovered.limited, false, '重新读取后反映已恢复的访问权限');
+  assert.deepEqual(recovered.rows.map((row) => row.chapter), [chapters[3], chapters[4]]);
+  assert.deepEqual(partial.rows.map((row) => row.chapter), [chapters[4]], '旧快照保持原结果');
+  assert.ok(f.operations.every(([type]) => type === 'get'));
+});
+
+test('进度快照：无法取得存储与 getItem 异常明确标记受限，空目录不访问存储', () => {
+  const catalog = [series(chapter('c1'))];
+  const getterDenied = Object.defineProperty({}, 'getItem', { get() { throw new Error('无法访问存储'); } });
+  for (const storage of [undefined, null, {}, getterDenied, { getItem() { throw new Error('拒绝读取'); } }]) {
+    const result = readReadingProgress(catalog, storage);
+    assert.equal(result.limited, true);
+    assert.deepEqual(result.rows, []);
+    assert.equal(result.latest.size, 0);
+  }
+  const inaccessible = { getItem() { throw new Error('不应访问'); } };
+  for (const catalog of [null, undefined, {}, [], [null, { id: 'Sample', issues: [] }, { id: 'sample' }]]) {
+    assert.deepEqual(readReadingProgress(catalog, inaccessible), { rows: [], latest: new Map(), limited: false });
+  }
+});
+
+test('进度快照：只读取有效的当前章节，非法目录和不匹配的原记录不进入结果', () => {
+  const valid = chapter('current');
+  const invalid = [
+    { ...valid, key: 'other/v/current', url: '/other/v/current/' },
+    { ...valid, key: 'sample/v/../current' },
+    { ...valid, id: 'changed' },
+    { ...valid, url: '/sample/v/current/#p2' },
+    { ...valid, pages: 0 },
+    { ...valid, pages: '4' },
+  ];
+  const f = storageFixture([[progressKey(valid), JSON.stringify({ url: valid.url, n: 2, ts: 10 })]]);
+  const first = series(...invalid);
+  const wrongIssue = { id: 'sample', issues: [{ id: 'wrong', chapters: [valid] }] };
+  const current = series(valid);
+  const result = readReadingProgress([first, wrongIssue, current], f.storage);
+  assert.deepEqual(result.rows, [{ series: current, issue: current.issues[0], chapter: valid, n: 2, ts: 10 }]);
+  assert.deepEqual(f.operations, [['get', progressKey(valid)]]);
+  assert.equal(result.limited, false);
+  f.data.set(progressKey(valid), JSON.stringify({ url: `${valid.url}#p2`, n: 2, ts: 10 }));
+  assert.deepEqual(readReadingProgress([current], f.storage).rows, []);
+});
+
+test('进度快照：沿用旧页码和时间容错，同时间最近章节与逐作品结果一致', () => {
+  const c1 = chapter('c1', 2);
+  const c2 = chapter('c2', 3);
+  const c3 = chapter('c3', 4);
+  const current = series(c1, c2, c3);
+  const f = storageFixture([
+    [progressKey(c1), JSON.stringify({ url: c1.url, n: -5, ts: '99' })],
+    [progressKey(c2), JSON.stringify({ url: c2.url, n: 99, ts: -1 })],
+    [progressKey(c3), JSON.stringify({ url: c3.url, n: 1.5 })],
+  ]);
+  const zero = readReadingProgress([current], f.storage);
+  assert.deepEqual(zero.rows.map(({ chapter, n, ts }) => ({ chapter, n, ts })), [
+    { chapter: c3, n: 1, ts: 0 }, { chapter: c2, n: 3, ts: 0 }, { chapter: c1, n: 1, ts: 0 },
+  ]);
+  assert.deepEqual(zero.latest.get('sample'), latestSeriesProgress(current, f.storage));
+  f.data.set(progressKey(c1), JSON.stringify({ url: c1.url, n: 2, ts: 1e300 }));
+  f.data.set(progressKey(c2), JSON.stringify({ url: c2.url, n: 2, ts: 1.5 }));
+  const timed = readReadingProgress([current], f.storage);
+  assert.deepEqual(timed.rows.map((row) => row.ts), [1e300, 1.5, 0], '保留旧模型接受的非负有限时间，展示层须处理日期范围');
+  assert.deepEqual(timed.latest.get('sample'), latestSeriesProgress(current, f.storage));
+  assert.ok(f.operations.every(([type]) => type === 'get'));
 });

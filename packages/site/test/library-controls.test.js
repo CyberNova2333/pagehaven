@@ -28,12 +28,16 @@ function element(tag = '') {
     closest(selector) {
       for (let node = this; node; node = node.parentElement) {
         if (selector === '[data-series-id]' && Object.hasOwn(node.dataset, 'seriesId')) return node;
+        if (selector === '[data-history-key]' && Object.hasOwn(node.dataset, 'historyKey')) return node;
       }
       return null;
     },
     querySelector(selector) {
       const row = /^\[data-series-id="([^"]+)"\] (.+)$/.exec(selector);
       if (row) return descendants(this).find((node) => node.dataset.seriesId === row[1])?.querySelector(row[2]) ?? null;
+      const history = /^\[data-history-key="([^"]+)"\] (.+)$/.exec(selector);
+      if (history) return descendants(this).find((node) => node.dataset.historyKey === history[1])?.querySelector(history[2]) ?? null;
+      if (selector === 'a') return descendants(this).find((node) => node.tag === 'a') ?? null;
       if (selector === 'select') return descendants(this).find((node) => node.tag === 'select') ?? null;
       const action = /^\[data-library-action="([^"]+)"\]$/.exec(selector);
       if (action) return descendants(this).find((node) => node.dataset.libraryAction === action[1]) ?? null;
@@ -44,6 +48,7 @@ function element(tag = '') {
       listeners.get(type).add(listener);
     },
     removeEventListener(type, listener) { listeners.get(type)?.delete(listener); },
+    listenerCount() { return [...listeners.values()].reduce((sum, entries) => sum + entries.size, 0); },
     fire(type, event = {}) { for (const listener of listeners.get(type) ?? []) listener({ target: this, ...event }); },
     focus(options) {
       this.focused = true;
@@ -61,8 +66,14 @@ function storageFixture(records = {}) {
   const data = new Map(Object.entries(records).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]));
   const operations = [];
   return {
-    data, operations, reads: 0, denyWrite: false,
-    getItem(key) { this.reads += 1; return data.get(key) ?? null; },
+    data, operations, reads: 0, readKeys: [], denyReadKeys: new Set(), denyWrite: false,
+    get length() { throw new Error('书架不能枚举其他应用的存储'); },
+    key() { throw new Error('书架不能枚举其他应用的存储'); },
+    getItem(key) {
+      this.reads += 1; this.readKeys.push(key);
+      if (this.denyReadKeys.has(key)) throw new Error('Storage read denied');
+      return data.get(key) ?? null;
+    },
     setItem(key, value) {
       if (this.denyWrite) throw new Error('Storage quota exceeded');
       operations.push(['set', key]); data.set(key, value);
@@ -112,16 +123,26 @@ function catalog() {
   ];
 }
 
-function libraryFixture({ data = catalog(), records = {}, denied = false } = {}) {
+function libraryFixture({ data = catalog(), records = {}, denied = false, deniedKeys = [] } = {}) {
   const storage = storageFixture(records);
+  storage.denyReadKeys = new Set(deniedKeys);
   const win = element('window');
-  const getStorage = () => { if (denied) throw new Error('Storage denied'); return storage; };
+  const access = { denied };
+  const getStorage = () => { if (access.denied) throw new Error('Storage denied'); return storage; };
   const root = element('section');
-  const nodes = Object.fromEntries(['list', 'empty', 'filter', 'search', 'count', 'storage-note', 'feedback', 'catalog', 'toolbar'].map((name) => [name, element(name)]));
+  const nodes = Object.fromEntries(['list', 'empty', 'filter', 'search', 'sort', 'count', 'storage-note', 'feedback', 'catalog', 'toolbar'].map((name) => [name, element(name)]));
+  for (const [name, tag] of Object.entries({ list: 'ul', empty: 'p', search: 'input', count: 'p', more: 'button', refresh: 'button', toolbar: 'div' })) {
+    nodes[`history-${name}`] = element(tag);
+  }
   nodes.catalog.textContent = typeof data === 'string' ? data : JSON.stringify(data);
   nodes.filter.value = 'all';
-  nodes.toolbar.hidden = true;
-  root.querySelector = (selector) => nodes[selector === '[data-library-toolbar]' ? 'toolbar' : selector.slice('#library-'.length)];
+  nodes.sort.value = 'updated';
+  nodes.toolbar.hidden = nodes['history-toolbar'].hidden = nodes['history-list'].hidden = nodes['history-more'].hidden = true;
+  root.querySelector = (selector) => {
+    if (selector === '[data-library-toolbar]') return nodes.toolbar;
+    if (selector === '[data-history-toolbar]') return nodes['history-toolbar'];
+    return nodes[selector.startsWith('#library-') ? selector.slice('#library-'.length) : selector.slice(1)];
+  };
   const doc = {
     defaultView: win, activeElement: null,
     createElement(tag) { const node = element(tag); node.ownerDocument = doc; return node; },
@@ -131,7 +152,9 @@ function libraryFixture({ data = catalog(), records = {}, denied = false } = {})
   const controller = mountLibrary(root, { getStorage, store });
   const row = (id) => nodes.list.children.find((item) => item.dataset.seriesId === id);
   const readLink = (id) => descendants(row(id)).find((node) => node.tag === 'a' && node.className === 'btn btn-primary');
-  return { root, nodes, win, storage, store, controller, row, readLink };
+  const historyRow = (key) => nodes['history-list'].children.find((item) => item.dataset.historyKey === key);
+  const historyRead = (key) => historyRow(key)?.querySelector('a');
+  return { root, nodes, win, storage, store, controller, row, readLink, historyRow, historyRead, getStorage, access };
 }
 
 test('作品页书架：仅用户操作写状态，移出仍保留进度，销毁后不再处理交互', () => {
@@ -376,4 +399,218 @@ test('书架区分空库与未收藏，坏目录不生成可操作的错误链�
     assert.equal(invalid.root.getAttribute('aria-busy'), 'false');
     assert.deepEqual(invalid.storage.operations, []);
   }
+});
+
+const reading = (key, n = 1, ts = 10) => ({ url: `/${key}/`, n, ts });
+const historyKeys = (f) => f.nodes['history-list'].children.map((row) => row.dataset.historyKey);
+function longHistory(count) {
+  const data = [{ id: 'sample', title: '长篇故事', url: '/sample/', coverUrl: null, authors: ['作者'],
+    issues: [{ id: 'v', title: '合集', chapters: Array.from({ length: count }, (_, i) => ({
+      key: `sample/v/c${i + 1}`, title: `第${i + 1}章`, url: `/sample/v/c${i + 1}/`, pages: 4,
+    })) }],
+  }];
+  const records = Object.fromEntries(Array.from({ length: count }, (_, i) => [progressKey(`sample/v/c${i + 1}`), reading(`sample/v/c${i + 1}`, 2, i + 1)]));
+  return { data, records };
+}
+
+test('最近阅读逐章显示未收藏作品，只读当前目录的安全链接与元数据', () => {
+  const f = libraryFixture({ records: {
+    [progressKey('sample/v/c1')]: { ...reading('sample/v/c1', 99, 10), title: '存储中的伪造标题', series: '伪造作品' },
+    [progressKey('sample/v/c2')]: reading('sample/v/c2', 3, 20),
+    [progressKey('zeta/v/c1')]: reading('zeta/v/c1', 1, 20),
+    [progressKey('sample/v/deleted')]: reading('sample/v/deleted', 1, 999),
+    'another-app:secret': '不是阅读数据',
+  } });
+  const before = new Map(f.storage.data);
+  assert.equal(f.nodes.list.children.length, 0, '阅读记录不能自动把作品加入书架');
+  assert.deepEqual(historyKeys(f), ['zeta/v/c1', 'sample/v/c2', 'sample/v/c1']);
+  assert.equal(f.historyRead('sample/v/c1').href, '/sample/v/c1/#p2');
+  assert.equal(f.historyRead('sample/v/c2').href, '/sample/v/c2/#p3');
+  assert.match(f.historyRow('sample/v/c1').textContent, /<img src=x> 示例故事/);
+  assert.ok(!f.nodes['history-list'].textContent.includes('伪造'));
+  assert.ok(!descendants(f.nodes['history-list']).some((node) => node.tag === 'img'), '目录标题作为文本显示');
+  assert.equal(f.nodes['history-toolbar'].hidden, false);
+  assert.match(f.nodes['history-count'].textContent, /3.*3/);
+  assert.deepEqual(f.storage.data, before);
+  assert.deepEqual(f.storage.operations, []);
+  assert.deepEqual(f.storage.readKeys.filter((key) => key.startsWith('gallery:progress:')), [
+    progressKey('sample/v/c1'), progressKey('sample/v/c2'), progressKey('zeta/v/c1'),
+  ]);
+  f.controller.destroy();
+});
+
+test('书架最近阅读排序复用共享快照，未读排后且可恢复默认顺序', () => {
+  const f = libraryFixture({ records: {
+    [shelfKey('sample')]: saved('want', 10), [shelfKey('zeta')]: saved('read', 20), [shelfKey('empty')]: saved('reading', 30),
+    [progressKey('sample/v/c2')]: reading('sample/v/c2', 3, 50),
+    [progressKey('zeta/v/c1')]: reading('zeta/v/c1', 1, 0),
+  } });
+  const ids = () => f.nodes.list.children.map((row) => row.dataset.seriesId);
+  const reads = f.storage.reads;
+  assert.deepEqual(ids(), ['empty', 'zeta', 'sample']);
+  f.nodes.sort.focus();
+  f.nodes.sort.value = 'recent';
+  f.nodes.sort.fire('change');
+  assert.deepEqual(ids(), ['sample', 'zeta', 'empty'], '有进度但无时间的作品仍排在未读作品前');
+  assert.equal(f.root.ownerDocument.activeElement, f.nodes.sort);
+  assert.equal(f.readLink('sample').href, '/sample/v/c2/#p3');
+  f.nodes.filter.value = 'want';
+  f.nodes.filter.fire('change');
+  f.nodes.search.value = 'alice';
+  f.nodes.search.fire('input');
+  assert.deepEqual(ids(), ['sample']);
+  f.nodes.search.value = '';
+  f.nodes.filter.value = 'all';
+  f.nodes.filter.fire('change');
+  f.nodes.sort.value = 'updated';
+  f.nodes.sort.fire('change');
+  assert.deepEqual(ids(), ['empty', 'zeta', 'sample']);
+  assert.equal(f.storage.reads, reads, '排序、搜索和状态筛选不能再次逐章读取存储');
+  assert.deepEqual(f.storage.operations, []);
+  f.controller.destroy();
+});
+
+test('最近阅读搜索与显示更多只用缓存，扩展列表后聚焦第一条新记录', () => {
+  const f = libraryFixture(longHistory(45));
+  const reads = f.storage.reads;
+  assert.equal(f.nodes['history-list'].children.length, 20);
+  assert.equal(historyKeys(f)[0], 'sample/v/c45');
+  assert.equal(historyKeys(f).at(-1), 'sample/v/c26');
+  f.nodes['history-more'].focus();
+  f.nodes['history-more'].fire('click');
+  assert.equal(f.nodes['history-list'].children.length, 40);
+  assert.equal(f.root.ownerDocument.activeElement, f.historyRead('sample/v/c25'));
+  f.nodes['history-more'].fire('click');
+  assert.equal(f.nodes['history-list'].children.length, 45);
+  assert.equal(f.nodes['history-more'].hidden, true);
+  assert.equal(f.root.ownerDocument.activeElement, f.historyRead('sample/v/c5'));
+  f.nodes['history-search'].value = '第1章';
+  f.nodes['history-search'].fire('input');
+  assert.deepEqual(historyKeys(f), ['sample/v/c1']);
+  f.nodes['history-search'].value = '合集';
+  f.nodes['history-search'].fire('input');
+  assert.equal(f.nodes['history-list'].children.length, 20, '新搜索从初始显示数量开始');
+  assert.equal(f.nodes['history-more'].hidden, false);
+  f.nodes['history-search'].value = '没有这部作品';
+  f.nodes['history-search'].fire('input');
+  assert.equal(f.nodes['history-list'].hidden, true);
+  assert.match(f.nodes['history-empty'].textContent, /没有匹配/);
+  assert.equal(f.storage.reads, reads);
+  assert.deepEqual(f.storage.operations, []);
+  f.controller.destroy();
+  const names = libraryFixture({ records: {
+    [progressKey('sample/v/c1')]: reading('sample/v/c1'), [progressKey('zeta/v/c1')]: reading('zeta/v/c1'),
+  } });
+  for (const [query, key] of [['alice', 'sample/v/c1'], ['短篇集', 'zeta/v/c1'], ['开端', 'sample/v/c1']]) {
+    names.nodes['history-search'].value = query;
+    names.nodes['history-search'].fire('input');
+    assert.deepEqual(historyKeys(names), [key], '搜索支持作者规范化、期名与章节名');
+  }
+  names.controller.destroy();
+});
+
+test('外部进度刷新保留章节焦点，排序移出初始范围时展开，记录移除则返回搜索', () => {
+  const f = libraryFixture(longHistory(45));
+  f.win.innerHeight = 200;
+  f.historyRead('sample/v/c45').getBoundingClientRect = () => ({ top: 10, bottom: 30, height: 20 });
+  f.historyRead('sample/v/c45').focus();
+  const reads = f.storage.reads;
+  f.storage.data.set(progressKey('sample/v/c45'), JSON.stringify(reading('sample/v/c45', 3, 0)));
+  f.win.fire('storage', { key: progressKey('sample/v/c45') });
+  assert.equal(f.nodes['history-list'].children.length, 45);
+  assert.equal(f.root.ownerDocument.activeElement, f.historyRead('sample/v/c45'));
+  assert.deepEqual(f.historyRead('sample/v/c45').focusOptions, { preventScroll: false }, '原焦点可见时，允许浏览器滚动到刷新后的位置');
+  assert.equal(f.historyRead('sample/v/c45').href, '/sample/v/c45/#p3');
+  assert.equal(f.storage.reads - reads, 46, '每次共享刷新只读45个进度和一个作品状态');
+  f.historyRead('sample/v/c45').getBoundingClientRect = () => ({ top: 500, bottom: 520, height: 20 });
+  f.win.fire('pageshow');
+  assert.deepEqual(f.historyRead('sample/v/c45').focusOptions, { preventScroll: true }, '原焦点已离屏时不把用户滚回旧记录');
+  f.win.innerHeight = 600;
+  f.historyRead('sample/v/c45').getBoundingClientRect = () => {
+    const top = f.nodes.list.children.length ? 1000 : 100;
+    return { top, bottom: top + 20, height: 20 };
+  };
+  f.storage.data.set(shelfKey('sample'), JSON.stringify(saved()));
+  f.win.fire('storage', { key: shelfKey('sample') });
+  assert.equal(f.nodes.list.children.length, 1);
+  assert.deepEqual(f.historyRead('sample/v/c45').focusOptions, { preventScroll: false }, '必须在书架卡片改变布局前记录历史焦点是否可见');
+  f.storage.data.delete(progressKey('sample/v/c45'));
+  f.win.fire('pageshow');
+  assert.equal(f.root.ownerDocument.activeElement, f.nodes['history-search']);
+  f.nodes.search.focus();
+  f.win.fire('focus');
+  assert.equal(f.root.ownerDocument.activeElement, f.nodes.search, '刷新不抢夺另一处输入框焦点');
+  f.controller.destroy();
+  const shrinking = libraryFixture(longHistory(45));
+  shrinking.nodes['history-more'].focus();
+  for (let i = 11; i <= 45; i++) shrinking.storage.data.delete(progressKey(`sample/v/c${i}`));
+  shrinking.win.fire('storage', { key: null });
+  assert.equal(shrinking.nodes['history-more'].hidden, true);
+  assert.equal(shrinking.root.ownerDocument.activeElement, shrinking.nodes['history-search']);
+  shrinking.controller.destroy();
+});
+
+test('最近阅读区分读取受限与坏记录，刷新可恢复，异常日期不会导致渲染失败', () => {
+  const key = progressKey('sample/v/c1');
+  const f = libraryFixture({ records: { [key]: reading('sample/v/c1', 2) }, deniedKeys: [key] });
+  assert.equal(f.nodes['history-list'].children.length, 0);
+  assert.equal(f.nodes['storage-note'].hidden, false);
+  assert.match(f.nodes['history-empty'].textContent, /无法.*读取/);
+  f.storage.denyReadKeys.clear();
+  f.nodes['history-refresh'].fire('click');
+  assert.deepEqual(historyKeys(f), ['sample/v/c1']);
+  assert.equal(f.nodes['storage-note'].hidden, true);
+  assert.deepEqual(f.storage.operations, []);
+  f.controller.destroy();
+  const bad = libraryFixture({ records: {
+    [key]: '{broken',
+    [progressKey('sample/v/c2')]: { url: 'javascript:alert(1)', n: 2, ts: 999 },
+    [progressKey('zeta/v/c1')]: { url: '/zeta/v/c1/#p1', n: 1, ts: 999 },
+  } });
+  assert.equal(bad.nodes['history-list'].children.length, 0);
+  assert.equal(bad.nodes['storage-note'].hidden, true, '坏内容不应伪报为存储权限错误');
+  assert.match(bad.nodes['history-empty'].textContent, /还没有可用/);
+  bad.controller.destroy();
+  const invalidTime = libraryFixture({ records: { [key]: reading('sample/v/c1', 2, 1e17) } });
+  assert.match(invalidTime.historyRow('sample/v/c1').textContent, /时间未记录/);
+  const time = descendants(invalidTime.historyRow('sample/v/c1')).find((node) => node.tag === 'time');
+  assert.equal(time.getAttribute('datetime'), null);
+  invalidTime.controller.destroy();
+  const denied = libraryFixture({ denied: true });
+  assert.match(denied.nodes['history-empty'].textContent, /无法.*读取/);
+  denied.controller.destroy();
+});
+
+test('共享刷新响应相关事件与按钮，销毁及备份恢复重挂载不重复监听或写入进度', () => {
+  const key = progressKey('sample/v/c1');
+  const f = libraryFixture({ records: { [key]: reading('sample/v/c1', 1), [shelfKey('sample')]: saved() } });
+  const reads = f.storage.reads;
+  f.win.fire('storage', { key: 'other-app:setting' });
+  assert.equal(f.storage.reads, reads);
+  f.storage.data.set(key, JSON.stringify(reading('sample/v/c1', 2, 30)));
+  f.win.fire('focus');
+  assert.equal(f.historyRead('sample/v/c1').href, '/sample/v/c1/#p2');
+  assert.equal(f.readLink('sample').href, '/sample/v/c1/#p2');
+  f.controller.destroy();
+  const destroyedReads = f.storage.reads;
+  for (const name of ['sort', 'history-search', 'history-more', 'history-refresh']) {
+    assert.equal(f.nodes[name].listenerCount(), 0);
+    f.nodes[name].fire(name === 'sort' ? 'change' : name === 'history-search' ? 'input' : 'click');
+  }
+  for (const type of ['storage', 'pageshow', 'focus']) f.win.fire(type, { key: null });
+  assert.equal(f.win.listenerCount(), 0);
+  assert.equal(f.storage.reads, destroyedReads);
+  // 备份导入完成后，页面入口会销毁旧视图并重新挂载，重新读取已经恢复的记录。
+  f.storage.data.set(key, JSON.stringify(reading('sample/v/c1', 1, 50)));
+  const mounted = mountLibrary(f.root, { getStorage: f.getStorage, store: f.store });
+  assert.equal(f.historyRead('sample/v/c1').href, '/sample/v/c1/#p1');
+  assert.equal(f.readLink('sample').href, '/sample/v/c1/#p1');
+  assert.equal(f.nodes['history-refresh'].listenerCount(), 1);
+  assert.equal(f.win.listenerCount(), 3);
+  assert.deepEqual(f.storage.operations, []);
+  f.storage.denyWrite = true;
+  const status = f.row('sample').querySelector('select');
+  status.value = 'read'; status.fire('change');
+  assert.equal(mounted.hasPending, true, '新增历史视图不应绕过备份的未保存修改检查');
+  mounted.destroy();
 });

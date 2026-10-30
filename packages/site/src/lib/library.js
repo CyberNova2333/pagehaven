@@ -75,29 +75,46 @@ export function createLibraryStore({ getStorage = () => window.localStorage, now
 }
 
 /**
- * 只根据当前目录恢复既有进度，标题与链接始终来自目录；坏记录不阻断其他章节。
- * pages 接受生成数据的页数组，或书架精简目录的页数。
+ * 一次读取当前目录中各章的进度，供最近阅读和书架恢复共用同一快照。
+ * 标题与链接始终来自目录；pages 接受生成数据的页数组或精简目录的页数。
+ * 坏内容跳过，读取受限单独反馈；不枚举、修改或清理浏览器存储。
  */
-export function latestSeriesProgress(series, storage) {
-  if (!isId(series?.id) || !Array.isArray(series.issues)) return null;
-  let best = null;
-  for (const issue of series.issues) {
-    if (!Array.isArray(issue?.chapters)) continue;
-    for (const chapter of issue.chapters) {
-      const parts = typeof chapter?.key === 'string' ? chapter.key.split('/') : [];
-      const pages = Array.isArray(chapter?.pages) ? chapter.pages.length : chapter?.pages;
-      if (parts.length !== 3 || !parts.every(isId) || parts[0] !== series.id
-        || (issue.id !== undefined && issue.id !== parts[1])
-        || (chapter.id !== undefined && chapter.id !== parts[2])
-        || chapter.url !== `/${chapter.key}/` || !Number.isSafeInteger(pages) || pages < 1) continue;
-      try {
-        const value = JSON.parse(storage.getItem(`gallery:progress:${chapter.key}`));
+export function readReadingProgress(catalog, storage) {
+  const rows = [];
+  const latest = new Map();
+  let limited = false;
+  for (const series of Array.isArray(catalog) ? catalog : []) {
+    if (!isId(series?.id) || !Array.isArray(series.issues)) continue;
+    for (const issue of series.issues) {
+      if (!Array.isArray(issue?.chapters)) continue;
+      for (const chapter of issue.chapters) {
+        const parts = typeof chapter?.key === 'string' ? chapter.key.split('/') : [];
+        const pages = Array.isArray(chapter?.pages) ? chapter.pages.length : chapter?.pages;
+        if (parts.length !== 3 || !parts.every(isId) || parts[0] !== series.id
+          || (issue.id !== undefined && issue.id !== parts[1])
+          || (chapter.id !== undefined && chapter.id !== parts[2])
+          || chapter.url !== `/${chapter.key}/` || !Number.isSafeInteger(pages) || pages < 1) continue;
+        let raw;
+        try { raw = storage.getItem(`gallery:progress:${chapter.key}`); }
+        catch { limited = true; continue; }
+        let value;
+        try { value = JSON.parse(raw); }
+        catch { continue; }
         if (!value || typeof value !== 'object' || Array.isArray(value) || value.url !== chapter.url) continue;
         const n = Number.isSafeInteger(value.n) ? Math.max(1, Math.min(pages, value.n)) : 1;
         const ts = Number.isFinite(value.ts) && value.ts >= 0 ? value.ts : 0;
-        if (!best || ts >= best.ts) best = { chapter, n, ts };
-      } catch { /* 单条读取失败或坏 JSON 不影响后面的有效进度。 */ }
+        rows.push({ series, issue, chapter, n, ts });
+        const best = latest.get(series.id);
+        if (!best || ts >= best.ts) latest.set(series.id, { chapter, n, ts });
+      }
     }
   }
-  return best;
+  // 稳定排序让同时间记录按目录后章优先，与逐作品恢复的既有规则一致。
+  rows.reverse().sort((left, right) => right.ts - left.ts);
+  return { rows, latest, limited };
+}
+
+/** 保留逐作品恢复入口的输出形状与容错规则。 */
+export function latestSeriesProgress(series, storage) {
+  return readReadingProgress([series], storage).latest.get(series?.id) ?? null;
 }
