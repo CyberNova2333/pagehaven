@@ -39,6 +39,8 @@
 
 维护检查守住文件数、单文件大小、每话 HTML、配置同步等约束。集成测试会用最小夹具走实际构建，但会触及共享生成目录，因此本轮只读测试证据，避免覆盖正在预览的产物。
 
+同一检查入口还核对双语 README 的章节链接。修改标题后，导航参数必须同步到 CNB 生成的锚点，例如 `Getting started` 使用 `#getting-started`；旧的 `#section-1` 或错误大小写会导致检查失败。
+
 [对应实现](../../scripts/test/site-build.test.mjs)，定位 `CONFIG_FILE / DATA_DIR / DIST_DIR / OUT_DIR、run`。
 
 ## 检查这条解释

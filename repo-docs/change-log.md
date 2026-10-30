@@ -31,3 +31,11 @@ Synced through 727cb72578cd6152f67dcb33be578e2a2fe80e56；源码树与原锚点�
 验证：Astro 检查通过；提供项目需要的 POSIX 工具路径后，完整回归 529 项中 527 项通过、2 项跳过。
 
 Synced through 00e6185b3b0d6a9e9e248a37673871f72d251dcc；本节对应随后提交的工作树。
+
+## README 章节导航复核（2026-10-30 22:35 Asia/Shanghai）
+
+按 CNB 页面实际生成的章节链接修正英文导航：`Getting started` 对应 `#getting-started`，原文大小写和空格不能直接作为链接参数。中文导航保留现有有效锚点。中英 README 补充维护说明，章节链接校验接入 `npm run check`，代码地图及主流程同步检查入口。
+
+验证：CNB 中文五项点击正常；英文原参数可复现不滚动，替换为实际锚点后五项均滚动到目标标题。7 项链接回归通过；`npm run check`、`npm test`（534 通过、2 项 Windows 跳过）、`npm run build` 均退出 0；指南以 Lite 模式校验通过。未部署。
+
+Synced through 261da604291ceb0fc233f7a9090be89c46dcfed0；本节对应随后提交的修复。

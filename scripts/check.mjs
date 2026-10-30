@@ -15,6 +15,7 @@
 //      seo.indexnow_key 非空时 dist/<key>.txt 存在且内容逐字节等于 key（IndexNow 协议按字节比对）
 //   7. out/db 里的 sqlite：文件头里的 page_size 与配置一致；chunks.json 的块大小一致
 //   8. lint
+//   9. 双语 README 的章节链接与实际标题生成的 CNB 锚点一致
 //
 // 输出给手机上看构建日志的人：每节一个 ✔/✘，问题逐条列出，最后一行给结论。
 // 任何一节失败退出码都是 1，但所有节都会跑完——一次看全，不用来回改。
@@ -30,6 +31,7 @@ import { loadGallery } from './lib/data.mjs';
 import { ROOT, DATA_DIR, DIST_DIR, OUT_DB_DIR, PLATFORM_GENERATED_DIR, CNB_FILE, CNB_DIR, WORKFLOWS_DIR } from './lib/paths.mjs';
 import { parseSitemap, indexNowKeyFile, SITEMAP_FILE, SITEMAP_PROTOCOL_MAX_URLS } from './lib/sitemap.mjs';
 import { step, ok, fail, note, warn } from './lib/log.mjs';
+import { checkReadmeLinks } from './lib/readme-links.mjs';
 
 const WEB_ONLY_PACKAGES = ['core', 'site', 'search'];
 const IMAGE_OR_DB_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif', '.bmp', '.tif', '.tiff', '.sqlite', '.sqlite3', '.db', '.zst']);
@@ -402,6 +404,15 @@ await section('lint', async () => {
   const r = spawnSync(process.execPath, [eslint, '.'], { cwd: ROOT, encoding: 'utf8' });
   if (r.status === 0) return [];
   return [(r.stdout || '') + (r.stderr || '')];
+});
+
+// ── 9. README 章节链接 ──────────────────────────────────────────────
+await section('双语 README 的章节链接与实际 CNB 标题锚点一致', async () => {
+  const problems = [];
+  for (const file of ['README.md', 'README.en.md']) {
+    problems.push(...checkReadmeLinks(await readFile(join(ROOT, file), 'utf8'), file));
+  }
+  return problems;
 });
 
 console.log('');

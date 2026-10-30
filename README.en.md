@@ -12,7 +12,7 @@
 <p align="center">Good stories, between the pages.</p>
 
 <p align="center">
-  <a href="#Features">Features</a> · <a href="#Getting started">Getting started</a> · <a href="#Deployment">Deployment</a> · <a href="#Architecture">Architecture</a> · <a href="#Current limits">Current limits</a>
+  <a href="#features">Features</a> · <a href="#getting-started">Getting started</a> · <a href="#deployment">Deployment</a> · <a href="#architecture">Architecture</a> · <a href="#current-limits">Current limits</a>
 </p>
 
 **Pagehaven is a general-purpose static comic site.** It brings a comic catalog, reader, and dialogue search together, with three light and dark palettes built around paper, ink, and teal, for building your own comic library.
@@ -245,6 +245,8 @@ Internal packages keep the `@gallery/*` names, and reading records keep the `gal
 ## Contributing
 
 Work directly on `main`; there is no routine PR workflow. Keep one feature per commit, use a Conventional Commits prefix with a Chinese description, and follow the authorship, signing, and documentation rules. Keep feature descriptions, commands, and limits synchronized between both README languages.
+
+When changing a section heading, update the navigation fragment to match the section link generated beside that heading on CNB. English headings use lowercase and hyphens (`Getting started` becomes `#getting-started`). `npm run check` checks section links in both READMEs.
 
 Before committing, run `npm run check`, `npm test`, and `npm run build`. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full rules. Automated collaborators must also read [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md). These maintenance documents are currently authoritative in Chinese.
 
