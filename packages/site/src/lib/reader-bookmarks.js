@@ -1,4 +1,5 @@
 import { getReaderBookmarkStore, FAVORITES_PREFIX, NOTE_PREFIX, MAX_NOTE_LENGTH } from './bookmarks.js';
+import { createStorageRefresh } from './storage-refresh.js';
 
 /** 页码来自原阅读器；编辑目标在打开时固定，不随翻页改变，也不自动写草稿。 */
 export function mountReaderBookmarks(reader, root) {
@@ -21,13 +22,17 @@ export function mountReaderBookmarks(reader, root) {
   const message = root.querySelector('[data-bookmark-message]');
   let editing = null;
   let feedback = '';
+  let destroyed = false;
+  const storageRefresh = createStorageRefresh(win, () => refresh());
   const currentPage = () => {
     const n = core.getState().page;
     return Number.isSafeInteger(n) ? Math.min(total, Math.max(1, n)) : 1;
   };
   function refresh() {
+    storageRefresh.cancel();
+    if (destroyed) return;
     const n = currentPage();
-    const mark = store.list(key, total).find((item) => item.n === n);
+    const mark = store.get(key, total, n);
     page.textContent = `第 ${n} 页`;
     toggle.textContent = mark ? '取消本页书签' : '收藏当前页';
     toggle.setAttribute('aria-pressed', String(Boolean(mark)));
@@ -47,7 +52,7 @@ export function mountReaderBookmarks(reader, root) {
   }
   const onToggle = () => {
     const n = currentPage();
-    const marked = store.list(key, total).some((item) => item.n === n);
+    const marked = Boolean(store.get(key, total, n));
     if (marked) {
       if (editing === n) closeEditor();
       report(store.remove(key, total, n), `已移除第 ${n} 页书签。`);
@@ -58,7 +63,7 @@ export function mountReaderBookmarks(reader, root) {
     // 再次点击编辑时保留原草稿，避免误点丢失正在编辑的内容。
     if (editing === null) {
       editing = currentPage();
-      note.value = store.list(key, total).find((item) => item.n === editing)?.note ?? '';
+      note.value = store.get(key, total, editing)?.note ?? '';
       editingPage.textContent = `第 ${editing} 页`;
       editor.hidden = false;
     }
@@ -86,7 +91,7 @@ export function mountReaderBookmarks(reader, root) {
     onCancel();
   };
   const onStorage = (event) => {
-    if (event.key === null || event.key === FAVORITES_PREFIX + key || event.key?.startsWith(NOTE_PREFIX + key + '/p')) refresh();
+    if (event.key === null || event.key === FAVORITES_PREFIX + key || event.key === NOTE_PREFIX + key + '/p' + currentPage()) storageRefresh.request();
   };
   const onShow = () => refresh();
   const unsubscribeReader = core.subscribe(refresh);
@@ -98,9 +103,12 @@ export function mountReaderBookmarks(reader, root) {
   editor.addEventListener('keydown', onKey);
   win.addEventListener('storage', onStorage);
   win.addEventListener('pageshow', onShow);
+  win.addEventListener('focus', onShow);
   refresh();
   return {
     destroy() {
+      destroyed = true;
+      storageRefresh.destroy();
       unsubscribeReader();
       unsubscribeStore();
       toggle.removeEventListener('click', onToggle);
@@ -110,6 +118,7 @@ export function mountReaderBookmarks(reader, root) {
       editor.removeEventListener('keydown', onKey);
       win.removeEventListener('storage', onStorage);
       win.removeEventListener('pageshow', onShow);
+      win.removeEventListener('focus', onShow);
     },
   };
 }

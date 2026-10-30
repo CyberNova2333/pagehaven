@@ -1,6 +1,7 @@
 // 可选分页组件只负责呈现；原阅读器仍统一管理模式、hash 与首页读取的进度。
-import { FAVORITES_PREFIX, NOTE_PREFIX, getReaderBookmarkStore } from './bookmarks.js';
+import { FAVORITES_PREFIX, getReaderBookmarkStore } from './bookmarks.js';
 import { readerBrandOptions, applyReaderBranding } from './reader-branding.js';
+import { createStorageRefresh } from './storage-refresh.js';
 
 export function mountEnhancedReader(reader, {
   loadViewer = () => import('@yui540/comimi'),
@@ -42,6 +43,8 @@ export function mountEnhancedReader(reader, {
   let suspended = false;
   let failure = '';
   let favoritesReady = false;
+  let syncedFavorites = [];
+  const favoritesRefresh = createStorageRefresh(win, () => syncFavorites());
   const colorSchemeEvent = 'pagehaven:color-scheme-change';
   const validTheme = (value) => value === 'light' || value === 'dark';
   function resolvedTheme(event) {
@@ -54,14 +57,16 @@ export function mountEnhancedReader(reader, {
   }
   let theme = resolvedTheme();
 
-  const savedFavoriteIds = () => bookmarkStore.list(chapterKey, pages.length).map(({ n }) => `${chapterKey}/p${n}`);
+  const savedFavoriteIds = () => bookmarkStore.ids(chapterKey, pages.length);
   const sameFavorites = (left, right) => {
     const sortedRight = [...right].sort();
     return left.length === right.length && [...left].sort().every((id, index) => id === sortedRight[index]);
   };
   function syncFavorites() {
+    favoritesRefresh.cancel();
     if (!active || !viewer || !favoritesReady || disposed) return;
     const favorites = savedFavoriteIds();
+    syncedFavorites = [...favorites];
     if (sameFavorites(favorites, viewer.getFavoritePageIds())) return;
     // 上游 setFavorites 也会回报 favoritesChange；恢复和同步都不能变成一次用户写入。
     favoritesReady = false;
@@ -88,6 +93,8 @@ export function mountEnhancedReader(reader, {
     const wasActive = active;
     active = false;
     favoritesReady = false;
+    syncedFavorites = [];
+    favoritesRefresh.cancel();
     core.setEnhancement(null);
     const previous = viewer;
     viewer = null;
@@ -186,8 +193,10 @@ export function mountEnhancedReader(reader, {
           favoritesChange: () => {
             if (!active || !favoritesReady || ticket !== generation) return;
             const favorites = viewer.getFavoritePageIds();
-            if (sameFavorites(savedFavoriteIds(), favorites)) return;
-            const result = bookmarkStore.replace(chapterKey, pages.length, favorites);
+            if (sameFavorites(syncedFavorites, favorites)) return;
+            const previous = syncedFavorites;
+            syncedFavorites = [...favorites];
+            const result = bookmarkStore.updateFavorites(chapterKey, pages.length, previous, favorites);
             message(result.persisted ? '' : '书签修改未能完整保存，暂留在当前页面；离开或刷新页面后可能丢失。');
           },
         },
@@ -240,7 +249,7 @@ export function mountEnhancedReader(reader, {
     if (changed === chapterKey) syncFavorites();
   });
   function onStorage(event) {
-    if (event.key === null || event.key === favoritesKey || event.key?.startsWith(`${NOTE_PREFIX}${chapterKey}/p`)) syncFavorites();
+    if (event.key === null || event.key === favoritesKey) favoritesRefresh.request();
   }
   function onColorScheme(event) {
     theme = resolvedTheme(event);
@@ -250,6 +259,7 @@ export function mountEnhancedReader(reader, {
   textToggle?.addEventListener('change', schedule);
   win.addEventListener('hashchange', schedule);
   win.addEventListener('storage', onStorage);
+  win.addEventListener('focus', syncFavorites);
   win.addEventListener(colorSchemeEvent, onColorScheme);
   doc.addEventListener('keydown', keydown);
   function suspend() {
@@ -265,12 +275,14 @@ export function mountEnhancedReader(reader, {
   function destroy() {
     if (disposed) return;
     disposed = true;
+    favoritesRefresh.destroy();
     unsubscribe();
     unsubscribeBookmarks();
     toggle.removeEventListener('change', changePreference);
     textToggle?.removeEventListener('change', schedule);
     win.removeEventListener('hashchange', schedule);
     win.removeEventListener('storage', onStorage);
+    win.removeEventListener('focus', syncFavorites);
     win.removeEventListener(colorSchemeEvent, onColorScheme);
     doc.removeEventListener('keydown', keydown);
     win.removeEventListener('pagehide', suspend);

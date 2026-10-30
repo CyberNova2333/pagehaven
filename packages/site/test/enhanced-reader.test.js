@@ -47,6 +47,7 @@ function element(id = '', interactive = false) {
 function fixture({ preferred = false, mode = 'single', hash = '', text = false, page = 3, requestedPage = page, load, storageDenied = false, favorites = [], siteTitle = '测试站点', siteLogo = '/favicon.svg', brandViewer = () => true, scheme, systemDark = false } = {}) {
   const data = new Map([[preferenceKey, String(preferred)], [favoritesKey, JSON.stringify(favorites)]]);
   const writes = [];
+  const reads = [];
   const nodes = new Map(['enhanced-toggle', 'enhanced-viewer', 'enhanced-status', 'text-toggle', 'fullscreen-btn', 'toc-btn', 'settings-btn', 'toc', 'settings']
     .map((id) => [id, element(id)]));
   const document = element('document');
@@ -55,7 +56,7 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
   let timerId = 0;
   window.location = new URL(`https://example.invalid/sample/v/c/${hash}`);
   window.localStorage = {
-    getItem(key) { if (storageDenied) throw new Error('Storage denied'); return data.get(key) ?? null; },
+    getItem(key) { reads.push(key); if (storageDenied) throw new Error('Storage denied'); return data.get(key) ?? null; },
     setItem(key, value) { if (storageDenied) throw new Error('Storage denied'); data.set(key, value); writes.push({ key, value }); },
     removeItem(key) { if (storageDenied) throw new Error('Storage denied'); data.delete(key); writes.push({ key, value: null }); },
   };
@@ -157,7 +158,7 @@ function fixture({ preferred = false, mode = 'single', hash = '', text = false, 
     timeoutMs: 50,
   });
   return {
-    api, reader, nodes, window, document, timers, instances, writes, data, showCalls, brandingCalls,
+    api, reader, nodes, window, document, timers, instances, writes, reads, data, showCalls, brandingCalls,
     get loads() { return loads; },
     get enhancement() { return enhancement; },
     get refreshCount() { return refreshCount; },
@@ -648,6 +649,7 @@ test('增强分页：外部收藏与页面恢复同步不落盘，无关事件�
   f.window.fire('storage', { key: 'unrelated' });
   assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p1`]);
   f.window.fire('storage', { key: favoritesKey });
+  f.expire();
   assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p4`]);
   f.data.set(favoritesKey, JSON.stringify([`${chapterKey}/p5`]));
   f.window.fire('pageshow', { persisted: true });
@@ -655,6 +657,7 @@ test('增强分页：外部收藏与页面恢复同步不落盘，无关事件�
   assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p5`]);
   f.data.delete(favoritesKey);
   f.window.fire('storage', { key: null });
+  f.expire();
   assert.deepEqual(instance.getFavoritePageIds(), []);
   assert.equal(f.writes.length, before, '同步只是读取，不能覆盖原收藏或备注');
   f.api.destroy();
@@ -676,6 +679,75 @@ test('增强分页：取消一页收藏删除其备注，保留其他页备注�
   assert.equal(f.data.get('gallery:library:sample'), '原书架状态');
   assert.deepEqual(f.reader.galleryBookmarkStore.list(chapterKey, 6).map(({ n, note }) => [n, note]), [[4, '保留这一页']]);
   f.api.destroy();
+});
+
+test('增强分页：storage 尚未同步时用户新增只合并差量，外部新页及备注不丢失', async () => {
+  const id = (n) => `${chapterKey}/p${n}`;
+  const note2 = `${NOTE_PREFIX}${id(2)}`;
+  const f = fixture({ favorites: [id(1)] });
+  const instance = await activate(f);
+  f.data.set(favoritesKey, JSON.stringify([id(1), id(2), id(99)]));
+  f.data.set(note2, JSON.stringify({ version: 1, note: '另一个标签页的新备注', updatedAt: 10 }));
+  f.window.fire('storage', { key: favoritesKey });
+  assert.equal(f.timers.size, 1);
+  instance.setFavorites([id(1), id(3)]);
+  assert.deepEqual(JSON.parse(f.data.get(favoritesKey)), [id(1), id(2), id(3), id(99)]);
+  assert.equal(JSON.parse(f.data.get(note2)).note, '另一个标签页的新备注');
+  assert.deepEqual(instance.getFavoritePageIds(), [id(1), id(2), id(3)]);
+  assert.equal(f.timers.size, 0, '明确保存后的同步取消旧排队任务');
+  const before = f.reads.length;
+  f.expire();
+  assert.equal(f.reads.length, before);
+  f.api.destroy();
+});
+
+test('增强分页：用户添加新页不会把尚未同步的外部删除复活', async () => {
+  const id = (n) => `${chapterKey}/p${n}`;
+  const f = fixture({ favorites: [id(1), id(2)] });
+  const instance = await activate(f);
+  f.data.set(favoritesKey, JSON.stringify([id(2), id(4)]));
+  instance.setFavorites([id(1), id(2), id(3)]);
+  assert.deepEqual(JSON.parse(f.data.get(favoritesKey)), [id(2), id(3), id(4)]);
+  assert.deepEqual(instance.getFavoritePageIds(), [id(2), id(3), id(4)]);
+  f.api.destroy();
+});
+
+test('增强分页：批量收藏事件只读取最终成员一次，备注更新不扫描收藏或备注', async () => {
+  const f = fixture({ favorites: [`${chapterKey}/p1`] });
+  const instance = await activate(f);
+  f.reads.length = 0;
+  const writes = f.writes.length;
+  for (let i = 0; i < 500; i++) {
+    f.window.fire('storage', { key: `${NOTE_PREFIX}${chapterKey}/p2` });
+    f.data.set(favoritesKey, JSON.stringify([`${chapterKey}/p${i % 6 + 1}`]));
+    f.window.fire('storage', { key: favoritesKey });
+  }
+  assert.deepEqual(f.reads, []);
+  assert.equal(f.timers.size, 1);
+  f.expire();
+  assert.deepEqual(f.reads, [favoritesKey]);
+  assert.deepEqual(instance.getFavoritePageIds(), [`${chapterKey}/p2`]);
+  assert.equal(f.writes.length, writes);
+  f.api.destroy();
+});
+
+test('增强分页：窗口恢复立即读取并取消排队任务，销毁隔离迟到的存储回调', async () => {
+  const f = fixture();
+  await activate(f);
+  f.window.fire('storage', { key: favoritesKey });
+  const beforeFocus = [...f.timers.values()][0];
+  f.window.fire('focus');
+  const reads = f.reads.length;
+  assert.equal(f.timers.size, 0);
+  beforeFocus();
+  assert.equal(f.reads.length, reads);
+  f.window.fire('storage', { key: favoritesKey });
+  const stale = [...f.timers.values()][0];
+  f.api.destroy();
+  const afterDestroy = f.reads.length;
+  stale(); f.expire();
+  assert.equal(f.reads.length, afterDestroy);
+  assert.equal(f.window.listenerCount('focus'), 0);
 });
 
 test('增强分页：存储受限时切换到标准模式再启用仍保留当前页临时书签', async () => {
