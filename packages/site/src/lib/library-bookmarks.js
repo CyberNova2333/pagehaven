@@ -10,6 +10,7 @@ export function mountBookmarkLibrary(root, options = {}) {
   const list = root.querySelector('#bookmark-list');
   const empty = root.querySelector('#bookmark-empty');
   const filter = root.querySelector('#bookmark-filter');
+  const search = root.querySelector('#bookmark-search');
   const count = root.querySelector('#bookmark-count');
   const storageNote = root.querySelector('#bookmark-storage-note');
   const feedback = root.querySelector('#bookmark-feedback');
@@ -39,16 +40,19 @@ export function mountBookmarkLibrary(root, options = {}) {
     storageNote.hidden = !store.limited;
     storageNote.textContent = store.limited ? '浏览器存储受限，未保存的书签修改仅在当前页面临时保留。' : '';
   }
-  function focusRow(id, action) {
+  function focusRow(id, action, revealFallback = false) {
     const target = [...list.querySelectorAll('[data-bookmark-id]')].find((item) => item.dataset.bookmarkId === id);
     const control = target?.querySelector(`[data-bookmark-action="${action}"]`);
-    (control ?? filter).focus({ preventScroll: true });
+    const targetControl = control ?? (search?.value.trim() ? search : filter);
+    targetControl.focus({ preventScroll: true });
+    // 显式关闭编辑器后让回退焦点可见；外部刷新不主动拉动页面。
+    if (!control && revealFallback) targetControl.scrollIntoView?.({ block: 'center', inline: 'nearest' });
   }
   function closeEditor() {
     const id = editing ? rowId(editing) : null;
     editing = null;
     editor.hidden = true;
-    if (id) focusRow(id, 'edit');
+    if (id) focusRow(id, 'edit', true);
   }
   function perform(action, message) {
     writing = true;
@@ -99,11 +103,15 @@ export function mountBookmarkLibrary(root, options = {}) {
     const activeRow = list.contains(active) ? active.closest('[data-bookmark-id]') : null;
     const focusedId = activeRow?.dataset.bookmarkId;
     const focusedAction = active?.dataset.bookmarkAction;
-    const matches = rows.filter((row) => !filter.value || row.series.id === filter.value);
+    const query = (search?.value ?? '').trim().normalize('NFKC').toLowerCase();
+    const matches = rows.filter((row) => (!filter.value || row.series.id === filter.value) && row.searchText.includes(query));
+    const focusedIndex = focusedId ? matches.findIndex((row) => rowId(row) === focusedId) : -1;
+    if (focusedIndex >= limit) limit = Math.ceil((focusedIndex + 1) / 50) * 50;
     list.replaceChildren(...matches.slice(0, limit).map(card));
     list.hidden = matches.length === 0;
     empty.hidden = matches.length > 0;
-    empty.textContent = rows.length ? '这部作品还没有页码书签。可选择其他作品，或在阅读页收藏。'
+    empty.textContent = rows.length ? query ? '没有匹配的书签。试试其他关键词，或调整作品筛选。'
+      : '这部作品还没有页码书签。可选择其他作品，或在阅读页收藏。'
       : '还没有页码书签。在阅读页点击“收藏当前页”，以后可从这里快速回到喜欢的画面。';
     count.textContent = `共 ${rows.length} 个书签 · 显示 ${Math.min(limit, matches.length)} / ${matches.length} 个`;
     more.hidden = matches.length <= limit;
@@ -114,7 +122,10 @@ export function mountBookmarkLibrary(root, options = {}) {
     storageRefresh.cancel();
     if (destroyed) return;
     rows = catalog.flatMap((series) => series.issues.flatMap((issue) => issue.chapters.flatMap((chapter) =>
-      store.list(chapter.key, chapter.pages).map((mark) => ({ ...mark, series, issue, chapter })))));
+      store.list(chapter.key, chapter.pages).map((mark) => ({
+        ...mark, series, issue, chapter,
+        searchText: `${series.title} ${series.authors.join(' ')} ${issue.title} ${chapter.title} ${mark.note}`.normalize('NFKC').toLowerCase(),
+      })))));
     try {
       options.onSummary?.({
         bookmarks: rows.length, notes: rows.filter((row) => row.note.trim()).length,
@@ -147,6 +158,7 @@ export function mountBookmarkLibrary(root, options = {}) {
   const onShow = () => refresh();
   const unsubscribe = store.subscribe(() => { if (!writing) refresh(); });
   filter.addEventListener('change', onFilter);
+  search?.addEventListener('input', onFilter);
   more.addEventListener('click', onMore);
   save.addEventListener('click', onSave);
   cancel.addEventListener('click', onCancel);
@@ -164,6 +176,7 @@ export function mountBookmarkLibrary(root, options = {}) {
       storageRefresh.destroy();
       unsubscribe();
       filter.removeEventListener('change', onFilter);
+      search?.removeEventListener('input', onFilter);
       more.removeEventListener('click', onMore);
       save.removeEventListener('click', onSave);
       cancel.removeEventListener('click', onCancel);

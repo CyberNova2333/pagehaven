@@ -27,7 +27,7 @@ Chinese is the default README; use the buttons above to switch languages. The we
 - **Comic reading:** Single-page, long-strip, and double-page modes; reading direction, keyboard and swipe navigation, fullscreen, brightness, and page jumps. Reading progress is saved automatically and can be resumed from the home and series pages.
 - **Personal library and recent reading:** Save series, manually mark them as Want to read / Reading / Read, filter by status and title, and sort by library updates or recent reading. A separate recent-chapter list lets you resume series without saving them to the library.
 - **Reading data overview:** Count saved series, series and chapters with progress, page bookmarks, and bookmarks with text notes using data already loaded by the page. Storage limitations and unsaved changes are reported separately.
-- **Page bookmarks:** The standard and enhanced readers share page favorites, with short notes. View bookmarks by series in your library, edit or remove them, and jump directly to the saved page.
+- **Page bookmarks:** The standard and enhanced readers share page favorites, with short notes. Filter bookmarks by series, search notes and metadata in your library, edit or remove them, and jump directly to the saved page.
 - **Reading backups:** Export or restore saved series, progress, page bookmarks, and notes from your library. Preview before importing, merge while keeping existing records by default, and process everything in the browser.
 - **Light and dark appearance:** Choose Light, Dark, or Follow system across all three palettes. The current browser remembers your choice, while comic images keep their original colors.
 - **Long series and unreliable connections:** The full chapter index loads when first opened, showing up to 100 chapters per page with ascending/descending order, previous/next navigation, direct group-number jumps, text and progress filters, and current-chapter location across pages. Links return to saved reading positions. Images try backup sources automatically and offer per-page retry after failure, while transcript overlays remain readable.
@@ -54,6 +54,8 @@ page-bookmark section of My library. A series does not need to be saved to your 
 removing it from the library keeps its page bookmarks. Existing enhanced-reader page favorites work
 directly without migration. Notes require an explicit Save or Cancel; turning pages does not
 automatically save an edit in progress.
+
+“查找书签” (Find bookmarks) searches notes, series titles, authors, issue titles, and chapter titles together with the series filter. It shows 50 results at a time and can expand for more; changing the query or series returns to the first 50. Search reuses loaded data without additional storage reads, excludes note-editor drafts, and leaves the reading data overview totals unchanged.
 
 The library, bookmarks, notes, and progress are stored in the current browser for the current site, with no account
 sync. If browser storage is unavailable, the page explains that changes are kept temporarily on the current page only.

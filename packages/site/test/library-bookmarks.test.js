@@ -13,7 +13,7 @@ function element(tag = '') {
   const listeners = new Map();
   let text = '';
   return {
-    tag, children: [], dataset: {}, hidden: false, value: '', parentElement: null,
+    tag, children: [], dataset: {}, hidden: false, value: '', parentElement: null, scrollCalls: [],
     get textContent() { return text + this.children.map((child) => child.textContent).join(''); },
     set textContent(value) { text = String(value); this.children = []; },
     set innerHTML(_value) { throw new Error('书签正文不能作为 HTML 解析'); },
@@ -46,6 +46,7 @@ function element(tag = '') {
       for (const listener of [...listeners.get(type) ?? []]) listener(event);
     },
     focus(options) { this.ownerDocument.activeElement = this; this.focusOptions = options; },
+    scrollIntoView(options) { this.scrollCalls.push(options); },
   };
 }
 
@@ -58,7 +59,7 @@ function catalog(pages = 6) {
   ];
 }
 
-function fixture({ records = {}, data = catalog(), denied = false, deniedKeys = [], autoFlushStorage = true, onSummary } = {}) {
+function fixture({ records = {}, data = catalog(), denied = false, deniedKeys = [], autoFlushStorage = true, onSummary, searchValue = '', withoutSearch = false } = {}) {
   const values = new Map(Object.entries(records).map(([name, value]) => [name, typeof value === 'string' ? value : JSON.stringify(value)]));
   const storage = {
     values, reads: 0, writes: [], denied, denyReadKeys: new Set(deniedKeys),
@@ -82,11 +83,12 @@ function fixture({ records = {}, data = catalog(), denied = false, deniedKeys = 
   const fire = win.fire.bind(win);
   win.fire = (type, details) => { fire(type, details); if (type === 'storage' && autoFlushStorage) win.flushTimers(); };
   win.localStorage = storage;
-  const names = ['list', 'empty', 'filter', 'count', 'storage-note', 'feedback', 'more', 'editor', 'editor-title', 'note', 'save', 'cancel', 'toolbar', 'catalog'];
+  const names = ['list', 'empty', 'filter', 'search', 'count', 'storage-note', 'feedback', 'more', 'editor', 'editor-title', 'note', 'save', 'cancel', 'toolbar', 'catalog'];
   const nodes = Object.fromEntries(names.map((name) => [name, element(name)]));
+  nodes.search.value = searchValue;
   nodes.catalog.textContent = typeof data === 'string' ? data : JSON.stringify(data);
   nodes.editor.hidden = nodes.toolbar.hidden = true;
-  root.querySelector = (selector) => nodes[selector === '[data-bookmark-toolbar]' ? 'toolbar'
+  root.querySelector = (selector) => selector === '#bookmark-search' && withoutSearch ? null : nodes[selector === '[data-bookmark-toolbar]' ? 'toolbar'
     : selector === '#library-bookmark-note' ? 'note' : selector.slice('#bookmark-'.length)];
   const doc = { defaultView: win, activeElement: null,
     getElementById: (id) => id === 'library-catalog' ? nodes.catalog : null,
@@ -103,6 +105,13 @@ function fixture({ records = {}, data = catalog(), denied = false, deniedKeys = 
   const action = (id, type) => row(id)?.querySelector(`[data-bookmark-action="${type}"]`);
   return { root, nodes, doc, win, store, storage, controller, row, action, summaries };
 }
+
+function search(f, value) {
+  f.nodes.search.value = value;
+  f.nodes.search.fire('input');
+}
+
+const visibleIds = (f) => f.nodes.list.children.map((node) => node.dataset.bookmarkId);
 
 test('书架集中显示当前目录的旧页收藏，无需收藏作品，越界和旧目录只过滤不改写', () => {
   const f = fixture({ records: {
@@ -373,4 +382,267 @@ test('书签概览异常不影响明确保存，旧任务销毁后不再报告�
   assert.equal(f.row(markId(1)), undefined);
   assert.ok(f.row(markId(2)).textContent.includes('恢复的备注'));
   mounted.destroy();
+});
+
+test('书签查找匹配备注及元数据，统一全角和大小写，并将特殊字符作为连续原文', () => {
+  const data = catalog();
+  data[0].title = '北极光 ＳＴＯＲＹ';
+  data[0].authors = ['Ａｌｉｃｅ', '作者乙'];
+  data[0].issues[0].title = '第七集';
+  data[0].issues[0].chapters[0].title = '黎明之章';
+  const zeta = 'zeta/v/c/p2';
+  const f = fixture({ data, records: {
+    [favoriteKey]: [markId(1), markId(2)],
+    [noteKey(1)]: { version: 1, note: '月下约定 <img src=x> [a.*] Ｃａｆｅ\u0301', updatedAt: 1 },
+    [FAVORITES_PREFIX + 'zeta/v/c']: [zeta],
+  } });
+  const initialReads = f.storage.reads;
+  const totals = [...f.summaries];
+  f.nodes.search.focus();
+  for (const [query, expected] of [
+    ['北极光', [markId(1), markId(2)]], ['story', [markId(1), markId(2)]],
+    ['  ａｌＩｃｅ\t', [markId(1), markId(2)]], ['作者乙', [markId(1), markId(2)]],
+    ['第七集', [markId(1), markId(2)]], ['黎明', [markId(1), markId(2)]],
+    ['月下约', [markId(1)]], ['CAFÉ', [markId(1)]], ['[a.*]', [markId(1)]],
+    ['<img src=x>', [markId(1)]], ['^$', []], ['北极光 约定', []],
+    ['　 \t', [markId(1), markId(2), zeta]],
+  ]) {
+    search(f, query);
+    assert.deepEqual(visibleIds(f), expected, `查询 ${JSON.stringify(query)} 应按连续文本匹配`);
+    assert.equal(f.doc.activeElement, f.nodes.search, '重建结果不能打断搜索输入焦点');
+  }
+  assert.equal(descendants(f.nodes.list).some((node) => node.tag === 'img'), false);
+  assert.equal(f.storage.reads, initialReads, '搜索复用已加载快照，不重读收藏或备注');
+  assert.deepEqual(f.storage.writes, [], '查询不落盘，也不清理记录');
+  assert.deepEqual(f.summaries, totals, '结果筛选不重新报告或改变阅读概览总量');
+  f.controller.destroy();
+});
+
+test('书签查找与作品筛选组合，零匹配和全站无书签分别说明', () => {
+  const zeta = 'zeta/v/c/p1';
+  const f = fixture({ records: {
+    [favoriteKey]: [markId(1), markId(2)],
+    [noteKey(1)]: { version: 1, note: '共同约定', updatedAt: 1 },
+    [FAVORITES_PREFIX + 'zeta/v/c']: [zeta],
+    [NOTE_PREFIX + zeta]: { version: 1, note: '共同约定', updatedAt: 1 },
+  } });
+  const reads = f.storage.reads;
+  search(f, '共同');
+  assert.deepEqual(visibleIds(f), [markId(1), zeta]);
+  f.nodes.filter.value = 'zeta'; f.nodes.filter.fire('change');
+  assert.deepEqual(visibleIds(f), [zeta]);
+  assert.equal(f.nodes.search.value, '共同');
+  search(f, '开端');
+  assert.equal(f.nodes.list.hidden, true);
+  assert.equal(f.nodes.empty.hidden, false);
+  assert.match(f.nodes.empty.textContent, /没有.*匹配|没有.*符合/);
+  assert.match(f.nodes.count.textContent, /共 3 个书签.*显示 0 \/ 0/);
+  assert.equal(f.nodes.more.hidden, true);
+  f.nodes.filter.value = ''; f.nodes.filter.fire('change');
+  assert.deepEqual(visibleIds(f), [markId(1), markId(2)]);
+  search(f, '');
+  assert.equal(f.nodes.list.children.length, 3);
+  assert.equal(f.storage.reads, reads);
+  assert.deepEqual(f.storage.writes, []);
+  f.controller.destroy();
+
+  const empty = fixture({ searchValue: '任意搜索' });
+  assert.equal(empty.nodes.list.hidden, true);
+  assert.match(empty.nodes.empty.textContent, /还没有页码书签/);
+  assert.deepEqual(empty.storage.writes, []);
+  empty.controller.destroy();
+});
+
+test('书签搜索结果每批最多 50 条，查询和作品变化重置首批且不重读存储', () => {
+  const records = { [favoriteKey]: Array.from({ length: 120 }, (_, index) => markId(index + 1)) };
+  for (let n = 1; n <= 120; n++) records[noteKey(n)] = { version: 1, note: n <= 107 ? '寻光记录' : '其他记录', updatedAt: n };
+  const f = fixture({ data: catalog(120), records });
+  const reads = f.storage.reads;
+  const totals = [...f.summaries];
+  search(f, '寻光');
+  assert.equal(f.nodes.list.children.length, 50);
+  assert.match(f.nodes.count.textContent, /显示 50 \/ 107/);
+  f.nodes.more.fire('click');
+  assert.equal(f.nodes.list.children.length, 100);
+  assert.equal(f.nodes.more.hidden, false);
+  f.nodes.more.fire('click');
+  assert.equal(f.nodes.list.children.length, 107);
+  assert.equal(f.nodes.more.hidden, true);
+  search(f, '寻');
+  assert.equal(f.nodes.list.children.length, 50, '修改查询不能沿用上次的展开数量');
+  f.nodes.more.fire('click');
+  f.nodes.filter.value = 'sample'; f.nodes.filter.fire('change');
+  assert.equal(f.nodes.list.children.length, 50, '变更作品筛选也回到当前搜索的首批');
+  assert.equal(f.nodes.search.value, '寻');
+  search(f, '找不到');
+  assert.equal(f.nodes.list.children.length, 0);
+  assert.equal(f.nodes.more.hidden, true);
+  search(f, '');
+  assert.equal(f.nodes.list.children.length, 50);
+  assert.match(f.nodes.count.textContent, /显示 50 \/ 120/);
+  assert.equal(f.storage.reads, reads);
+  assert.deepEqual(f.storage.writes, []);
+  assert.deepEqual(f.summaries, totals);
+  f.controller.destroy();
+});
+
+test('书签搜索忽略输入框草稿，外部备注重建查询缓存且保留正在编辑的目标', () => {
+  const f = fixture({ autoFlushStorage: false, records: {
+    [favoriteKey]: [markId(1), markId(2)],
+    [noteKey(1)]: { version: 1, note: '晨光', updatedAt: 1 },
+    [noteKey(2)]: { version: 1, note: '暮色', updatedAt: 1 },
+  } });
+  search(f, '晨光');
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.note.value = '输入框草稿';
+  const reads = f.storage.reads;
+  search(f, '输入框草稿');
+  assert.equal(f.nodes.list.hidden, true, '备注草稿尚未提交，不能进入搜索快照');
+  assert.equal(f.controller.isEditing, true);
+  assert.equal(f.nodes.editor.hidden, false);
+  assert.equal(f.nodes.note.value, '输入框草稿');
+  search(f, '晨光');
+  assert.deepEqual(visibleIds(f), [markId(1)]);
+  assert.equal(f.storage.reads, reads);
+  f.nodes.note.focus();
+  f.storage.values.set(noteKey(1), JSON.stringify({ version: 1, note: '远方', updatedAt: 40 }));
+  f.win.fire('storage', { key: noteKey(1) });
+  assert.equal(f.win.timers.size, 1);
+  assert.deepEqual(visibleIds(f), [markId(1)], '合并刷新前保留旧快照');
+  f.win.flushTimers();
+  assert.equal(f.nodes.search.value, '晨光');
+  assert.equal(f.nodes.list.hidden, true, '刷新后必须按外部保存的新备注重新匹配');
+  assert.equal(f.controller.isEditing, true);
+  assert.equal(f.nodes.note.value, '输入框草稿');
+  assert.equal(f.doc.activeElement, f.nodes.note);
+  search(f, '远方');
+  assert.deepEqual(visibleIds(f), [markId(1)]);
+  f.nodes.cancel.fire('click');
+  assert.equal(f.controller.isEditing, false);
+  assert.equal(f.row(markId(1)).textContent.includes('输入框草稿'), false);
+  assert.deepEqual(f.storage.writes, []);
+  f.controller.destroy();
+});
+
+test('保存后不再匹配时关闭编辑并返回搜索，写失败仍按临时备注搜索且保留备份保护', () => {
+  const f = fixture({ records: {
+    [favoriteKey]: [markId(1)],
+    [noteKey(1)]: { version: 1, note: '原始命中', updatedAt: 1 },
+  } });
+  search(f, '原始命中');
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.note.value = '新备注';
+  f.nodes.save.fire('click');
+  assert.equal(f.nodes.list.hidden, true);
+  assert.equal(f.nodes.editor.hidden, true);
+  assert.equal(f.controller.isEditing, false);
+  assert.equal(f.doc.activeElement, f.nodes.search);
+  assert.deepEqual(f.nodes.search.scrollCalls, [{ block: 'center', inline: 'nearest' }], '保存后结果消失时，搜索回退焦点必须居中可见');
+  assert.equal(JSON.parse(f.storage.values.get(noteKey(1))).note, '新备注');
+  search(f, '新备注');
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.note.value = '临时命中';
+  f.storage.denied = true;
+  f.nodes.save.fire('click');
+  assert.equal(f.nodes.list.hidden, true);
+  assert.equal(f.nodes.editor.hidden, true);
+  assert.equal(f.doc.activeElement, f.nodes.search);
+  assert.equal(f.nodes.search.scrollCalls.length, 2, '保存失败后的临时结果失配也需要显示回退焦点');
+  assert.equal(f.controller.hasPending, true);
+  assert.match(f.nodes.feedback.textContent, /未能完整保存/);
+  assert.equal(JSON.parse(f.storage.values.get(noteKey(1))).note, '新备注', '写失败不能伪装成已持久保存');
+  search(f, '临时命中');
+  assert.deepEqual(visibleIds(f), [markId(1)]);
+  assert.deepEqual(f.summaries.at(-1), { bookmarks: 1, notes: 1, limited: true, pending: true });
+  f.storage.denied = false;
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.note.value = '重试成功'; f.nodes.save.fire('click');
+  assert.equal(f.controller.hasPending, false);
+  assert.equal(f.doc.activeElement, f.nodes.search);
+  search(f, '重试成功');
+  assert.deepEqual(visibleIds(f), [markId(1)]);
+  assert.equal(JSON.parse(f.storage.values.get(noteKey(1))).note, '重试成功');
+  f.controller.destroy();
+});
+
+test('明确取消编辑时显示消失目标的回退焦点，外部刷新失配只恢复焦点而不主动滚动', () => {
+  const f = fixture({ records: {
+    [favoriteKey]: [markId(1), markId(2)],
+    [noteKey(1)]: { version: 1, note: '晨光', updatedAt: 1 },
+    [noteKey(2)]: { version: 1, note: '暮色', updatedAt: 1 },
+  } });
+  search(f, '晨光');
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.cancel.fire('click');
+  assert.equal(f.doc.activeElement, f.action(markId(1), 'edit'));
+  assert.deepEqual(f.action(markId(1), 'edit').scrollCalls, [], '原目标仍可见时不触发回退滚动');
+  assert.deepEqual(f.nodes.search.scrollCalls, []);
+  f.action(markId(1), 'edit').fire('click');
+  search(f, '暮色');
+  f.nodes.cancel.fire('click');
+  assert.equal(f.doc.activeElement, f.nodes.search);
+  assert.deepEqual(f.nodes.search.focusOptions, { preventScroll: true });
+  assert.deepEqual(f.nodes.search.scrollCalls, [{ block: 'center', inline: 'nearest' }]);
+
+  search(f, '');
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.filter.value = 'zeta'; f.nodes.filter.fire('change');
+  f.nodes.cancel.fire('click');
+  assert.equal(f.doc.activeElement, f.nodes.filter);
+  assert.deepEqual(f.nodes.filter.scrollCalls, [{ block: 'center', inline: 'nearest' }], '无查询时明确取消可见地回到作品筛选');
+
+  f.nodes.filter.value = ''; f.nodes.filter.fire('change');
+  search(f, '晨光');
+  f.action(markId(1), 'read').focus();
+  f.storage.values.set(noteKey(1), JSON.stringify({ version: 1, note: '远方', updatedAt: 40 }));
+  f.win.fire('storage', { key: noteKey(1) });
+  assert.equal(f.nodes.list.hidden, true);
+  assert.equal(f.doc.activeElement, f.nodes.search);
+  assert.deepEqual(f.nodes.search.focusOptions, { preventScroll: true });
+  assert.equal(f.nodes.search.scrollCalls.length, 1, '外部备注导致失配时，不重复居中并拉动读者页面');
+
+  search(f, '');
+  f.action(markId(2), 'read').focus();
+  f.storage.values.set(favoriteKey, JSON.stringify([markId(1)]));
+  f.win.fire('storage', { key: favoriteKey });
+  assert.equal(f.doc.activeElement, f.nodes.filter);
+  assert.deepEqual(f.nodes.filter.focusOptions, { preventScroll: true });
+  assert.equal(f.nodes.filter.scrollCalls.length, 1, '外部移除书签时作品筛选回退同样不滚动');
+  assert.deepEqual(f.storage.writes, []);
+  f.controller.destroy();
+});
+
+test('销毁移除搜索监听，重挂沿用页面查询并只绑定一份输入事件', () => {
+  const f = fixture({ searchValue: '第一条', records: {
+    [favoriteKey]: [markId(1), markId(2)],
+    [noteKey(1)]: { version: 1, note: '第一条', updatedAt: 1 },
+    [noteKey(2)]: { version: 1, note: '第二条', updatedAt: 1 },
+  } });
+  assert.deepEqual(visibleIds(f), [markId(1)]);
+  f.controller.destroy();
+  const before = [...f.nodes.list.children];
+  search(f, '第二条');
+  assert.deepEqual(f.nodes.list.children, before, '旧视图销毁后不能响应输入');
+  let renders = 0;
+  const replaceChildren = f.nodes.list.replaceChildren.bind(f.nodes.list);
+  f.nodes.list.replaceChildren = (...children) => { renders++; replaceChildren(...children); };
+  const mounted = mountBookmarkLibrary(f.root, { store: f.store });
+  assert.equal(f.nodes.search.value, '第二条');
+  assert.deepEqual(visibleIds(f), [markId(2)]);
+  const reads = f.storage.reads;
+  renders = 0;
+  search(f, '第一条');
+  assert.deepEqual(visibleIds(f), [markId(1)]);
+  assert.equal(renders, 1, '重挂后一次输入只应渲染新视图一次');
+  assert.equal(f.storage.reads, reads);
+  assert.deepEqual(f.storage.writes, []);
+  mounted.destroy();
+});
+
+test('缺少搜索标记时仍可显示和筛选已有页书签', () => {
+  const f = fixture({ withoutSearch: true, records: { [favoriteKey]: [markId(1)] } });
+  assert.deepEqual(visibleIds(f), [markId(1)]);
+  f.nodes.filter.value = 'zeta'; f.nodes.filter.fire('change');
+  assert.equal(f.nodes.list.hidden, true);
+  assert.doesNotThrow(() => f.controller.destroy());
 });

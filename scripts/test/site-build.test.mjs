@@ -324,7 +324,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
 
   await t.test('个人书架：独立静态页面、最小目录、作品操作与全站入口，私人内容不索引', async () => {
     const library = await readFile(join(DIST, 'library', 'index.html'), 'utf8');
-    for (const id of ['library-root', 'library-catalog', 'library-list', 'library-filter', 'library-search', 'library-count', 'library-empty', 'library-storage-note', 'library-bookmarks', 'bookmark-count', 'bookmark-list', 'bookmark-empty', 'bookmark-storage-note', 'bookmark-filter']) {
+    for (const id of ['library-root', 'library-catalog', 'library-list', 'library-filter', 'library-search', 'library-count', 'library-empty', 'library-storage-note', 'library-bookmarks', 'bookmark-count', 'bookmark-list', 'bookmark-empty', 'bookmark-storage-note', 'bookmark-filter', 'bookmark-search']) {
       assert.ok(library.includes(`id="${id}"`), `书架页缺 #${id}`);
     }
     const overview = /<section\b(?=[^>]*\bid="reading-overview")(?=[^>]*\baria-labelledby="overview-heading")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>([\s\S]*?)<\/section>/.exec(library);
@@ -356,12 +356,17 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.match(history[1], /<button\b(?=[^>]*\bid="history-more")(?=[^>]*\btype="button")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/);
     assert.match(history[1], /<button\b(?=[^>]*\bid="history-refresh")(?=[^>]*\btype="button")[^>]*>/);
     assert.match(library, /<select\b(?=[^>]*\bid="bookmark-filter")[^>]*>/, '集中书签应提供作品筛选');
+    const bookmarkToolbar = /<div\b(?=[^>]*\bdata-bookmark-toolbar)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>([\s\S]*?)<\/div>/.exec(library);
+    assert.ok(bookmarkToolbar, '书签搜索与作品筛选在读取个人记录前保持隐藏');
+    assert.match(bookmarkToolbar[1], /<label\b[^>]*\bfor="bookmark-search"[^>]*>/);
+    assert.match(bookmarkToolbar[1], /<input\b(?=[^>]*\bid="bookmark-search")(?=[^>]*\btype="search")(?=[^>]*\bautocomplete="off")[^>]*>/);
     assert.ok(library.includes('<meta name="robots" content="noindex">'));
     assert.ok(!library.includes('rel="canonical"'), '书架不应声明公开内容 canonical');
     assert.ok(!library.includes('property="og:url"'));
     assert.match(library, /<noscript>[\s\S]*?书架[\s\S]*?<\/noscript>/, '禁用脚本时要解释书架的使用条件');
     assert.match(library, /<noscript>[\s\S]*?最近阅读[\s\S]*?<\/noscript>/, '禁用脚本时要解释最近阅读需要浏览器记录访问');
     assert.match(library, /<noscript>[\s\S]*?阅读数据概览[\s\S]*?<\/noscript>/, '无脚本时概览应说明读取条件');
+    assert.match(library, /<noscript>[\s\S]*?页码书签[\s\S]*?<\/noscript>/, '无脚本时书签搜索应说明读取条件');
     for (const id of ['reading-backup', 'backup-export', 'backup-file', 'backup-mode', 'backup-preview', 'backup-summary', 'backup-apply', 'backup-cancel', 'backup-feedback', 'backup-download']) {
       assert.ok(library.includes(`id="${id}"`), `阅读备份缺 #${id}`);
     }
@@ -372,6 +377,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.match(library, /<noscript>[\s\S]*?备份[\s\S]*?<\/noscript>/, '备份需要脚本时必须解释');
     const libraryModules = await readerChunks(DIST, library);
     assert.match(libraryModules, /pagehaven-reading-backup/, '实际备份模型必须接入构建后的书架模块');
+    assert.ok(libraryModules.includes('#bookmark-search'), '实际书签搜索控制器必须接入书架模块');
     assert.match(libraryModules, /onSummary\s*:\s*[^,}\n]*updateLibrary/, '作品及进度快照必须连接到概览更新入口');
     assert.match(libraryModules, /onSummary\s*:\s*[^,}\n]*updateBookmarks/, '书签快照必须连接到概览更新入口');
     assert.doesNotMatch(libraryModules, /sqlite|search-config|search-form|search-results|createMangaViewer/i,
