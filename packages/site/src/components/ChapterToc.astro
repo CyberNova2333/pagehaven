@@ -28,6 +28,11 @@ const { series, issue, chapter } = Astro.props;
   <p class="toc-progress-note" data-toc-progress-note hidden></p>
   <p class="toc-status" data-toc-status role="status" aria-live="polite">打开目录后加载完整章节列表。</p>
   <button type="button" class="btn" data-toc-retry hidden>重试加载目录</button>
+  <nav class="toc-pagination" data-toc-pagination hidden aria-label="章节分组">
+    <button type="button" class="btn" data-toc-page-prev disabled>上一组</button>
+    <span data-toc-page-status role="status" aria-live="polite" tabindex="-1"></span>
+    <button type="button" class="btn" data-toc-page-next disabled>下一组</button>
+  </nav>
   <ol class="toc-chapters" data-toc-list aria-label="章节列表"></ol>
 </aside>
 <noscript>
@@ -55,6 +60,10 @@ const { series, issue, chapter } = Astro.props;
   .reader .toc .toc-progress-summary:empty { display: none; }
   .reader .toc .toc-progress-note { border-left: 2px solid var(--highlight); padding-left: 0.5rem; }
   .reader .toc .toc-progress-note[hidden] { display: none; }
+  .reader .toc .toc-pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.4rem; margin-top: 0.6rem; }
+  .reader .toc .toc-pagination[hidden] { display: none; }
+  .reader .toc .toc-pagination [data-toc-page-status] { color: var(--text-dim); font-size: 12px; }
+  .reader .toc .toc-pagination .btn:disabled { opacity: 0.5; cursor: default; }
   .reader .toc .toc-chapters { margin: 0.6rem 0 0; padding: 0; list-style: none; max-height: min(20rem, 45vh); overflow: auto; overscroll-behavior: contain; }
   .reader .toc .toc-chapters li { display: grid; gap: 0.1rem; padding: 0.4rem 0.2rem; }
   .reader .toc .toc-chapters a { overflow-wrap: anywhere; }

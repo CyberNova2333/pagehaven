@@ -248,6 +248,12 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     for (const value of ['all', 'started', 'new']) assert.match(progressFilter[1], new RegExp(`<option\\b[^>]*\\bvalue="${value}"`));
     assert.match(html, /<p\b(?=[^>]*\bdata-toc-progress-summary)[^>]*>/, '目录应提供独立的阅读进度汇总');
     assert.match(html, /<p\b(?=[^>]*\bdata-toc-progress-note)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '存储限制提示只在实际受限时显示');
+    const tocPagination = /<nav\b(?=[^>]*\bdata-toc-pagination)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>([\s\S]*?)<\/nav>/.exec(html);
+    assert.ok(tocPagination, '目录分组控件在索引加载前应隐藏');
+    for (const attr of ['data-toc-page-prev', 'data-toc-page-next']) {
+      assert.match(tocPagination[1], new RegExp(`<button\\b(?=[^>]*\\b${attr})(?=[^>]*\\btype="button")(?=[^>]*\\bdisabled(?:\\s|[=>]))[^>]*>`), `目录分组缺 ${attr} 按钮或初始禁用状态`);
+    }
+    assert.match(tocPagination[1], /<\w+\b(?=[^>]*\bdata-toc-page-status)(?=[^>]*\brole="status")(?=[^>]*\btabindex="-1")[^>]*>/, '目录分组状态应可接收恢复焦点并播报');
     assert.match(html, /<noscript>[\s\S]*?href="\/sample\/"[\s\S]*?href="\/sample\/vol01\/"[\s\S]*?<\/noscript>/);
     assert.equal((html.match(/class="image-feedback" hidden/g) ?? []).length, 3, '无 JS 时图片反馈隐藏，原生图片仍可读');
     assert.match(html, /<\w+\b(?=[^>]*\bid="reader-bookmarks")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '书签操作仅在脚本初始化后启用');
