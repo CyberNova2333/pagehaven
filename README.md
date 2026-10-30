@@ -237,6 +237,8 @@ flowchart LR
 
 直接提交 `main`，没有常规 PR 流程。一功能一 commit，使用 Conventional Commits 前缀和中文描述，遵循署名、签名与文档约定。修改双语 README 时，同步更新两种语言的功能描述、命令和限制。
 
+修改章节标题时，同步更新顶部导航的链接参数，以 CNB 标题旁生成的章节链接为准；英文标题使用小写和连字符（例如 `Getting started` 对应 `#getting-started`）。`npm run check` 会检查两份 README 的章节链接。
+
 提交前运行 `npm run check`、`npm test` 和 `npm run build`。完整规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，自动化协作者还需阅读 [`CLAUDE.md`](CLAUDE.md) 与 [`AGENTS.md`](AGENTS.md)。这些维护文档目前以中文为准。
 
 ## 许可
