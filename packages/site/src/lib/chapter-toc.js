@@ -44,6 +44,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   const locate = toc.querySelector('[data-toc-locate]');
   const list = toc.querySelector('[data-toc-list]');
   const progressFilter = toc.querySelector('[data-toc-progress-filter]');
+  const order = toc.querySelector('[data-toc-order]');
   const progressSummary = toc.querySelector('[data-toc-progress-summary]');
   const progressNote = toc.querySelector('[data-toc-progress-note]');
   const pagination = toc.querySelector('[data-toc-pagination]');
@@ -137,6 +138,8 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
     const progressMode = progressFilter?.value ?? 'all';
     const matches = rows.filter((row) => `${row.title} ${row.issue}`.normalize('NFKC').toLowerCase().includes(query)
       && (progressMode === 'all' || progress.get(row.key)?.state === progressMode));
+    // 筛选创建独立数组；倒序作用于整个结果，再分组，不修改原索引。
+    if (order?.value === 'desc') matches.reverse();
     matchedCount = matches.length;
     const previousIndex = pageIndex;
     const totalPages = Math.max(1, Math.ceil(matchedCount / PAGE_SIZE));
@@ -252,6 +255,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
     retry.hidden = true;
     controls.hidden = true;
     if (pagination) pagination.hidden = true;
+    if (order) order.disabled = true;
     resetJump();
     if (pageInput) pageInput.disabled = true;
     if (pageGo) pageGo.disabled = true;
@@ -277,6 +281,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
       currentRow = loadedCurrent;
       phase = 'ready';
       controls.hidden = false;
+      if (order) order.disabled = false;
       if (toc.hidden) render({ selectCurrent: true });
       else refreshProgress(true);
       locateCurrent();
@@ -366,6 +371,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   });
   filter.addEventListener('input', onFilter);
   progressFilter?.addEventListener('change', onFilter);
+  order?.addEventListener('change', onFilter);
   locate.addEventListener('click', onLocate);
   retry.addEventListener('click', onRetry);
   previousPage?.addEventListener('click', onPreviousPage);
@@ -383,6 +389,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   return {
     destroy() {
       destroyed = true;
+      if (order) order.disabled = true;
       if (pageInput) pageInput.disabled = true;
       if (pageGo) pageGo.disabled = true;
       controller?.abort();
@@ -391,6 +398,7 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
       unsubscribe?.();
       filter.removeEventListener('input', onFilter);
       progressFilter?.removeEventListener('change', onFilter);
+      order?.removeEventListener('change', onFilter);
       locate.removeEventListener('click', onLocate);
       retry.removeEventListener('click', onRetry);
       previousPage?.removeEventListener('click', onPreviousPage);
