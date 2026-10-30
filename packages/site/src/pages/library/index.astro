@@ -28,6 +28,19 @@ const catalog = gallery.series.map((series) => ({
       <p class="muted library-help">在作品页点击“加入书架”，再选择想读、在读或已读。书架保存在当前浏览器中。</p>
     </header>
 
+    <section id="reading-overview" class="reading-overview card card-pad" aria-labelledby="overview-heading" hidden>
+      <h2 id="overview-heading">阅读数据概览</h2>
+      <dl class="overview-grid">
+        <div><dt>收藏作品</dt><dd data-overview-field="savedSeries">—</dd></div>
+        <div><dt>有进度作品</dt><dd data-overview-field="progressSeries">—</dd></div>
+        <div><dt>有进度章节</dt><dd data-overview-field="progressChapters">—</dd></div>
+        <div><dt>页码书签</dt><dd data-overview-field="bookmarks">—</dd></div>
+        <div><dt>带文字备注书签</dt><dd data-overview-field="notes">—</dd></div>
+      </dl>
+      <p class="overview-status muted" data-overview-status role="status" aria-live="polite"></p>
+      <p class="muted library-help">按页面恢复规则汇总当前目录中的可显示记录，不含独立备注和编辑中的草稿。备份另有校验并保留合法旧记录，条数可能不同；存储受限或本页未保存修改会单独提示。</p>
+    </section>
+
     <div class="library-toolbar card card-pad" data-library-toolbar hidden>
       <label for="library-filter">阅读状态
         <select id="library-filter">
@@ -126,7 +139,7 @@ const catalog = gallery.series.map((series) => ({
 
     <p class="library-back"><a class="btn" href="/">浏览作品 →</a></p>
     <p class="muted library-help">收藏和状态只保存在本浏览器，不会自动跨设备同步。清除站点数据前请下载备份；移出书架会保留阅读进度。</p>
-    <noscript><p class="library-notice">个人书架、最近阅读、备份与恢复需要启用 JavaScript 才能读取浏览器中的收藏和进度。仍可<a href="/">回首页浏览作品</a>。</p></noscript>
+    <noscript><p class="library-notice">个人书架、阅读数据概览、最近阅读、备份与恢复需要启用 JavaScript 才能读取浏览器中的收藏和进度。仍可<a href="/">回首页浏览作品</a>。</p></noscript>
     <script id="library-catalog" type="application/json" set:html={jsonForScript(catalog)} />
   </section>
 </Base>
@@ -135,13 +148,17 @@ const catalog = gallery.series.map((series) => ({
   import { mountLibrary } from '../../lib/library-controls.js';
   import { mountBookmarkLibrary } from '../../lib/library-bookmarks.js';
   import { mountReadingBackup } from '../../lib/reading-backup-controls.js';
+  import { mountReadingOverview } from '../../lib/reading-overview.js';
   const root = document.getElementById('library-root');
   const bookmarks = document.getElementById('library-bookmarks');
+  const overviewRoot = document.getElementById('reading-overview');
+  const overview = overviewRoot ? mountReadingOverview(overviewRoot) : null;
   let libraryController;
   let bookmarkController;
   const mountViews = () => {
-    if (root) libraryController = mountLibrary(root);
-    if (bookmarks) bookmarkController = mountBookmarkLibrary(bookmarks);
+    overview?.reset();
+    if (root) libraryController = mountLibrary(root, { onSummary: overview?.updateLibrary });
+    if (bookmarks) bookmarkController = mountBookmarkLibrary(bookmarks, { onSummary: overview?.updateBookmarks });
   };
   mountViews();
   const backup = document.getElementById('reading-backup');
@@ -164,6 +181,12 @@ const catalog = gallery.series.map((series) => ({
   .library-heading h1 { margin: 0; }
   .library-heading .lede { margin-bottom: 0.5rem; }
   .library-help { font-size: 14px; }
+  .reading-overview { margin-bottom: 1.5rem; }
+  .reading-overview h2 { margin: 0 0 1rem; font-size: 20px; }
+  .overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); gap: 1rem; margin: 0; }
+  .overview-grid dt { color: var(--text-dim); font-size: 13px; }
+  .overview-grid dd { margin: 0.35rem 0 0; color: var(--ink); font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .overview-status { min-height: 4.5em; font-size: 14px; margin-bottom: 0; }
   .library-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin-bottom: 1rem; }
   .library-toolbar label { display: grid; gap: 0.35rem; font-size: 14px; }
   .library-toolbar input, .library-toolbar select, .library-item select {

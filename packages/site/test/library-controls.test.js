@@ -141,7 +141,7 @@ function catalog() {
   ];
 }
 
-function libraryFixture({ data = catalog(), records = {}, denied = false, deniedKeys = [], autoFlushStorage = true } = {}) {
+function libraryFixture({ data = catalog(), records = {}, denied = false, deniedKeys = [], autoFlushStorage = true, onSummary } = {}) {
   const storage = storageFixture(records);
   storage.denyReadKeys = new Set(deniedKeys);
   const win = element('window');
@@ -168,12 +168,16 @@ function libraryFixture({ data = catalog(), records = {}, denied = false, denied
   };
   for (const node of [root, ...Object.values(nodes)]) node.ownerDocument = doc;
   const store = createLibraryStore({ getStorage, now: () => 100 });
-  const controller = mountLibrary(root, { getStorage, store });
+  const summaries = [];
+  const controller = mountLibrary(root, { getStorage, store, onSummary(summary) {
+    summaries.push({ ...summary });
+    onSummary?.(summary);
+  } });
   const row = (id) => nodes.list.children.find((item) => item.dataset.seriesId === id);
   const readLink = (id) => descendants(row(id)).find((node) => node.tag === 'a' && node.className === 'btn btn-primary');
   const historyRow = (key) => nodes['history-list'].children.find((item) => item.dataset.historyKey === key);
   const historyRead = (key) => historyRow(key)?.querySelector('a');
-  return { root, nodes, win, storage, store, controller, row, readLink, historyRow, historyRead, getStorage, access };
+  return { root, nodes, win, storage, store, controller, row, readLink, historyRow, historyRead, getStorage, access, summaries };
 }
 
 test('作品页书架：仅用户操作写状态，移出仍保留进度，销毁后不再处理交互', () => {
@@ -396,6 +400,7 @@ test('书架外部刷新保留当前卡片控件焦点，移除后回到筛选�
 
 test('书架区分空库与未收藏，坏目录不生成可操作的错误链接', () => {
   const empty = libraryFixture({ data: [] });
+  assert.deepEqual(empty.summaries, [{ savedSeries: 0, progressSeries: 0, progressChapters: 0, limited: false, pending: false }]);
   assert.match(empty.nodes.empty.textContent, /当前还没有作品/);
   assert.equal(empty.nodes.toolbar.hidden, false);
   assert.equal(empty.root.getAttribute('aria-busy'), 'false');
@@ -411,6 +416,7 @@ test('书架区分空库与未收藏，坏目录不生成可操作的错误链�
   mismatch[0].issues[0].chapters[0].key = 'other/v/c1';
   for (const data of ['{not-json', {}, external, cover, mismatch]) {
     const invalid = libraryFixture({ data });
+    assert.deepEqual(invalid.summaries, [], '目录不可读时不发布假零值概览');
     assert.equal(invalid.controller, undefined);
     assert.match(invalid.nodes.empty.textContent, /目录暂时无法读取/);
     assert.equal(invalid.nodes.list.children.length, 0);
@@ -747,5 +753,84 @@ test('显式刷新与未保存的本页状态抢先处理排队事件，销毁�
   assert.equal(f.storage.reads, remountedReads);
   assert.equal(mounted.hasPending, true, '排队刷新和重挂不能绕过未保存状态保护');
   assert.equal(f.win.listenerCount(), 3);
+  mounted.destroy();
+});
+
+test('书架概览复用当前快照，未收藏作品的进度计入总量且不受可见筛选影响', () => {
+  const f = libraryFixture({ records: {
+    [shelfKey('sample')]: saved('want'), [shelfKey('empty')]: saved('reading'),
+    [shelfKey('removed')]: saved('read'),
+    [progressKey('sample/v/c1')]: reading('sample/v/c1', 2),
+    [progressKey('sample/v/c2')]: { ...reading('sample/v/c2'), url: 'https://outside.example.org/' },
+    [progressKey('zeta/v/c1')]: reading('zeta/v/c1'),
+    [progressKey('removed/v/c1')]: reading('removed/v/c1'),
+  } });
+  const total = { savedSeries: 2, progressSeries: 2, progressChapters: 2, limited: false, pending: false };
+  assert.deepEqual(f.summaries, [total]);
+  assert.equal(f.storage.reads, 6, '三章进度与三个作品状态各读取一次，概览不新增扫描');
+  const reads = f.storage.reads;
+  f.nodes.filter.value = 'want'; f.nodes.filter.fire('change');
+  f.nodes.search.value = '没有匹配'; f.nodes.search.fire('input');
+  f.nodes.sort.value = 'recent'; f.nodes.sort.fire('change');
+  f.nodes['history-search'].value = '终章'; f.nodes['history-search'].fire('input');
+  f.nodes['history-more'].fire('click');
+  assert.equal(f.nodes.list.hidden, true);
+  assert.equal(f.nodes['history-list'].children.length, 1);
+  assert.deepEqual(f.summaries, [total], '概览描述完整当前目录，不按筛选和展开重新计数');
+  assert.equal(f.storage.reads, reads);
+  assert.deepEqual(f.storage.operations, []);
+  f.controller.destroy();
+});
+
+test('书架概览随最新记录刷新，区分读取受限与包含未保存的本页修改', () => {
+  const f = libraryFixture({ autoFlushStorage: false, records: {
+    [shelfKey('sample')]: saved(), [progressKey('sample/v/c1')]: reading('sample/v/c1'),
+  } });
+  f.storage.data.set(shelfKey('empty'), JSON.stringify(saved('read')));
+  f.storage.data.set(progressKey('zeta/v/c1'), JSON.stringify(reading('zeta/v/c1')));
+  f.win.fire('storage', { key: shelfKey('empty') });
+  f.win.fire('storage', { key: progressKey('zeta/v/c1') });
+  assert.equal(f.summaries.length, 1, '等待合并窗口时不提前发布不完整快照');
+  f.win.flushTimers();
+  assert.deepEqual(f.summaries.at(-1), { savedSeries: 2, progressSeries: 2, progressChapters: 2, limited: false, pending: false });
+  f.storage.denyWrite = true;
+  f.row('sample').querySelector('[data-library-action="remove"]').fire('click');
+  assert.equal(f.controller.hasPending, true);
+  assert.equal(f.storage.data.has(shelfKey('sample')), true, '磁盘旧记录仍存在，临时概览不能声称已保存');
+  assert.deepEqual(f.summaries.at(-1), { savedSeries: 1, progressSeries: 2, progressChapters: 2, limited: true, pending: true });
+  f.controller.destroy();
+
+  const partial = libraryFixture({ records: {
+    [progressKey('sample/v/c1')]: reading('sample/v/c1'), [progressKey('zeta/v/c1')]: reading('zeta/v/c1'),
+  }, deniedKeys: [progressKey('zeta/v/c1')] });
+  assert.deepEqual(partial.summaries.at(-1), { savedSeries: 0, progressSeries: 1, progressChapters: 1, limited: true, pending: false });
+  partial.storage.denyReadKeys.clear();
+  partial.nodes['history-refresh'].fire('click');
+  assert.deepEqual(partial.summaries.at(-1), { savedSeries: 0, progressSeries: 2, progressChapters: 2, limited: false, pending: false });
+  assert.deepEqual(partial.storage.operations, []);
+  partial.controller.destroy();
+});
+
+test('书架概览回调异常不阻断功能，销毁的旧任务不能污染恢复后重挂的统计', () => {
+  const key = progressKey('sample/v/c1');
+  const f = libraryFixture({ autoFlushStorage: false, records: { [shelfKey('sample')]: saved(), [key]: reading('sample/v/c1') },
+    onSummary() { throw new Error('概览视图失效'); },
+  });
+  assert.equal(f.readLink('sample').href, '/sample/v/c1/#p1');
+  const status = f.row('sample').querySelector('select');
+  status.value = 'read'; status.fire('change');
+  assert.equal(f.store.read('sample').status, 'read', '统计回调失败不影响明确的书架操作');
+  f.win.fire('storage', { key });
+  const stale = [...f.win.timers.values()][0].callback;
+  f.controller.destroy();
+  const oldReports = f.summaries.length;
+  f.storage.data.set(progressKey('sample/v/c2'), JSON.stringify(reading('sample/v/c2', 3, 40)));
+  const restored = [];
+  const mounted = mountLibrary(f.root, { getStorage: f.getStorage, onSummary: (value) => restored.push({ ...value }) });
+  assert.deepEqual(restored, [{ savedSeries: 1, progressSeries: 1, progressChapters: 2, limited: false, pending: false }]);
+  stale(); f.win.flushTimers();
+  assert.equal(f.summaries.length, oldReports);
+  assert.equal(restored.length, 1, '旧回调不会再次更新新概览');
+  assert.equal(f.readLink('sample').href, '/sample/v/c2/#p3');
   mounted.destroy();
 });

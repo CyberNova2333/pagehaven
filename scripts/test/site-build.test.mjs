@@ -327,6 +327,15 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     for (const id of ['library-root', 'library-catalog', 'library-list', 'library-filter', 'library-search', 'library-count', 'library-empty', 'library-storage-note', 'library-bookmarks', 'bookmark-count', 'bookmark-list', 'bookmark-empty', 'bookmark-storage-note', 'bookmark-filter']) {
       assert.ok(library.includes(`id="${id}"`), `书架页缺 #${id}`);
     }
+    const overview = /<section\b(?=[^>]*\bid="reading-overview")(?=[^>]*\baria-labelledby="overview-heading")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>([\s\S]*?)<\/section>/.exec(library);
+    assert.ok(overview, '数据概览在两个只读来源完成前保持隐藏，不能发布假零值');
+    assert.ok(overview[1].includes('id="overview-heading"'));
+    for (const field of ['savedSeries', 'progressSeries', 'progressChapters', 'bookmarks', 'notes']) {
+      assert.match(overview[1], new RegExp(`<dd\\b(?=[^>]*\\bdata-overview-field="${field}")[^>]*>\\s*—\\s*<\\/dd>`), `概览 ${field} 只应包含未读取占位符，不内嵌个人数量`);
+    }
+    assert.match(overview[1], /<p\b(?=[^>]*\bdata-overview-status)(?=[^>]*\brole="status")(?=[^>]*\baria-live="polite")[^>]*>/);
+    assert.match(overview[1], /当前目录[\s\S]*独立备注[\s\S]*草稿/, '概览应说明当前目录与编辑草稿的统计边界');
+    assert.match(overview[1], /备份[\s\S]*条数可能不同/, '概览不能暗示等于包含旧目录记录的备份总量');
     const libraryToolbar = /<div\b(?=[^>]*\bdata-library-toolbar)(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>([\s\S]*?)<\/div>/.exec(library);
     assert.ok(libraryToolbar, '书架筛选与排序仅在脚本读取个人记录后显示');
     const librarySort = /<select\b(?=[^>]*\bid="library-sort")[^>]*>([\s\S]*?)<\/select>/.exec(libraryToolbar[1]);
@@ -352,6 +361,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.ok(!library.includes('property="og:url"'));
     assert.match(library, /<noscript>[\s\S]*?书架[\s\S]*?<\/noscript>/, '禁用脚本时要解释书架的使用条件');
     assert.match(library, /<noscript>[\s\S]*?最近阅读[\s\S]*?<\/noscript>/, '禁用脚本时要解释最近阅读需要浏览器记录访问');
+    assert.match(library, /<noscript>[\s\S]*?阅读数据概览[\s\S]*?<\/noscript>/, '无脚本时概览应说明读取条件');
     for (const id of ['reading-backup', 'backup-export', 'backup-file', 'backup-mode', 'backup-preview', 'backup-summary', 'backup-apply', 'backup-cancel', 'backup-feedback', 'backup-download']) {
       assert.ok(library.includes(`id="${id}"`), `阅读备份缺 #${id}`);
     }
@@ -362,6 +372,8 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.match(library, /<noscript>[\s\S]*?备份[\s\S]*?<\/noscript>/, '备份需要脚本时必须解释');
     const libraryModules = await readerChunks(DIST, library);
     assert.match(libraryModules, /pagehaven-reading-backup/, '实际备份模型必须接入构建后的书架模块');
+    assert.match(libraryModules, /onSummary\s*:\s*[^,}\n]*updateLibrary/, '作品及进度快照必须连接到概览更新入口');
+    assert.match(libraryModules, /onSummary\s*:\s*[^,}\n]*updateBookmarks/, '书签快照必须连接到概览更新入口');
     assert.doesNotMatch(libraryModules, /sqlite|search-config|search-form|search-results|createMangaViewer/i,
       '个人阅读备份不应加载检索执行器或增强分页');
     const json = /<script\b(?=[^>]*\bid="library-catalog")(?=[^>]*\btype="application\/json")[^>]*>([\s\S]*?)<\/script>/.exec(library);

@@ -115,6 +115,12 @@ export function mountBookmarkLibrary(root, options = {}) {
     if (destroyed) return;
     rows = catalog.flatMap((series) => series.issues.flatMap((issue) => issue.chapters.flatMap((chapter) =>
       store.list(chapter.key, chapter.pages).map((mark) => ({ ...mark, series, issue, chapter })))));
+    try {
+      options.onSummary?.({
+        bookmarks: rows.length, notes: rows.filter((row) => row.note.trim()).length,
+        limited: store.limited, pending: store.hasPending,
+      });
+    } catch { /* 概览失效不阻断书签操作与未保存修改保护。 */ }
     render();
   }
   const onSave = () => {
