@@ -10,7 +10,7 @@ const script = /<script is:inline>\s*([\s\S]*?)<\/script>/.exec(source)?.[1];
 assert.ok(script, '阅读器内联脚本必须存在');
 
 function readerFixture({
-  mode = 'single', dir = 'ltr', saved = 1, hash = '', total = 6,
+  mode = 'single', dir = 'ltr', saved = 1, savedUrl, hash = '', total = 6,
   pageHeight = 1000, pageGap = 0, readerTop = 100, viewportHeight = 800,
   documentHeight, readyState = 'complete',
 } = {}) {
@@ -89,7 +89,7 @@ function readerFixture({
   const history = { replaceState(_state, _title, url) { location.hash = url; } };
   const data = new Map([
     ['gallery:reader:settings', JSON.stringify({ mode, dir, brightness: 100 })],
-    ['gallery:progress:sample/v/c', JSON.stringify({ n: saved })],
+    ['gallery:progress:sample/v/c', JSON.stringify({ n: saved, url: savedUrl })],
   ]);
   const localStorage = {
     getItem: (key) => data.get(key) ?? null,
@@ -167,6 +167,53 @@ function readerFixture({
     },
   };
 }
+
+test('损坏或遗留的非整数进度回到第一页，不生成空白页或继续保存非法值', () => {
+  for (const mode of ['single', 'double', 'long']) {
+    for (const saved of [2.5, 'bad', '3', null, {}, [2], Number.MAX_SAFE_INTEGER + 1]) {
+      const r = readerFixture({ mode, saved });
+      assert.doesNotThrow(() => r.flush());
+      assert.equal(r.current(), 1, `${mode}: ${JSON.stringify(saved)}`);
+      assert.ok(r.visible().includes('p1'));
+      assert.equal(r.progress().n, 1);
+      if (mode === 'long') {
+        r.scrollToPage(3);
+        assert.equal(r.progress().n, 3, '恢复结束后滚动仍能保存进度');
+      } else {
+        r.click('page-next');
+        assert.ok(Number.isSafeInteger(r.progress().n));
+      }
+    }
+  }
+});
+
+test('恢复只接受本章地址，保留没有地址字段的旧整数记录及正常越界裁剪', () => {
+  for (const [options, expected] of [
+    [{ saved: 4 }, 4],
+    [{ saved: 4, savedUrl: '/sample/v/c/' }, 4],
+    [{ saved: 4, savedUrl: '/other/v/c/' }, 1],
+    [{ saved: 99, savedUrl: '/sample/v/c/' }, 6],
+    [{ saved: -2 }, 1],
+  ]) {
+    const r = readerFixture(options);
+    assert.equal(r.current(), expected);
+    assert.deepEqual(r.visible(), [`p${expected}`]);
+  }
+});
+
+test('核心翻页入口拒绝非整数与非有限页码，超长 hash 不污染后续导航', () => {
+  const r = readerFixture();
+  for (const n of [NaN, Infinity, 2.5, '3', null, {}, Number.MAX_SAFE_INTEGER + 1]) {
+    r.reader.galleryReader.showPage(n);
+    assert.equal(r.current(), 1);
+    assert.equal(r.location.hash, '#p1');
+    assert.deepEqual(r.visible(), ['p1']);
+  }
+  const hash = readerFixture({ hash: '#p' + '9'.repeat(400) });
+  assert.equal(hash.current(), 1);
+  hash.click('page-next');
+  assert.equal(hash.current(), 2);
+});
 
 for (const dir of ['ltr', 'rtl']) {
   test(`阅读器 ${dir}：下一页/上一页与空格始终按章节顺序`, () => {

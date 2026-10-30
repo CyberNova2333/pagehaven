@@ -255,7 +255,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
         return m ? { n: +m[1], b: m[2] === undefined ? null : +m[2] } : null;
       }
       function clamp(n) {
-        return Math.min(Math.max(n, 1), total);
+        return Number.isSafeInteger(n) ? Math.min(Math.max(n, 1), total) : 1;
       }
       function step() {
         return !enhancement && settings.mode === 'double' ? 2 : 1;
@@ -430,7 +430,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
         var resumed = 1;
         try {
           var saved = JSON.parse(localStorage.getItem(progressKey) || 'null');
-          if (saved && saved.n) resumed = saved.n;
+          if (saved && (saved.url === undefined || saved.url === reader.dataset.url)) resumed = clamp(saved.n);
         } catch (e) {
           /* 坏记录忽略 */
         }
