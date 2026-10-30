@@ -254,6 +254,12 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       assert.match(tocPagination[1], new RegExp(`<button\\b(?=[^>]*\\b${attr})(?=[^>]*\\btype="button")(?=[^>]*\\bdisabled(?:\\s|[=>]))[^>]*>`), `目录分组缺 ${attr} 按钮或初始禁用状态`);
     }
     assert.match(tocPagination[1], /<\w+\b(?=[^>]*\bdata-toc-page-status)(?=[^>]*\brole="status")(?=[^>]*\btabindex="-1")[^>]*>/, '目录分组状态应可接收恢复焦点并播报');
+    const tocJump = /<form\b(?=[^>]*\bdata-toc-page-form)(?=[^>]*\bnovalidate(?:\s|[=>]))[^>]*>([\s\S]*?)<\/form>/.exec(tocPagination[1]);
+    assert.ok(tocJump, '组号跳转表单使用统一的校验提示，不触发浏览器导航');
+    assert.match(tocJump[1], /<label\b[^>]*\bfor="toc-page-input"[^>]*>/, '组号输入必须有关联标签');
+    assert.match(tocJump[1], /<input\b(?=[^>]*\bdata-toc-page-input)(?=[^>]*\bid="toc-page-input")(?=[^>]*\btype="number")(?=[^>]*\bmin="1")(?=[^>]*\bstep="1")(?=[^>]*\binputmode="numeric")(?=[^>]*\baria-describedby="toc-page-error")(?=[^>]*\bdisabled(?:\s|[=>]))[^>]*>/, '组号使用数值键盘，初始禁用且关联错误提示');
+    assert.match(tocJump[1], /<button\b(?=[^>]*\bdata-toc-page-go)(?=[^>]*\btype="submit")(?=[^>]*\bdisabled(?:\s|[=>]))[^>]*>/, '组号按钮初始禁用，提交表单同时支持 Enter');
+    assert.match(tocJump[1], /<\w+\b(?=[^>]*\bdata-toc-page-error)(?=[^>]*\bid="toc-page-error")(?=[^>]*\brole="status")(?=[^>]*\baria-live="polite")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '组号错误只在校验失败时显示和播报');
     assert.match(html, /<noscript>[\s\S]*?href="\/sample\/"[\s\S]*?href="\/sample\/vol01\/"[\s\S]*?<\/noscript>/);
     assert.equal((html.match(/class="image-feedback" hidden/g) ?? []).length, 3, '无 JS 时图片反馈隐藏，原生图片仍可读');
     assert.match(html, /<\w+\b(?=[^>]*\bid="reader-bookmarks")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '书签操作仅在脚本初始化后启用');

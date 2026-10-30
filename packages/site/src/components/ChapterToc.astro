@@ -32,6 +32,12 @@ const { series, issue, chapter } = Astro.props;
     <button type="button" class="btn" data-toc-page-prev disabled>上一组</button>
     <span data-toc-page-status role="status" aria-live="polite" tabindex="-1"></span>
     <button type="button" class="btn" data-toc-page-next disabled>下一组</button>
+    <form class="toc-page-jump" data-toc-page-form novalidate aria-label="跳转章节分组">
+      <label for="toc-page-input">跳至组</label>
+      <input id="toc-page-input" data-toc-page-input type="number" min="1" max="1" step="1" value="1" inputmode="numeric" aria-describedby="toc-page-error" disabled />
+      <button type="submit" class="btn" data-toc-page-go disabled>跳转</button>
+      <span id="toc-page-error" data-toc-page-error role="status" aria-live="polite" hidden></span>
+    </form>
   </nav>
   <ol class="toc-chapters" data-toc-list aria-label="章节列表"></ol>
 </aside>
@@ -64,6 +70,11 @@ const { series, issue, chapter } = Astro.props;
   .reader .toc .toc-pagination[hidden] { display: none; }
   .reader .toc .toc-pagination [data-toc-page-status] { color: var(--text-dim); font-size: 12px; }
   .reader .toc .toc-pagination .btn:disabled { opacity: 0.5; cursor: default; }
+  .reader .toc .toc-page-jump { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+  .reader .toc .toc-page-jump label { font-size: 14px; }
+  .reader .toc .toc-page-jump input { width: 5rem; min-width: 0; min-height: 44px; max-width: 100%; padding: 0.4rem; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: var(--surface); font: inherit; }
+  .reader .toc .toc-page-jump [data-toc-page-error] { width: 100%; color: var(--accent-strong); font-size: 12px; overflow-wrap: anywhere; }
+  .reader .toc .toc-page-jump [data-toc-page-error][hidden] { display: none; }
   .reader .toc .toc-chapters { margin: 0.6rem 0 0; padding: 0; list-style: none; max-height: min(20rem, 45vh); overflow: auto; overscroll-behavior: contain; }
   .reader .toc .toc-chapters li { display: grid; gap: 0.1rem; padding: 0.4rem 0.2rem; }
   .reader .toc .toc-chapters a { overflow-wrap: anywhere; }

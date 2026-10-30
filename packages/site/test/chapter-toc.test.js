@@ -48,6 +48,7 @@ function element(tag = '') {
     set innerHTML(_value) { throw new Error('必须使用文本节点渲染目录'); },
     setAttribute(name, value) { attributes.set(name, String(value)); },
     getAttribute(name) { return attributes.get(name) ?? null; },
+    removeAttribute(name) { attributes.delete(name); },
     append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } },
     replaceChildren(...children) {
       if (this.contains(this.ownerDocument?.activeElement)) this.ownerDocument.activeElement = null;
@@ -73,9 +74,12 @@ function fixture({ fetcher = async () => response(), hidden = true, seriesId = '
   toc.id = 'toc';
   toc.hidden = hidden;
   toc.dataset = { seriesId, chapterKey };
-  const nodes = Object.fromEntries(['filter', 'controls', 'status', 'retry', 'locate', 'list', 'progress-filter', 'progress-summary', 'progress-note', 'pagination', 'page-prev', 'page-next', 'page-status'].map((name) => [name, element(name)]));
-  nodes.controls.hidden = nodes.retry.hidden = nodes.pagination.hidden = true;
-  nodes.pagination.append(nodes['page-prev'], nodes['page-status'], nodes['page-next']);
+  const nodes = Object.fromEntries(['filter', 'controls', 'status', 'retry', 'locate', 'list', 'progress-filter', 'progress-summary', 'progress-note', 'pagination', 'page-prev', 'page-next', 'page-status', 'page-form', 'page-input', 'page-go', 'page-error'].map((name) => [name, element(name)]));
+  nodes.controls.hidden = nodes.retry.hidden = nodes.pagination.hidden = nodes['page-error'].hidden = true;
+  nodes['page-input'].disabled = nodes['page-go'].disabled = true;
+  nodes['page-input'].value = nodes['page-input'].max = '1';
+  nodes['page-form'].append(nodes['page-input'], nodes['page-go'], nodes['page-error']);
+  nodes.pagination.append(nodes['page-prev'], nodes['page-status'], nodes['page-next'], nodes['page-form']);
   nodes['progress-filter'].value = 'all';
   const toggle = element('button');
   const timers = new Map();
@@ -116,6 +120,14 @@ function fixture({ fetcher = async () => response(), hidden = true, seriesId = '
     links: () => nodes.list.children.map((item) => item.children[0]),
     indicators: () => nodes.list.children.map((item) => item.children[2]),
   };
+}
+
+function submitGroup(f, value) {
+  f.nodes['page-input'].value = value;
+  f.nodes['page-input'].fire('input');
+  let prevented = 0;
+  f.nodes['page-form'].fire('submit', { preventDefault() { prevented++; } });
+  return prevented;
 }
 
 test('打开前不请求；并发打开只加载一次，关闭期间完成后复用成功缓存', async () => {
@@ -648,6 +660,26 @@ test('列表滚到首尾仍被裁切时，仅由目录外框补足定位距离',
   f.api.destroy();
 });
 
+test('目录交集不足一行时在完整列表定位，再由外框露出整条链接', async () => {
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c201', fetcher: async () => response(longIndex(250)) });
+  f.nodes.list.getBoundingClientRect = () => ({ top: 300, bottom: 500, height: 200 });
+  f.toc.getBoundingClientRect = () => ({ top: 0, bottom: 310, height: 310 });
+  await settle();
+  assert.equal(f.nodes.list.scrollTop, 0, '链接已经在完整列表视口中，不应移出列表顶部');
+  assert.equal(f.toc.scrollTop, 10, '外框只补足被裁掉的链接下半部分');
+  f.api.destroy();
+});
+
+test('目录列表完全低于外框视口时，只滚动外框以显示聚焦链接', async () => {
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c201', fetcher: async () => response(longIndex(250)) });
+  f.nodes.list.getBoundingClientRect = () => ({ top: 300, bottom: 500, height: 200 });
+  f.toc.getBoundingClientRect = () => ({ top: 0, bottom: 250, height: 250 });
+  await settle();
+  assert.equal(f.nodes.list.scrollTop, 0);
+  assert.equal(f.toc.scrollTop, 70, '列表无可见交集时也要在目录内露出完整链接');
+  f.api.destroy();
+});
+
 test('隐藏面板不响应分组操作，重新打开定位当前组，销毁后分组按钮无监听', async () => {
   const f = fixture({ chapterKey: 'sample/v1/c201', fetcher: async () => response(longIndex(250)) });
   f.nodes['page-next'].fire('click');
@@ -673,4 +705,207 @@ test('隐藏面板不响应分组操作，重新打开定位当前组，销毁�
   const after = f.links();
   f.nodes['page-prev'].fire('click');
   assert.equal(f.links()[0], after[0]);
+});
+
+test('两万话可直接跳到首尾与同组，提交只聚焦目录首章并复用缓存', async () => {
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c10001', currentPage: 2,
+    fetcher: async () => response(longIndex(20000)),
+  });
+  const create = f.toc.ownerDocument.createElement.bind(f.toc.ownerDocument);
+  f.toc.ownerDocument.createElement = (tag) => {
+    const node = create(tag);
+    if (tag === 'a') node.getBoundingClientRect = () => ({ top: 20, bottom: 40, height: 20 });
+    return node;
+  };
+  await settle();
+  assert.equal(f.nodes['page-input'].max, '200');
+  assert.equal(f.nodes['page-input'].value, '101');
+  assert.equal(f.nodes['page-input'].disabled, false);
+  assert.equal(f.nodes['page-go'].disabled, false);
+  const reads = f.storage.reads.length;
+  for (const [value, first, displayed] of [['200', 'c19901', '200'], ['1', 'c1', '1'], ['1', 'c1', '1'], [' 002 ', 'c101', '2']]) {
+    f.nodes.list.scrollTop = 500;
+    f.nodes['page-input'].focus();
+    assert.equal(submitGroup(f, value), 1, '表单提交应阻止浏览器导航');
+    assert.equal(f.links()[0].dataset.tocChapterKey, `sample/v1/${first}`);
+    assert.equal(f.links().length, 100);
+    assert.equal(f.nodes['page-input'].value, displayed);
+    assert.equal(f.nodes.list.scrollTop, 0);
+    assert.equal(f.toc.ownerDocument.activeElement, f.links()[0]);
+    assert.equal(f.nodes['page-error'].hidden, true);
+    assert.equal(f.nodes['page-input'].getAttribute('aria-invalid'), null);
+  }
+  assert.equal(f.toc.ownerDocument.getElementById('reader').galleryReader.getState().page, 2, '分组跳转不改变漫画页码');
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.storage.reads.length, reads);
+  f.api.destroy();
+});
+
+test('组号拒绝空值、小数、指数与越界，显示关联错误并保留目录位置', async () => {
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c101', fetcher: async () => response(longIndex(20000)) });
+  await settle();
+  const rendered = f.links();
+  const status = f.nodes['page-status'].textContent;
+  const reads = f.storage.reads.length;
+  for (const value of ['', ' ', '0', '-1', '1.5', '1e2', '+2', '2x', 'NaN', 'Infinity', '201', '9007199254740992']) {
+    f.nodes.list.scrollTop = 42;
+    assert.equal(submitGroup(f, value), 1);
+    assert.deepEqual(f.links(), rendered, `无效输入 ${value} 不得重建目录`);
+    assert.equal(f.nodes['page-status'].textContent, status);
+    assert.equal(f.nodes.list.scrollTop, 42);
+    assert.equal(f.nodes['page-input'].getAttribute('aria-invalid'), 'true');
+    assert.equal(f.nodes['page-error'].hidden, false);
+    assert.ok(f.nodes['page-error'].textContent.length > 0);
+    assert.equal(f.toc.ownerDocument.activeElement, f.nodes['page-input']);
+  }
+  submitGroup(f, '3');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c201');
+  assert.equal(f.nodes['page-error'].hidden, true);
+  assert.equal(f.nodes['page-input'].getAttribute('aria-invalid'), null);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.storage.reads.length, reads);
+  f.api.destroy();
+});
+
+test('组号范围跟随筛选，外部进度刷新保留草稿并更新错误范围', async () => {
+  const records = Object.fromEntries(Array.from({ length: 250 }, (_, i) => {
+    const key = `sample/v1/c${i + 1}`;
+    return [progressKey(key), savedProgress(key, 1)];
+  }));
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c201', records, fetcher: async () => response(longIndex(450)) });
+  await settle();
+  f.nodes['progress-filter'].value = 'started';
+  f.nodes['progress-filter'].fire('change');
+  assert.equal(f.nodes['page-input'].max, '3');
+  submitGroup(f, '4');
+  assert.equal(f.nodes['page-error'].hidden, false);
+  f.nodes['page-input'].focus();
+  for (let n = 251; n <= 350; n++) {
+    const key = `sample/v1/c${n}`;
+    f.storage.values.set(progressKey(key), JSON.stringify(savedProgress(key, 1)));
+  }
+  f.window.fire('storage', { key: null });
+  assert.equal(f.nodes['page-input'].max, '4');
+  assert.equal(f.nodes['page-input'].value, '4', '外部更新不能覆盖正在编辑的草稿');
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes['page-input']);
+  assert.equal(f.nodes['page-error'].hidden, true, '原错误因结果扩展而合法后应消失');
+  assert.equal(f.nodes['page-input'].getAttribute('aria-invalid'), null);
+  submitGroup(f, '4');
+  assert.equal(f.links()[0].dataset.tocChapterKey, 'sample/v1/c301');
+  assert.equal(f.links().length, 50);
+  submitGroup(f, '9');
+  for (let n = 201; n <= 350; n++) f.storage.values.delete(progressKey(`sample/v1/c${n}`));
+  f.window.fire('storage', { key: null });
+  assert.equal(f.nodes['page-input'].max, '2');
+  assert.equal(f.nodes['page-input'].value, '9');
+  assert.equal(f.nodes['page-error'].hidden, false);
+  assert.match(f.nodes['page-error'].textContent, /2/);
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes['page-input']);
+  assert.equal(f.calls.length, 1);
+  f.api.destroy();
+});
+
+test('显式翻组、筛选与定位同步组号并清除错误，单组或空结果禁用跳转', async () => {
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c201', fetcher: async () => response(longIndex(450)) });
+  await settle();
+  const expectReset = (value) => {
+    assert.equal(f.nodes['page-input'].value, value);
+    assert.equal(f.nodes['page-error'].hidden, true);
+    assert.equal(f.nodes['page-input'].getAttribute('aria-invalid'), null);
+  };
+  submitGroup(f, '9');
+  f.nodes['page-next'].fire('click');
+  expectReset('4');
+  submitGroup(f, '9');
+  f.nodes['page-prev'].fire('click');
+  expectReset('3');
+  submitGroup(f, '9');
+  f.nodes.filter.value = '偶数章';
+  f.nodes.filter.fire('input');
+  expectReset('1');
+  assert.equal(f.nodes['page-input'].max, '3');
+  submitGroup(f, '9');
+  f.nodes.locate.fire('click');
+  expectReset('3');
+  assert.equal(f.nodes['page-input'].max, '5');
+  f.nodes.filter.value = '没有匹配章节';
+  f.nodes.filter.fire('input');
+  expectReset('1');
+  assert.equal(f.nodes['page-input'].disabled, true);
+  assert.equal(f.nodes['page-go'].disabled, true);
+  assert.equal(f.nodes.pagination.hidden, true);
+  const rendered = f.links();
+  submitGroup(f, '2');
+  assert.deepEqual(f.links(), rendered);
+  assert.equal(f.nodes['page-error'].hidden, true);
+  f.api.destroy();
+  const small = fixture({ hidden: false });
+  await settle();
+  assert.equal(small.nodes['page-input'].disabled, true);
+  assert.equal(small.nodes['page-go'].disabled, true);
+  const smallLinks = small.links();
+  submitGroup(small, '1');
+  assert.deepEqual(small.links(), smallLinks);
+  small.api.destroy();
+});
+
+test('外部结果收缩到单组时移开输入框焦点并清除隐藏错误', async () => {
+  const records = Object.fromEntries(Array.from({ length: 201 }, (_, i) => {
+    const key = `sample/v1/c${i + 1}`;
+    return [progressKey(key), savedProgress(key, 1)];
+  }));
+  const f = fixture({ hidden: false, chapterKey: 'sample/v1/c1', records, fetcher: async () => response(longIndex(250)) });
+  await settle();
+  f.nodes['progress-filter'].value = 'started';
+  f.nodes['progress-filter'].fire('change');
+  submitGroup(f, '4');
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes['page-input']);
+  for (let n = 101; n <= 201; n++) f.storage.values.delete(progressKey(`sample/v1/c${n}`));
+  f.window.fire('storage', { key: null });
+  assert.equal(f.links().length, 100);
+  assert.equal(f.nodes['page-input'].disabled, true);
+  assert.equal(f.nodes['page-go'].disabled, true);
+  assert.equal(f.nodes.pagination.hidden, true);
+  assert.equal(f.nodes['page-error'].hidden, true);
+  assert.equal(f.nodes['page-input'].getAttribute('aria-invalid'), null);
+  assert.equal(f.nodes['page-input'].value, '1');
+  assert.equal(f.toc.ownerDocument.activeElement, f.nodes.filter);
+  f.api.destroy();
+});
+
+test('隐藏、加载中及失败时提交只阻止默认导航，销毁移除表单与输入监听', async () => {
+  const pending = deferred();
+  const f = fixture({ fetcher: () => pending.promise });
+  assert.equal(submitGroup(f, '2'), 1);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.storage.reads.length, 0);
+  f.toc.hidden = false;
+  await settle();
+  assert.equal(submitGroup(f, '2'), 1);
+  assert.equal(f.nodes['page-input'].disabled, true);
+  assert.equal(f.nodes['page-error'].hidden, true);
+  pending.resolve({ ok: false });
+  await settle();
+  assert.equal(submitGroup(f, '2'), 1);
+  assert.equal(f.nodes['page-error'].hidden, true);
+  assert.equal(f.links().length, 0);
+  assert.equal(f.calls.length, 1);
+  f.api.destroy();
+  assert.equal(f.nodes['page-form'].listenerCount(), 0);
+  assert.equal(f.nodes['page-input'].listenerCount(), 0);
+  assert.equal(submitGroup(f, '1'), 0);
+  const loaded = fixture({ hidden: false, chapterKey: 'sample/v1/c1', fetcher: async () => response(longIndex(250)) });
+  await settle();
+  assert.equal(loaded.nodes['page-input'].disabled, false);
+  assert.equal(loaded.nodes['page-go'].disabled, false);
+  const rendered = loaded.links();
+  const reads = loaded.storage.reads.length;
+  loaded.toc.hidden = true;
+  assert.equal(submitGroup(loaded, '2'), 1);
+  assert.deepEqual(loaded.links(), rendered);
+  assert.equal(loaded.storage.reads.length, reads);
+  assert.equal(loaded.calls.length, 1);
+  loaded.api.destroy();
+  assert.equal(loaded.nodes['page-input'].disabled, true, '销毁后不可通过 Enter 触发原生表单导航');
+  assert.equal(loaded.nodes['page-go'].disabled, true, '销毁后不可点击提交按钮触发原生导航');
 });
