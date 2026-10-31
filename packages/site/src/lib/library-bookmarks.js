@@ -39,10 +39,12 @@ export function mountBookmarkLibrary(root, options = {}) {
     return node;
   };
   const rowId = (row) => `${row.chapter.key}/p${row.n}`;
+  const conflictMessage = '其他窗口已修改待保存的书签，已暂停重试，避免覆盖新记录。可点击“放弃书签未保存修改”重新读取已保存记录，再按需要编辑。';
   function limited() {
     if (pending) pending.hidden = !store.hasPending;
-    storageNote.hidden = !store.limited;
-    storageNote.textContent = store.limited ? '浏览器存储受限，未保存的书签修改仅在当前页面临时保留。' : '';
+    storageNote.hidden = !store.limited && !store.hasConflict;
+    storageNote.textContent = store.hasConflict ? conflictMessage
+      : store.limited ? '浏览器存储受限，未保存的书签修改仅在当前页面临时保留。' : '';
   }
   function focusRow(id, action, revealFallback = false) {
     const target = [...list.querySelectorAll('[data-bookmark-id]')].find((item) => item.dataset.bookmarkId === id);
@@ -63,7 +65,8 @@ export function mountBookmarkLibrary(root, options = {}) {
     let result;
     try { result = action(); } finally { writing = false; }
     refresh();
-    feedback.textContent = result.persisted ? message : '书签修改未能完整保存，仅在当前页面临时保留；离开或刷新后可能丢失。';
+    feedback.textContent = result.conflict ? conflictMessage : result.persisted ? message
+      : '书签修改未能完整保存，仅在当前页面临时保留；离开或刷新后可能丢失。';
   }
   function card(row) {
     const item = element('li', undefined, 'bookmark-row card card-pad');

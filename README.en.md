@@ -64,6 +64,7 @@ Save a backup before clearing site data or moving to another device or domain.
 If saving or removing a record fails, use “重试保存” (Retry saving) to finish pending changes,
 or “放弃未保存修改” (Discard unsaved changes) to reload saved records. Save or cancel any note
 draft first; backups become available once all pending changes have been resolved.
+If another window has changed the same page, retry reports a conflict and keeps the pending state. Discard unsaved changes, check the latest records, and edit again as needed.
 
 Library, bookmark, and progress updates arriving close together from other tabs refresh the view together. Returning to the window or refreshing records reads the latest data immediately; bookmark notes being edited keep their drafts.
 

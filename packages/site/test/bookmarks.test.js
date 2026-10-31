@@ -307,3 +307,184 @@ test('只取收藏 ID 和当前页备注不读取其他页的备注', () => {
   assert.equal(f.store.get(chapter, 6, 99), null);
   assert.deepEqual(f.store.ids('../v/c', 6), []);
 });
+
+test('仅备注删除失败时重试拒绝覆盖外部重新收藏的新备注，放弃后重读完整外部记录', () => {
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(1), id(99)]), [noteKey(1)]: noteRecord('原备注') });
+  f.removeDenied = true;
+  assert.deepEqual(f.store.remove(chapter, 6, 1), { persisted: false });
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(99)]);
+  f.data.set(favoriteKey, JSON.stringify([id(1), id(3), id(99)]));
+  f.data.set(noteKey(1), noteRecord('外部重新收藏的新备注', 100));
+  f.removeDenied = false;
+  const before = new Map(f.data);
+  const writes = f.operations.filter(([type]) => type !== 'get').length;
+  for (let i = 0; i < 2; i++) {
+    assert.deepEqual(f.store.retryPending(), { persisted: false, conflict: true });
+    assert.equal(f.store.hasPending, true);
+    assert.equal(f.store.hasConflict, true);
+    assert.deepEqual(f.data, before);
+  }
+  f.store.discardPending();
+  assert.equal(f.store.hasPending, false);
+  assert.equal(f.store.hasConflict, false);
+  assert.equal(f.store.get(chapter, 6, 1).note, '外部重新收藏的新备注');
+  assert.equal(f.operations.filter(([type]) => type !== 'get').length, writes);
+});
+
+test('仅备注保存失败后外部取消该页，重试不创建孤立备注且保留待处理修改', () => {
+  const f = fixture();
+  f.writeDeniedKey = noteKey(2);
+  f.store.set(chapter, 6, 2, '待保存备注');
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(2)]);
+  f.data.set(favoriteKey, '[]');
+  f.writeDeniedKey = '';
+  const before = new Map(f.data);
+  assert.deepEqual(f.store.retryPending(), { persisted: false, conflict: true });
+  assert.deepEqual(f.data, before);
+  assert.equal(f.store.hasPending, true);
+  assert.equal(f.store.get(chapter, 6, 2).note, '待保存备注', '待处理意图仍在本页，不能误称已经保存');
+  f.store.discardPending();
+  assert.deepEqual(f.store.list(chapter, 6), []);
+  assert.deepEqual(exportReadingBackup(f.storage).counts, { library: 0, progress: 0, bookmarks: 0, notes: 0 });
+});
+
+test('成员写入失败时不提前保存或删除备注，重试合并无关外部新增', () => {
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(1), id(99)]), [noteKey(1)]: noteRecord('成员未删除前保留') });
+  f.writeDeniedKey = favoriteKey;
+  f.store.remove(chapter, 6, 1);
+  f.store.set(chapter, 6, 2, '成员保存后再写');
+  assert.equal(JSON.parse(f.data.get(noteKey(1))).note, '成员未删除前保留');
+  assert.equal(f.data.has(noteKey(2)), false);
+  f.data.set(favoriteKey, JSON.stringify([id(1), id(3), id(99)]));
+  f.writeDeniedKey = '';
+  assert.deepEqual(f.store.retryPending(), { persisted: true });
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(2), id(3), id(99)]);
+  assert.equal(f.data.has(noteKey(1)), false);
+  assert.deepEqual(JSON.parse(f.data.get(noteKey(2))), { version: 1, note: '成员保存后再写', updatedAt: 25 });
+});
+
+test('同章多个页部分失败时冲突页保留，其他页重试完成且不重复改写已保存数据', () => {
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(1), id(2), id(99)]),
+    [noteKey(1)]: noteRecord('原一'), [noteKey(2)]: noteRecord('原二') });
+  f.removeDenied = true;
+  f.store.remove(chapter, 6, 1);
+  f.store.remove(chapter, 6, 2);
+  f.data.set(favoriteKey, JSON.stringify([id(1), id(99)]));
+  f.data.set(noteKey(1), noteRecord('外部一', 100));
+  f.removeDenied = false;
+  const events = [];
+  f.store.subscribe((event) => events.push(event));
+  assert.deepEqual(f.store.retryPending(), { persisted: false, conflict: true });
+  assert.equal(f.data.has(noteKey(2)), false);
+  assert.equal(JSON.parse(f.data.get(noteKey(1))).note, '外部一');
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(1), id(99)]);
+  assert.deepEqual(events, [{ chapterKey: chapter }]);
+  const writes = f.operations.filter(([type]) => type !== 'get').length;
+  f.store.retryPending();
+  assert.equal(f.operations.filter(([type]) => type !== 'get').length, writes);
+  assert.deepEqual(f.store.set(chapter, 6, 3, '独立的新操作'), { persisted: true });
+  assert.equal(f.store.hasConflict, true);
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(1), id(3), id(99)]);
+  assert.equal(JSON.parse(f.data.get(noteKey(1))).note, '外部一');
+  f.store.discardPending();
+  assert.equal(f.store.get(chapter, 6, 1).note, '外部一');
+});
+
+test('明确再次编辑冲突页建立新上下文，旧失败意图不再回放', () => {
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(1)]), [noteKey(1)]: noteRecord('原备注') });
+  f.removeDenied = true;
+  f.store.remove(chapter, 6, 1);
+  f.data.set(favoriteKey, JSON.stringify([id(1)]));
+  f.data.set(noteKey(1), noteRecord('外部新备注', 100));
+  f.removeDenied = false;
+  f.store.retryPending();
+  assert.equal(f.store.hasConflict, true);
+  assert.deepEqual(f.store.set(chapter, 6, 1, '明确重新编辑'), { persisted: true });
+  assert.equal(f.store.hasPending, false);
+  assert.equal(f.store.hasConflict, false);
+  assert.equal(f.store.get(chapter, 6, 1).note, '明确重新编辑');
+  assert.deepEqual(f.store.retryPending(), { persisted: true });
+});
+
+test('最初读取失败且没有已知快照时，重试不能把未知现存备注当成空值覆盖', () => {
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(1)]), [noteKey(1)]: noteRecord('不可读取的原备注') });
+  f.readDenied = true;
+  f.store.set(chapter, 6, 1, '本页意图');
+  f.readDenied = false;
+  const before = new Map(f.data);
+  assert.deepEqual(f.store.retryPending(), { persisted: false, conflict: true });
+  assert.deepEqual(f.data, before);
+  f.store.discardPending();
+  assert.equal(f.store.get(chapter, 6, 1).note, '不可读取的原备注');
+});
+
+test('备注已保存而成员仍失败时，外部取消该页后重试也不回放旧成员意图', () => {
+  const f = fixture({ [favoriteKey]: '[]', [noteKey(2)]: noteRecord('已经保存的部分', 25) });
+  f.writeDeniedKey = favoriteKey;
+  f.store.set(chapter, 6, 2, '已经保存的部分');
+  assert.equal(f.store.hasPending, true);
+  f.data.delete(noteKey(2));
+  f.writeDeniedKey = '';
+  const before = new Map(f.data);
+  assert.deepEqual(f.store.retryPending(), { persisted: false, conflict: true });
+  assert.deepEqual(f.data, before);
+});
+
+test('外部已完成完全相同的成员和备注时，重试只解除待保存状态而不重写', () => {
+  const f = fixture();
+  f.writeDenied = true;
+  f.store.set(chapter, 6, 2, '相同结果');
+  f.data.set(favoriteKey, JSON.stringify([id(2), id(99)]));
+  f.data.set(noteKey(2), noteRecord('相同结果', 25));
+  f.writeDenied = false;
+  const writes = f.operations.filter(([type]) => type !== 'get').length;
+  assert.deepEqual(f.store.retryPending(), { persisted: true });
+  assert.equal(f.store.hasPending, false);
+  assert.equal(f.store.hasConflict, false);
+  assert.equal(f.operations.filter(([type]) => type !== 'get').length, writes);
+  assert.deepEqual(JSON.parse(f.data.get(favoriteKey)), [id(2), id(99)]);
+});
+
+test('只有收藏成员的增量添加保留同页待保存备注与时间，不借此清除外部冲突', () => {
+  const f = fixture();
+  f.writeDeniedKey = noteKey(1);
+  f.store.set(chapter, 6, 1, '不能被成员增量丢弃的备注');
+  assert.deepEqual(f.store.updateFavorites(chapter, 6, [], [id(1)]), { persisted: false });
+  assert.equal(f.store.get(chapter, 6, 1).note, '不能被成员增量丢弃的备注');
+  assert.equal(f.store.hasPending, true);
+  f.data.set(noteKey(1), noteRecord('外部修改', 100));
+  f.writeDeniedKey = '';
+  const before = new Map(f.data);
+  assert.deepEqual(f.store.updateFavorites(chapter, 6, [], [id(1)]), { persisted: false, conflict: true });
+  assert.deepEqual(f.data, before);
+  assert.equal(f.store.get(chapter, 6, 1).note, '不能被成员增量丢弃的备注');
+  f.store.discardPending();
+  assert.equal(f.store.get(chapter, 6, 1).note, '外部修改');
+
+  const recoverable = fixture();
+  recoverable.writeDeniedKey = noteKey(1);
+  recoverable.store.set(chapter, 6, 1, '原时间仍保留');
+  recoverable.writeDeniedKey = '';
+  assert.deepEqual(recoverable.store.updateFavorites(chapter, 6, [], [id(1)]), { persisted: true });
+  assert.deepEqual(JSON.parse(recoverable.data.get(noteKey(1))), { version: 1, note: '原时间仍保留', updatedAt: 25 });
+});
+
+test('成员添加可撤销未冲突的失败移除，但不能借反向添加丢弃移除冲突', () => {
+  const f = fixture({ [favoriteKey]: JSON.stringify([id(1)]), [noteKey(1)]: noteRecord('未删掉的备注') });
+  f.removeDenied = true;
+  f.store.remove(chapter, 6, 1);
+  f.removeDenied = false;
+  assert.deepEqual(f.store.updateFavorites(chapter, 6, [], [id(1)]), { persisted: true });
+  assert.equal(f.store.hasPending, false);
+  assert.equal(f.store.get(chapter, 6, 1).note, '未删掉的备注');
+
+  f.removeDenied = true;
+  f.store.remove(chapter, 6, 1);
+  f.data.set(favoriteKey, JSON.stringify([id(1)]));
+  f.data.set(noteKey(1), noteRecord('外部重新收藏', 100));
+  f.removeDenied = false;
+  const before = new Map(f.data);
+  assert.deepEqual(f.store.updateFavorites(chapter, 6, [], [id(1)]), { persisted: false, conflict: true });
+  assert.deepEqual(f.data, before);
+  assert.equal(f.store.hasPending, true);
+});
