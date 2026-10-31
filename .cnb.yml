@@ -390,20 +390,29 @@ main:
               main) echo '✘ 不能归档 main'; exit 1;;
               archive/*) echo '✘ 分支名不该以 archive/ 开头——那是 tag 的命名空间'; exit 1;;
             esac
+            branch_ref="refs/heads/$branch"
+            if ! git check-ref-format "$branch_ref"; then echo '✘ 分支名无效'; exit 1; fi
             base="${CNB_WEB_ENDPOINT:-https://cnb.cool}"
             repo_url="https://cnb:${CNB_TOKEN}@${base#*://}/${CNB_REPO_SLUG}"
-            sha=$(git ls-remote --heads "$repo_url" "refs/heads/$branch" | cut -f1)
+            sha=$(git ls-remote --heads "$repo_url" "$branch_ref" | cut -f1)
             if [ -z "$sha" ]; then echo "✘ 远端没有分支 $branch"; exit 1; fi
             tag="archive/$branch"
             if git ls-remote --tags "$repo_url" "refs/tags/$tag" | grep -q .; then
               echo "✘ tag $tag 已存在（archive/* 不可变）；换个分支名或先人工核对"; exit 1
+            fi
+            # main 的浅克隆不一定含目标分支顶点；只获取精确分支，再核对没有读到竞争更新。
+            git fetch --no-tags --depth=1 "$repo_url" "$branch_ref"
+            fetched_sha=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
+            if [ "$fetched_sha" != "$sha" ]; then
+              echo '✘ 获取期间分支已变化，不创建归档标签或删除分支；请重新核对'; exit 1
             fi
             git push "$repo_url" "$sha:refs/tags/$tag"
             remote_tag=$(git ls-remote --tags "$repo_url" "refs/tags/$tag" | cut -f1)
             if [ "$remote_tag" != "$sha" ]; then
               echo "✘ tag 校验失败（远端 $remote_tag ≠ $sha），不删分支"; exit 1
             fi
-            git push "$repo_url" --delete "$branch"
+            # 标签核对后分支仍可能更新；只删除本次已归档的精确顶点。
+            git push --force-with-lease="$branch_ref:$sha" "$repo_url" ":$branch_ref"
             echo "## 已归档"
             echo
             echo "- 分支 \`$branch\` → tag \`$tag\`（\`$sha\`）"
