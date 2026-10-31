@@ -3,6 +3,14 @@ import { swapHost } from './gallery.js';
 /** 图片事件可能早于模块执行；挂载时同时检查已完成的缓存结果。 */
 export function mountReaderImages(reader, { hosts = [] } = {}) {
   const cleanups = [];
+  // img.src 和 URL.host 会规范化主机名；配置允许大小写，比较和去重也须使用相同规则。
+  const normalizedHosts = [...new Set(hosts.flatMap((host) => {
+    if (typeof host !== 'string') return [];
+    try {
+      const url = new URL(`https://${host}`);
+      return !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash ? [url.host] : [];
+    } catch { return []; }
+  }))];
   for (const page of reader.querySelectorAll('.page')) {
     const img = page.querySelector('.frame img');
     const feedback = page.querySelector('.image-feedback');
@@ -15,8 +23,8 @@ export function mountReaderImages(reader, { hosts = [] } = {}) {
     try {
       const url = new URL(original);
       // 只对当前配置中的 HTTPS 图片源换域名，保留不可变图片的完整路径。
-      if (url.protocol === 'https:' && hosts.includes(url.host)) {
-        sources = [...new Set([url.host, ...hosts])].map((host) => swapHost(original, url.host, host));
+      if (url.protocol === 'https:' && normalizedHosts.includes(url.host)) {
+        sources = [...new Set([url.host, ...normalizedHosts])].map((host) => swapHost(original, url.host, host));
       }
     } catch { /* 无效地址交给浏览器报错，仍提供本页重试。 */ }
     let attempt = 0;
