@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSiteConfig } from '../lib/config.mjs';
+import { computeChunkManifest } from '@gallery/core/db/chunks';
 import {
   planUploads,
   dbFileNames,
@@ -33,6 +34,8 @@ const KEYS = {
   webp2: 'img/zeta/v1/ch1/1-6789abcdef01.webp',
 };
 const CREDS = { R2_ACCOUNT_ID: 'test-account', R2_ACCESS_KEY_ID: 'ak', R2_SECRET_ACCESS_KEY: 'sk', R2_BUCKET: 'test-bucket' };
+const DB_BYTES = Buffer.concat([Buffer.from('SQLite format 3\0'), Buffer.alloc(8192 - 16)]);
+const DB_CHUNKS = await computeChunkManifest(DB_BYTES, 65536);
 
 function manifest(overrides = {}) {
   return {
@@ -47,7 +50,7 @@ function manifest(overrides = {}) {
       version: VERSION,
       key: 'db/gallery-2026-09-03.sqlite',
       size: 8192,
-      sha256: '00'.repeat(32),
+      sha256: DB_CHUNKS.sha256,
       pageSize: 4096,
       chunkSize: 65536,
       chunks: 'db/gallery-2026-09-03.sqlite.chunks.json',
@@ -190,8 +193,8 @@ async function workspace(t) {
   await mkdir(join(DIST, 'sample'), { recursive: true });
   await mkdir(join(IMAGES, 'sample', 'vol01', 'c001'), { recursive: true });
   await writeFile(join(OUT, 'manifest.json'), JSON.stringify(manifest(), null, 2) + '\n');
-  await writeFile(join(OUT, 'db', 'gallery-2026-09-03.sqlite'), Buffer.concat([Buffer.from('SQLite format 3\0'), Buffer.alloc(8192 - 16)]));
-  await writeFile(join(OUT, 'db', 'gallery-2026-09-03.sqlite.chunks.json'), '{"version":1}\n');
+  await writeFile(join(OUT, 'db', 'gallery-2026-09-03.sqlite'), DB_BYTES);
+  await writeFile(join(OUT, 'db', 'gallery-2026-09-03.sqlite.chunks.json'), JSON.stringify(DB_CHUNKS) + '\n');
   await writeFile(join(DIST, 'index.html'), '<!doctype html><title>首页</title>\n');
   await writeFile(join(DIST, 'sample', 'index.html'), '<!doctype html>\n');
   await writeFile(join(IMAGES, 'sample', 'vol01', 'c001', '1-0123456789ab.webp'), Buffer.from('webp-bytes'));
@@ -236,6 +239,7 @@ async function fakeS3(seed = {}) {
     req.on('data', (c) => chunks.push(c));
     req.on('end', async () => {
       requests.push(`${req.method} ${key ?? url.pathname}`);
+      await s3.onRequest?.({ method: req.method, key });
       if (!key) {
         res.writeHead(404);
         res.end();
@@ -364,6 +368,67 @@ test('manifest 版本命名与等价性：只忽略生成时间，结构或正�
   assert.ok(!sameReleaseManifest(previous, 'invalid'));
 });
 
+test('publish:r2：同尺寸损坏与摘要错配在访问存储前拒绝，dry-run 也验证字节', { timeout: 60_000 }, async (t) => {
+  const ws = await workspace(t);
+  const s3 = await fakeS3();
+  t.after(s3.close);
+  const manifestPath = join(ws.OUT, 'manifest.json');
+  const dbPath = join(ws.OUT, 'db', dbFileNames(VERSION).db);
+  const chunksPath = join(ws.OUT, 'db', dbFileNames(VERSION).chunks);
+  const damaged = Buffer.from(DB_BYTES);
+  damaged[512] ^= 1;
+  const wrongHash = 'ff'.repeat(32);
+  const cases = [
+    ['同尺寸单字节损坏', dbPath, damaged, /实际 SHA-256/],
+    ['版本清单摘要错配', manifestPath, manifest({ db: { ...manifest().db, sha256: wrongHash } }), /实际 SHA-256/],
+    ['分块清单整份摘要错配', chunksPath, { ...DB_CHUNKS, sha256: wrongHash }, /整份 SHA-256/],
+    ['仅某块摘要错误', chunksPath, { ...DB_CHUNKS, chunks: [wrongHash] }, /分块 SHA-256/],
+    ['分块缺失', chunksPath, { ...DB_CHUNKS, chunks: [] }, /分块 SHA-256/],
+    ['分块边界错误', chunksPath, { ...DB_CHUNKS, chunkSize: 4096 }, /块大小/],
+    ['数据库版本错误', manifestPath, manifest({ db: { ...manifest().db, version: 'another' } }), /数据库版本/],
+    ['无效分块文件', chunksPath, '{broken', /不是有效 JSON/],
+  ];
+  for (const [name, file, contents, error] of cases) {
+    await t.test(name, async () => {
+      await writeFile(manifestPath, JSON.stringify(manifest()));
+      await writeFile(dbPath, DB_BYTES);
+      await writeFile(chunksPath, JSON.stringify(DB_CHUNKS));
+      await writeFile(file, Buffer.isBuffer(contents) || typeof contents === 'string' ? contents : JSON.stringify(contents));
+      for (const dryRun of ['0', '1']) {
+        s3.requests.length = 0;
+        const result = await run({ ...ws.env, ...s3.env, PUBLISH_DRY_RUN: dryRun });
+        assert.equal(result.status, 1, result.out);
+        assert.match(result.out, error);
+        assert.equal(s3.requests.length, 0, '不应先上传其他资源或访问存储');
+        assert.ok(!existsSync(ws.archive), '完整性失败也不开始归档');
+      }
+    });
+  }
+});
+
+test('publish:r2：上传沿用校验过的库、分块与版本清单，读盘后的变化不能偷换字节', { timeout: 30_000 }, async (t) => {
+  const ws = await workspace(t);
+  const s3 = await fakeS3({ [KEYS.webp]: 'webp-bytes', [KEYS.webp2]: 'webp2-bytes' });
+  t.after(s3.close);
+  const initialManifest = await readFile(join(ws.OUT, 'manifest.json'));
+  const initialChunks = await readFile(join(ws.OUT, 'db', dbFileNames(VERSION).chunks));
+  let changed = false;
+  s3.onRequest = async ({ method }) => {
+    if (changed || method !== 'GET') return;
+    changed = true;
+    await writeFile(join(ws.OUT, 'db', dbFileNames(VERSION).db), Buffer.alloc(DB_BYTES.length, 1));
+    await writeFile(join(ws.OUT, 'db', dbFileNames(VERSION).chunks), '{"version":2}');
+    await writeFile(join(ws.OUT, 'manifest.json'), JSON.stringify(manifest({ db: { ...manifest().db, sha256: 'ff'.repeat(32) } })));
+  };
+  const result = await run({ ...ws.env, ...s3.env });
+  assert.equal(result.status, 0, result.out);
+  assert.equal(changed, true);
+  assert.deepEqual(s3.objects.get(manifest().db.key).body, DB_BYTES);
+  assert.deepEqual(s3.objects.get(manifest().db.chunks).body, initialChunks);
+  assert.deepEqual(s3.objects.get(`db/${releaseManifestFileName(VERSION)}`).body, initialManifest);
+  assert.ok(!s3.objects.has('db/manifest.json'));
+});
+
 test('publish:r2：缺图阻止版本 manifest，补图重试幂等，生产指针始终不变', { timeout: 60_000 }, async (t) => {
   const ws = await workspace(t);
   const old = '{"version":"previous"}';
@@ -434,11 +499,11 @@ test('publish:r2：同版本不同内容拒绝，已有对象与生产指针不�
   const first = await run({ ...ws.env, ...s3.env });
   assert.equal(first.status, 0, first.out);
   const snapshots = new Map([...s3.objects].map(([k, v]) => [k, Buffer.from(v.body)]));
-  for (const [name, path, replacement] of [
-    ['库', join(ws.OUT, 'db', 'gallery-2026-09-03.sqlite'), Buffer.alloc(8192, 1)],
-    ['摘要', join(ws.OUT, 'db', 'gallery-2026-09-03.sqlite.chunks.json'), '{"version":2}'],
-    ['归档', join(ws.DIST, 'index.html'), '<!doctype html><title>已改变</title>'],
-    ['版本清单', join(ws.OUT, 'manifest.json'), JSON.stringify(manifest({ series: [{ title: '已改变' }] }))],
+  for (const [name, path, replacement, error] of [
+    ['库', join(ws.OUT, 'db', 'gallery-2026-09-03.sqlite'), Buffer.alloc(8192, 1), /实际 SHA-256/],
+    ['摘要', join(ws.OUT, 'db', 'gallery-2026-09-03.sqlite.chunks.json'), '{"version":2}', /分块摘要的版本/],
+    ['归档', join(ws.DIST, 'index.html'), '<!doctype html><title>已改变</title>', /不可变对象.*内容不同/],
+    ['版本清单', join(ws.OUT, 'manifest.json'), JSON.stringify(manifest({ series: [{ title: '已改变' }] })), /不可变对象.*内容不同/],
   ]) {
     await t.test(name, async () => {
       const original = await readFile(path);
@@ -447,7 +512,8 @@ test('publish:r2：同版本不同内容拒绝，已有对象与生产指针不�
       const result = await run({ ...ws.env, ...s3.env });
       await writeFile(path, original);
       assert.equal(result.status, 1, result.out);
-      assert.match(result.out, /不可变对象.*内容不同/);
+      assert.match(result.out, error);
+      if (name === '库' || name === '摘要') assert.equal(s3.requests.length, 0, '本地完整性失败应在任何存储访问前退出');
       assert.equal(s3.requests.filter((r) => r.startsWith('PUT ')).length, 0);
       for (const [key, body] of snapshots) assert.deepEqual(s3.objects.get(key).body, body);
     });

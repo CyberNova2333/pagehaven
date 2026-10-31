@@ -13,8 +13,8 @@ import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import { loadSiteConfig } from './lib/config.mjs';
-import { readManifest, resolveVersion, MANIFEST_FILE } from './lib/manifest.mjs';
-import { planUploads, archiveFileName, dbFileNames, sameReleaseManifest } from './lib/publish-plan.mjs';
+import { resolveVersion, MANIFEST_FILE } from './lib/manifest.mjs';
+import { planUploads, archiveFileName, dbFileNames, sameReleaseManifest, verifyDbArtifacts } from './lib/publish-plan.mjs';
 import { r2ClientFromEnv, R2_ENV_KEYS, headObject, putImmutableObject } from './lib/r2.mjs';
 import { DIST_DIR, OUT_DIR, OUT_DB_DIR, ROOT } from './lib/paths.mjs';
 import { step, ok, fail, note, warn } from './lib/log.mjs';
@@ -99,8 +99,13 @@ const dryRun = process.env.PUBLISH_DRY_RUN === '1';
 try {
   const config = await loadSiteConfig();
   const version = resolveVersion();
-  const manifest = await readManifest(OUT_DIR);
-  if (!manifest) bail(`${show(join(OUT_DIR, MANIFEST_FILE))} 不存在：先 npm run build`);
+  let manifestBody;
+  try { manifestBody = await readFile(join(OUT_DIR, MANIFEST_FILE)); }
+  catch (error) {
+    if (error.code === 'ENOENT') bail(`${show(join(OUT_DIR, MANIFEST_FILE))} 不存在：先 npm run build`);
+    throw error;
+  }
+  const manifest = JSON.parse(manifestBody.toString('utf8'));
 
   const dbFiles = existsSync(OUT_DB_DIR) ? (await readdir(OUT_DB_DIR)).sort().map((f) => join(OUT_DB_DIR, f)) : [];
   // 库的实际字节数交给计划与 manifest.db.size 比：manifest 与库来自不同次构建时，名字对得上、大小对不上
@@ -117,6 +122,10 @@ try {
     manifest,
     files: { db: dbFiles, dbSize, manifest: join(OUT_DIR, MANIFEST_FILE), distArchive: archivePath, images },
   });
+
+  const [dbBody, chunksBody] = await Promise.all(['db', 'chunks'].map((kind) => readFile(plan.uploads.find((upload) => upload.kind === kind).path)));
+  await verifyDbArtifacts({ manifest, dbConfig: config.db, dbBytes: dbBody, chunksBytes: chunksBody });
+  const validatedBodies = new Map([['db', dbBody], ['chunks', chunksBody], ['manifest', manifestBody]]);
 
   note(`版本 ${version}；manifest 引用 ${plan.verifyKeys.length} 个图片 key`);
   for (const u of plan.uploads) {
@@ -166,7 +175,7 @@ try {
 
   const put = async (u) => {
     const src = u.kind === 'image' ? join(imagesDir, u.path) : u.path;
-    const body = await readFile(src);
+    const body = validatedBodies.get(u.kind) ?? await readFile(src);
     const result = await putImmutableObject(client, bucket, u.key, body, {
       contentType: u.contentType,
       cacheControl: u.cacheControl,
