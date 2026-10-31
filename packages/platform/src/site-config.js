@@ -5,6 +5,7 @@
 // 只用 Web 标准 API：js-yaml 与 zod 都是纯 JS，浏览器里也能跑。
 import yaml from 'js-yaml';
 import { z } from 'zod';
+import { isSafeObjectPrefix } from '@gallery/core/object-path';
 
 // 主机名：不带协议、不带路径。域名是「切换托管平台只改 CNAME」的锚点，写错了
 // 站点上所有绝对链接都跟着错，所以在 schema 里就拦。
@@ -53,7 +54,7 @@ export const SiteConfigSchema = z
     db: z.strictObject({
       page_size: z.number().int().refine((n) => POWER_OF_TWO_PAGE.has(n), 'sqlite page_size 必须是 512–65536 之间的 2 的幂'),
       chunk_size: z.number().int().positive(),
-      prefix: z.string().regex(/^[^/].*\/$/, '前缀不以 / 开头、以 / 结尾').default('db/'),
+      prefix: z.string().refine(isSafeObjectPrefix, '前缀须以 / 结尾，仅含 ASCII 字母、数字、下划线、连字符、点和目录分隔符，不能有空段或 .、.. 段').default('db/'),
       whole_download_max_bytes: z.number().int().nonnegative(),
     }),
     search: z.strictObject({

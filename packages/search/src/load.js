@@ -2,6 +2,7 @@
 // 未提供 release 的旧调用方仍可读 CDN manifest；每个源都须先通过元数据校验。
 // 整份下载仅在预算内可用，读取流时再次限长，最后验 sha256 才交给 sqlite。
 import { openGalleryDb, sha256Hex } from '@gallery/core';
+import { isSafeObjectKey, isSafeObjectPrefix } from '@gallery/core/object-path';
 
 export const FETCH_TIMEOUT_MS = 20_000;
 export const DEFAULT_WHOLE_DOWNLOAD_MAX_BYTES = 30 * 1024 * 1024;
@@ -35,8 +36,7 @@ function requestSignal(signal, controller) {
 function validateMeta(meta, prefix, maxBytes) {
   if (!meta || typeof meta !== 'object' || Array.isArray(meta)) throw new Error('没有有效的 db 字段：检索库尚未构建');
   const { key, size, sha256 } = meta;
-  if (typeof key !== 'string' || !key.startsWith(prefix) || !key.endsWith('.sqlite') ||
-      !/^[a-zA-Z0-9_./-]+$/.test(key) || key.split('/').some((part) => !part || part === '.' || part === '..')) {
+  if (!isSafeObjectKey(key) || !key.startsWith(prefix) || !key.endsWith('.sqlite')) {
     throw new Error('db.key 必须是检索库前缀下的相对 sqlite 对象路径');
   }
   if (!Number.isSafeInteger(size) || size <= 0) throw new Error('db.size 必须是正整数字节数');
@@ -95,6 +95,7 @@ export async function loadGalleryDb({ config, fetchImpl = fetch, signal }) {
   const settings = config.db ?? {};
   const prefix = settings.prefix ?? '';
   if (!prefix) throw new Error('site.config.yaml 没有配 db.prefix');
+  if (!isSafeObjectPrefix(prefix)) throw new Error('db.prefix 必须是以 / 结尾且没有空段或点段的 ASCII 相对对象前缀');
   const maxBytes = settings.whole_download_max_bytes ?? DEFAULT_WHOLE_DOWNLOAD_MAX_BYTES;
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Error('整份下载上限必须是非负整数字节数');
   signal?.throwIfAborted();

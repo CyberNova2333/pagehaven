@@ -16,6 +16,7 @@
 import { basename } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { CHUNK_MANIFEST_VERSION, computeChunkManifest } from '@gallery/core/db/chunks';
+import { isSafeObjectKey, isSafeObjectPrefix } from '@gallery/core/object-path';
 
 export const CACHE_IMMUTABLE_YEAR = 'public, max-age=31536000, immutable';
 export const CACHE_MANIFEST = 'public, max-age=300';
@@ -123,6 +124,10 @@ export function planUploads({ version, config, manifest, files }) {
   const names = dbFileNames(version);
   const dbKey = config.db.prefix + names.db;
   const chunksKey = config.db.prefix + names.chunks;
+
+  if (!isSafeObjectPrefix(config.db.prefix) || !isSafeObjectKey(dbKey) || !isSafeObjectKey(chunksKey)) {
+    problems.push('db.prefix 必须是以 / 结尾且没有空段或点段的 ASCII 相对对象前缀');
+  }
 
   if (manifest.version !== version) {
     problems.push(`manifest.json 的版本是 ${manifest.version}，本次发布版本是 ${version}（RELEASE_VERSION 与 build 时不一致？）`);
