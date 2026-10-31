@@ -6,6 +6,9 @@
 台词归一化（`tn`）、检索库构建、分块摘要清单、取块层（探测 / 取块 / 校验 / 多源）。
 发布清单的编排在 `scripts/lib/manifest.mjs`，不属于这个包。
 
+`@gallery/core/object-path` 提供 `isSafeObjectKey` 和 `isSafeObjectPrefix`，供配置、发布计划和
+浏览器检索共用同一组 ASCII 相对对象路径规则；不接受空段、点段、空白或 URL 转义。
+
 **只用 Web 标准 API**（CLAUDE.md 铁律 1）：fetch / Request / Response / Web Crypto /
 Web Streams / WebAssembly。不 import Node 内置模块，不引原生依赖，sqlite 一律 wasm 版
 （官方 `@sqlite.org/sqlite-wasm`；sql.js 发行版没编 FTS5，见 ARCHITECTURE 决策记录）。

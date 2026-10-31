@@ -6,6 +6,7 @@
 | --- | --- | --- | --- |
 | `scripts/` | 串联配置、清单、库、页面、索引与 sitemap | `scripts/build-site.mjs` | 根 package 的 build 顺序 |
 | `scripts/lib/` | 加载内容并定义跨步骤清单契约 | `scripts/lib/manifest.mjs` | 清单、建库与站点步骤共享 |
+| `packages/core/src/` | 统一进入 CDN URL 的安全对象路径契约 | `packages/core/src/object-path.js` | 配置、发布和浏览器检索共享；仅覆盖此辅助文件 |
 | `packages/core/src/db/` | 构造浏览器可用检索库与分块描述 | `packages/core/src/db/build.js` | build:db 的库构造入口 |
 | `packages/site/src/pages/` | 将生成内容映射为静态页面 | `packages/site/src/pages/index.astro` | build:site 调用 Astro |
 | `packages/platform/src/` | 集中验证配置并生成托管平台文件 | `packages/platform/src/site-config.js` | build:config 之后进入站点输出 |
@@ -31,6 +32,16 @@
 | [静态跳转输出边界](../scripts/lib/static-output.mjs) | 预检重定向的规范路径及输出根边界，转义跳转页属性 | `redirectOutputPaths / metaRefresh` | `scripts/build-site.mjs`；回归见 `scripts/test/static-output.test.mjs` |
 
 相关验证：`scripts/test/build-manifest.test.mjs`。本轮只检查可读证据，业务测试没有执行。
+
+## `packages/core/src/`
+
+配置、上传计划和检索加载器共用安全对象路径，不让各层接受不同的目录语法。本节只覆盖这一共享辅助文件，不扩大到其余 core 模块。
+
+| 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
+| --- | --- | --- | --- |
+| [共享对象路径校验](../packages/core/src/object-path.js) | 约束无需 URL 转义的相对对象 key 与目录前缀 | `isSafeObjectPrefix / isSafeObjectKey` | 平台配置、上传计划、浏览器检索加载器 |
+
+相关验证 `scripts/test/object-prefix.test.mjs` 使用真实 SQLite，依次检查配置、发布计划、摘要及浏览器查询。
 
 ## `packages/core/src/db/`
 

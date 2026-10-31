@@ -167,6 +167,8 @@ Review these fields before first use:
 
 The example domains are for build previews only. Production site deployments reject example site or image domains; upload-only runs with `target=none` do not run this deployment check. Platform files are generated; do not manually edit `_headers`, `_redirects`, or `edgeone.json`.
 
+`db.prefix` is a relative object prefix ending in `/`, such as `db/` or `search-v2/`. Each segment accepts only ASCII letters, digits, underscores, hyphens, and dots; empty segments and standalone `.` or `..` segments are rejected. Configuration validation rejects Chinese characters, spaces, and URL escapes so that a release cannot produce database paths the browser cannot load.
+
 1. Add series, issues, chapters, and pages to `data/meta/`, following the [metadata format](data/meta/README.md).
 2. Prepare images and a CDN, ensuring that image keys and dimensions in the metadata match the actual files.
 3. Put LabelPlus transcripts in `data/raw/labelplus/` and run `npm run ingest:labelplus`. For OCR drafting, review, and acceptance, see the [source transcript guide](data/raw/README.md).

@@ -8,6 +8,9 @@
   size / sha256 校验后在内存打开。`release: null` 表示此站点版本尚未构建检索库，
   不会改读生产 manifest；只有旧调用方完全没有 `release` 属性时，才读取当前 manifest。
   每个源的 manifest 都须通过 key / size / sha256 校验；不合法或下载失败时尝试备用源。
+- 配置、发布计划与浏览器共用 core 的安全对象路径校验。`db.prefix` 须为以 `/` 结尾的
+  ASCII 相对前缀，段内仅有字母、数字、下划线、连字符和点，无空段或独立点段；无效前缀
+  在任何网络请求前拒绝。符合约束的非默认前缀同时支持固定版本和旧 manifest 加载方式。
 - 整份下载受 `db.whole_download_max_bytes` 限制（缺省 30 MB）：先检查 manifest 尺寸，
   再检查响应头与实际流读取字节数。源多发字节时立即取消，不缓存完整的超额响应。
 - `prepareQuery` / `queryLines`：查询与索引共用 `normalizeText`；归一化后至少 3 字走

@@ -162,6 +162,8 @@ Logo 可填写 HTTPS 图片地址或站内 SVG 路径，默认使用 `/favicon.s
 
 默认示例域名只供构建预览，生产站点部署会拒绝示例站点或图片域名；`target=none` 仅上传不执行此部署校验。平台配置由构建生成，不手改 `_headers`、`_redirects` 或 `edgeone.json`。
 
+`db.prefix` 使用以 `/` 结尾的相对对象前缀，例如 `db/` 或 `search-v2/`。各路径段仅允许 ASCII 字母、数字、下划线、连字符和点，不能含空段或独立的 `.`、`..`；中文、空格及 URL 转义会在配置校验时拒绝，避免发布后浏览器无法加载检索库。
+
 1. 按 [元数据格式](data/meta/README.md) 在 `data/meta/` 添加作品、期、话和页。
 2. 准备图片资源与 CDN，确保元数据中的图片 key、尺寸与实际文件一致。
 3. 将 LabelPlus 稿放入 `data/raw/labelplus/`，运行 `npm run ingest:labelplus`；OCR 草稿的生成、校对与接受流程见 [原始台词说明](data/raw/README.md)。
