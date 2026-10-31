@@ -62,10 +62,10 @@ function catalog(pages = 6) {
 function fixture({ records = {}, data = catalog(), denied = false, deniedKeys = [], autoFlushStorage = true, onSummary, searchValue = '', withoutSearch = false } = {}) {
   const values = new Map(Object.entries(records).map(([name, value]) => [name, typeof value === 'string' ? value : JSON.stringify(value)]));
   const storage = {
-    values, reads: 0, writes: [], denied, denyReadKeys: new Set(deniedKeys),
+    values, reads: 0, writes: [], denied, denyReadKeys: new Set(deniedKeys), denyWriteKeys: new Set(), denyRemoveKeys: new Set(),
     getItem(name) { this.reads++; if (this.denyReadKeys.has(name)) throw new Error('read denied'); return values.get(name) ?? null; },
-    setItem(name, value) { if (this.denied) throw new Error('quota'); this.writes.push(['set', name]); values.set(name, value); },
-    removeItem(name) { if (this.denied) throw new Error('denied'); this.writes.push(['remove', name]); values.delete(name); },
+    setItem(name, value) { if (this.denied || this.denyWriteKeys.has(name)) throw new Error('quota'); this.writes.push(['set', name]); values.set(name, value); },
+    removeItem(name) { if (this.denied || this.denyRemoveKeys.has(name)) throw new Error('denied'); this.writes.push(['remove', name]); values.delete(name); },
   };
   const root = element('section');
   const win = element('window');
@@ -692,5 +692,59 @@ test('放弃书签临时结果恢复持久状态，恢复操作不能丢弃正�
   assert.deepEqual(visibleIds(f), [markId(1), markId(2)]);
   assert.equal(f.storage.writes.length, writes, '放弃临时操作只重读，不回写');
   assert.match(f.nodes.feedback.textContent, /已放弃/);
+  f.controller.destroy();
+});
+
+test('部分删除后外部重新收藏时重试提示冲突，放弃按钮只重读新记录并解除备份保护', () => {
+  const f = fixture({ records: { [favoriteKey]: [markId(1)], [noteKey(1)]: { version: 1, note: '原备注', updatedAt: 1 } } });
+  f.storage.denyRemoveKeys.add(noteKey(1));
+  f.action(markId(1), 'remove').fire('click');
+  assert.deepEqual(JSON.parse(f.storage.values.get(favoriteKey)), []);
+  assert.equal(f.controller.hasPending, true);
+  f.storage.values.set(favoriteKey, JSON.stringify([markId(1)]));
+  f.storage.values.set(noteKey(1), JSON.stringify({ version: 1, note: '其他窗口的新备注', updatedAt: 100 }));
+  f.storage.denyRemoveKeys.clear();
+  f.win.fire('storage', { key: favoriteKey });
+  const before = new Map(f.storage.values);
+  const writes = f.storage.writes.length;
+  f.nodes.retry.fire('click');
+  assert.equal(f.nodes.pending.hidden, false);
+  assert.equal(f.controller.hasPending, true);
+  assert.equal(f.summaries.at(-1).pending, true);
+  assert.match(f.nodes.feedback.textContent, /其他窗口.*已暂停重试.*放弃书签未保存修改/);
+  assert.match(f.nodes['storage-note'].textContent, /重新读取已保存记录/);
+  assert.deepEqual(f.storage.values, before);
+  f.nodes.discard.fire('click');
+  assert.equal(f.controller.hasPending, false);
+  assert.equal(f.summaries.at(-1).pending, false);
+  assert.equal(f.nodes.pending.hidden, true);
+  assert.ok(f.row(markId(1)).textContent.includes('其他窗口的新备注'));
+  assert.equal(f.storage.writes.length, writes);
+  assert.equal(f.doc.activeElement, f.nodes.search);
+  f.controller.destroy();
+});
+
+test('部分保存后外部取消页时重试保留冲突意图，放弃后不残留孤立备注', () => {
+  const f = fixture({ records: { [favoriteKey]: [markId(1)] } });
+  f.storage.denyWriteKeys.add(noteKey(1));
+  f.action(markId(1), 'edit').fire('click');
+  f.nodes.note.value = '仅在本页的备注';
+  f.nodes.save.fire('click');
+  assert.equal(f.controller.isEditing, false);
+  assert.equal(f.controller.hasPending, true);
+  f.storage.values.set(favoriteKey, '[]');
+  f.storage.values.delete(noteKey(1));
+  f.storage.denyWriteKeys.clear();
+  const writes = f.storage.writes.length;
+  f.nodes.retry.fire('click');
+  assert.match(f.nodes.feedback.textContent, /其他窗口.*避免覆盖/);
+  assert.equal(f.storage.values.has(noteKey(1)), false);
+  assert.ok(f.row(markId(1)).textContent.includes('仅在本页的备注'));
+  assert.equal(f.controller.hasPending, true);
+  f.nodes.discard.fire('click');
+  assert.equal(f.controller.hasPending, false);
+  assert.deepEqual(visibleIds(f), []);
+  assert.equal(f.storage.values.has(noteKey(1)), false);
+  assert.equal(f.storage.writes.length, writes);
   f.controller.destroy();
 });
