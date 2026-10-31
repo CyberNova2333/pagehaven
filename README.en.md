@@ -208,6 +208,10 @@ The deployment adapters support **Cloudflare Pages, EdgeOne Makers, and GitHub P
 
 The release sequence is: **validate → prepare baseline → upload immutable resources → deploy → activate production version → record status and submit search updates**. Preview and upload-only runs leave the production pointer unchanged. Search pages use the database from the same build.
 
+Uploads and dry-runs verify the database SHA-256, chunk digests, version, and configuration before
+contacting storage. The same validated database, digest file, and manifest bytes are then uploaded,
+rejecting same-size corruption or files mixed from another build.
+
 The CNB release form requires `publish_secrets_url`. Selecting a deployment target also requires `deploy_secrets_url`. These must point to publishing and deployment secret files that you are authorized to reference. Upload-only runs still require publishing secrets. Default checks do not read external secret files.
 
 Secret-file addresses use HTTPS and the `/-/blob/<ref>/<file>.yml` form; YAML and JSON files are also supported. Do not embed credentials, query parameters, or fragments in these addresses. CNB checks file existence and access permissions. Keep account identifiers and credentials out of the repository.

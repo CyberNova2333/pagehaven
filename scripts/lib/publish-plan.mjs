@@ -15,6 +15,7 @@
 // 本阶段不读写共享 manifest.json；正式部署成功后由单独的启用步骤更新当前版本。
 import { basename } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { CHUNK_MANIFEST_VERSION, computeChunkManifest } from '@gallery/core/db/chunks';
 
 export const CACHE_IMMUTABLE_YEAR = 'public, max-age=31536000, immutable';
 export const CACHE_MANIFEST = 'public, max-age=300';
@@ -55,6 +56,29 @@ export function sameReleaseManifest(previous, next) {
   } catch {
     return false;
   }
+}
+
+/** 发布使用这次校验的同一份字节，避免只比长度或校验后再次读盘。 */
+export async function verifyDbArtifacts({ manifest, dbConfig, dbBytes, chunksBytes }) {
+  const reject = (problem) => {
+    const error = new Error(`发布完整性校验失败：${problem}`);
+    error.issues = [problem];
+    throw error;
+  };
+  const meta = manifest.db;
+  if (!meta || meta.version !== manifest.version) reject('数据库版本与 manifest 不一致');
+  if (!Number.isSafeInteger(meta.size) || meta.size <= 0 || meta.size !== dbBytes.byteLength) reject('数据库实际长度与 manifest 不一致');
+  if (meta.pageSize !== dbConfig.page_size || meta.chunkSize !== dbConfig.chunk_size) reject('数据库页大小或分块大小与站点配置不一致');
+  if (typeof meta.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(meta.sha256)) reject('manifest.db.sha256 无效');
+  let chunks;
+  try { chunks = JSON.parse(Buffer.from(chunksBytes).toString('utf8')); }
+  catch { reject('分块摘要不是有效 JSON'); }
+  if (!chunks || chunks.version !== CHUNK_MANIFEST_VERSION || chunks.totalBytes !== meta.size || chunks.chunkSize !== meta.chunkSize) reject('分块摘要的版本、长度或块大小与 manifest 不一致');
+  const actual = await computeChunkManifest(dbBytes, meta.chunkSize);
+  if (actual.sha256 !== meta.sha256.toLowerCase()) reject('数据库实际 SHA-256 与 manifest.db.sha256 不一致');
+  if (typeof chunks.sha256 !== 'string' || chunks.sha256.toLowerCase() !== actual.sha256) reject('分块摘要的整份 SHA-256 与数据库不一致');
+  if (!Array.isArray(chunks.chunks) || chunks.chunks.length !== actual.chunks.length
+    || chunks.chunks.some((hash, index) => typeof hash !== 'string' || hash.toLowerCase() !== actual.chunks[index])) reject('数据库实际分块 SHA-256 与分块摘要不一致');
 }
 
 /**
