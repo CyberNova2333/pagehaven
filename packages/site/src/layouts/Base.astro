@@ -153,5 +153,171 @@ const canonical = `https://${site.domain}${url}`;
       {showSearch && <><span class="sep">·</span><a href="/search/">搜索台词</a></>}
       {tagline && <><span class="sep">·</span><span>{tagline}</span></>}
     </footer>
+    <style is:global>
+      /* 质感增强（阅读向：柔和光晕 + 纸面细点 + 卡片层次），不改任何功能 */
+      body {
+        background-image:
+          radial-gradient(700px 460px at 88% -8%, rgba(12,92,171,0.10), transparent 70%),
+          radial-gradient(760px 520px at -8% 26%, rgba(10,74,138,0.07), transparent 72%),
+          radial-gradient(rgba(9,9,11,0.035) 1px, transparent 1px);
+        background-size: auto, auto, 22px 22px;
+        background-attachment: fixed;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background-image:
+            radial-gradient(700px 460px at 88% -8%, rgba(88,159,228,0.12), transparent 70%),
+            radial-gradient(rgba(250,250,250,0.035) 1px, transparent 1px);
+          background-size: auto, 22px 22px;
+        }
+      }
+      body::before {
+        content: ""; position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 100;
+        background: linear-gradient(90deg, var(--accent, #0C5CAB), #38bdf8 55%, var(--accent-strong, #0a4a8a));
+        pointer-events: none;
+      }
+      .card, .series-card {
+        border: 1px solid color-mix(in srgb, var(--ink, #09090b) 10%, transparent);
+        box-shadow: 0 1px 2px rgba(9,9,11,0.05), 0 12px 28px -18px rgba(9,9,11,0.28), inset 0 1px 0 rgba(255,255,255,0.7);
+      }
+      .series-card { transition: transform 0.24s cubic-bezier(0.25,0.46,0.45,0.94), box-shadow 0.24s; }
+      .series-card:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(9,9,11,0.08), 0 24px 48px -20px rgba(12,92,171,0.35), inset 0 1px 0 rgba(255,255,255,0.7); }
+      .btn-primary {
+        background: var(--accent);
+        color: var(--on-accent);
+        box-shadow: 0 8px 20px -8px rgba(12,92,171,0.55) !important;
+        transition: transform 0.2s, box-shadow 0.2s !important;
+      }
+      .btn-primary:hover { transform: translateY(-1px) !important; box-shadow: 0 14px 28px -10px rgba(12,92,171,0.5) !important; }
+      .pill { box-shadow: 0 1px 2px rgba(9,9,11,0.06); transition: transform 0.2s, background-color 0.2s; }
+      .pill:hover { transform: translateY(-1px); }
+      nav { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+      @media (prefers-reduced-motion: reduce) {
+        .series-card, .btn-primary, .pill { transition: none !important; }
+        .series-card:hover, .btn-primary:hover, .pill:hover { transform: none !important; }
+      }
+    </style>
+    <style is:global>
+
+/* ============================================================
+   「书页」质感：保留颗粒、柔光和叠层纸边，颜色跟随配置与个人配色。
+   - 画布、纸页与纸边复用已有语义表面，不覆盖主题文字色。
+   - 卡片：叠层纸边阴影 + 左侧书脊阴影 + 金箔描边
+   - 章节标题：金箔/玫瑰双线装饰
+   不改任何功能与内容。
+   ============================================================ */
+:root {
+  --desk: var(--bg-mid);
+  --paper: var(--surface);
+  --paper-edge: var(--surface-soft);
+  --gold:  #a8823a;
+}
+body {
+  background-color: var(--desk) !important;
+  background-image:
+    radial-gradient(760px 480px at 88% -10%, rgba(180,72,122,0.07), transparent 70%),
+    radial-gradient(820px 540px at -8% 26%, rgba(107,79,160,0.06), transparent 72%),
+    radial-gradient(620px 420px at 92% 98%, rgba(168,130,58,0.08), transparent 72%),
+    radial-gradient(rgba(43,36,32,0.035) 1px, transparent 1px) !important;
+  background-size: auto, auto, auto, 22px 22px;
+  background-attachment: fixed;
+}
+.card, .tile, .series-card {
+  background-color: var(--paper) !important;
+  background-image: linear-gradient(90deg, rgba(43,36,32,0.045), transparent 30px) !important;
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent) !important;
+  border-radius: 8px !important;
+  box-shadow:
+    0 1px 1px rgba(43,36,32,0.05),
+    0 3px 0 -1px var(--paper),
+    0 6px 0 -3px var(--paper-edge),
+    0 16px 30px -18px rgba(43,36,32,0.22),
+    inset 0 1px 0 rgba(255,255,255,0.95) !important;
+  transition: transform 0.25s cubic-bezier(0.215,0.61,0.355,1), box-shadow 0.25s !important;
+}
+.series-card:hover, .tile:hover {
+  transform: translateY(-3px) !important;
+  box-shadow:
+    0 1px 1px rgba(43,36,32,0.05),
+    0 3px 0 -1px var(--paper),
+    0 6px 0 -3px var(--paper-edge),
+    0 24px 40px -20px rgba(43,36,32,0.26),
+    inset 0 1px 0 rgba(255,255,255,0.95) !important;
+}
+h1::after, h2::after {
+  content: "";
+  display: block;
+  width: 64px; height: 3px;
+  margin-top: 12px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent, #b4487a), var(--gold));
+  box-shadow: 0 5px 0 -1px color-mix(in srgb, var(--gold) 45%, transparent);
+}
+.eyebrow { letter-spacing: 0.16em; }
+@media (prefers-reduced-motion: reduce) {
+  .card, .tile, .series-card { transition: none !important; }
+  .series-card:hover, .tile:hover { transform: none !important; }
+}
+</style>
+    <style is:global>
+
+/* 深色模式下的「书页」配色（此前缺失，导致深色模式被强制成米白） */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-color-scheme="light"]) {
+    --gold: #d9b56a;
+  }
+  :root:not([data-color-scheme="light"]) .card,
+  :root:not([data-color-scheme="light"]) .tile,
+  :root:not([data-color-scheme="light"]) .series-card {
+    box-shadow:
+      0 1px 1px rgba(0,0,0,0.5),
+      0 3px 0 -1px var(--paper),
+      0 6px 0 -3px var(--paper-edge),
+      0 16px 30px -18px rgba(0,0,0,0.6),
+      inset 0 1px 0 rgba(255,255,255,0.06) !important;
+  }
+}
+:root[data-color-scheme="dark"] {
+  --gold: #d9b56a;
+}
+:root[data-color-scheme="dark"] .card,
+:root[data-color-scheme="dark"] .tile,
+:root[data-color-scheme="dark"] .series-card {
+  box-shadow:
+    0 1px 1px rgba(0,0,0,0.5),
+    0 3px 0 -1px var(--paper),
+    0 6px 0 -3px var(--paper-edge),
+    0 16px 30px -18px rgba(0,0,0,0.6),
+    inset 0 1px 0 rgba(255,255,255,0.06) !important;
+}
+</style>
+    <script src="/day-night-switch.js" is:inline></script>
+    <script>
+      import { mountDayNightControl } from '../lib/day-night-control.js';
+      mountDayNightControl(window, document);
+    </script>
+    <style is:global>      /* 卡片与非按钮链接的细节 */
+      main a:not(.pill):not(.btn) { text-underline-offset: 3px; transition: color 0.18s ease, text-decoration-color 0.18s ease; }
+      main a:not(.pill):not(.btn):hover { text-decoration: underline; text-decoration-thickness: 1px; }
+      .series-card { cursor: pointer; }
+      .series-card:hover { border-color: color-mix(in srgb, var(--gold, #a8823a) 55%, transparent) !important; }
+</style>
+    <style is:global>
+
+/* 明暗切换：颜色无极过渡（不再用覆盖层，避免切换尾声出现顿挫） */
+html.dn-color-shift body,
+html.dn-color-shift * {
+  transition:
+    background-color 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+    fill 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+    stroke 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+    outline-color 0.7s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.dn-color-shift body, html.dn-color-shift * { transition: none !important; }
+}
+</style>
   </body>
 </html>

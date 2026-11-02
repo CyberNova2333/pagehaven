@@ -72,6 +72,8 @@ Library, bookmark, and progress updates arriving close together from other tabs 
 
 Use the appearance selector in the navigation to choose “浅色” (Light), “深色” (Dark), or “跟随系统” (Follow system). Follow system is the default and responds to system appearance changes. The choice is remembered for the current site and browser across page visits. If browser storage is unavailable, the page shows a notice and the choice still works on the current page.
 
+The adjacent day/night scene switch provides a shortcut to light or dark appearance. Choose Follow system in the selector to restore automatic appearance. Both controls share the same state, so changes from the system or another tab also update the scene switch.
+
 The library, search, bookmarks, and reading controls share the selected appearance, including enhanced pagination. Comic images are not inverted. A small script reads a saved choice before the body is displayed to reduce a light flash on opening. Without JavaScript, CSS still follows the system and the manual selector remains hidden. This interface preference is excluded from reading-data backups and does not change site configuration or the publishing process.
 
 ### Back up and restore reading data
