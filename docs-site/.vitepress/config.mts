@@ -14,7 +14,8 @@ export default {
   lang: 'zh-CN',
   title: "页间 · Pagehaven 源码指南",
   cleanUrls: true,
-  markdown: { config: guideLinks(pages) },
+  // guideLinks 已按正文来源处理链接，避免 include 再次重定位。
+  markdown: { include: { rebaseRelativeUrls: false }, config: guideLinks(pages) },
   themeConfig: {
     siteTitle: "Pagehaven",
     nav: [{ text: '阅读路径', link: '/' }],

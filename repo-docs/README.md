@@ -33,6 +33,16 @@ npm test
 
 文档站的启动与构建命令见根 README 的文档入口。文档构建只验证说明页面，不证明业务可用或已部署。
 
+## 文档构建依赖
+
+文档站独立安装依赖；根目录的依赖审计不覆盖它。更新后运行 `npm --prefix docs-site ci`、`npm --prefix docs-site audit` 和 `npm --prefix docs-site run docs:build`，再检查默认主题导航、本地搜索及开发模式的 Markdown 引用热更新。
+
+当前在[文档依赖配置](../docs-site/package.json)中精确锁定 VitePress **2.0.0-alpha.21（预发布版）**，由其原生依赖 Vite 8；锁文件固定实际安装版本，不使用跨主要版本的传递依赖覆盖。原稳定版 1.6.4 的 Vite 5 / esbuild 链仍有已知告警；选择预发布版意味着后续升级仍须重跑文档验证，不自动跟随 `next` 标签。已验证项目现有默认主题、静态指南和本地搜索，不据此承诺其他扩展兼容。
+
+新版默认会重定位被引用 Markdown 的相对链接；[文档配置](../docs-site/.vitepress/config.mts)显式关闭 `markdown.include.rebaseRelativeUrls`，继续由现有 `guideLinks` 按正文来源转换，避免同一链接被处理两次。[官方迁移记录](https://github.com/vuejs/vitepress/blob/v2.0.0-alpha.21/CHANGELOG.md)
+
+开发模式下正文可热更新，但已打开的搜索框可能继续使用旧索引；编辑后刷新页面再检查搜索，被引用正文仍未更新时重启 `docs:dev`。这不是已验证的实时搜索能力；正式静态构建会重新生成完整索引。
+
 ## 既有专题
 
 - [数据模型与平台约束](../docs/ARCHITECTURE.md)
