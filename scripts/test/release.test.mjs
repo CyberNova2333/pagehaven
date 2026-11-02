@@ -77,7 +77,12 @@ function context({ target = 'all', environment = 'production', previous = '{"ver
 }
 
 test('releasePlan：生产目标展开，预览与仅上传不能启用，GitHub 预览与示例生产域名被拒绝', () => {
-  assert.deepEqual(releasePlan({ target: 'all', domain: DOMAIN, imageHosts: IMAGE_HOSTS }).targets, ['cloudflare', 'edgeone', 'github']);
+  assert.deepEqual(releasePlan({ target: 'all', domain: DOMAIN, imageHosts: IMAGE_HOSTS }).targets, ['edgeone', 'esa', 'github', 'workers']);
+  assert.deepEqual(releasePlan({ target: 'cloudflare', domain: DOMAIN, imageHosts: IMAGE_HOSTS }).targets, ['cloudflare']);
+  for (const target of ['workers', 'esa']) {
+    assert.deepEqual(releasePlan({ target, domain: DOMAIN, imageHosts: IMAGE_HOSTS }).targets, [target]);
+    assert.equal(releasePlan({ target, environment: 'preview' }).activate, false);
+  }
   assert.equal(releasePlan({ target: 'none', domain: 'gallery.example.org' }).activate, false);
   assert.equal(releasePlan({ target: 'edgeone', environment: 'preview', domain: 'gallery.example.org' }).activate, false);
   for (const target of ['github', 'all']) assert.throws(() => releasePlan({ target, environment: 'preview', domain: DOMAIN }), /独立预览目标/);

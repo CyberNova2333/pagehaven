@@ -1,23 +1,30 @@
 # 页间 · Pagehaven 源码证据
 
-这是调查台账：解释主流程的依据与边界，不能替代运行日志。源码锚点为 `727cb72578cd6152f67dcb33be578e2a2fe80e56`；本轮还读取了当前工作树，未提交内容不等于已交付版本。
+这是调查台账：解释主流程的依据与边界，不能替代运行日志。最近同步锚点为 `0c9d890ca006f87a8ff5a6c0c92a982646488326`；2026-11-02 的四平台适配说明另包含当前未提交工作树，不等于已交付或已部署版本。
 
 ## Evidence Traversal Log
 
 | Pass | Purpose | Inspected evidence | What changed in the model |
 | --- | --- | --- | --- |
 | Pass 1 | 建立输入、状态和输出路径 | `scripts/build-manifest.mjs`, `scripts/build-db.mjs`, `scripts/build-site.mjs`；根 README、package 或构建入口、Agent 规则 | 固定 walkthrough 的代表性行为，并列出交接位置。 |
-| Pass 2 | 反查失败与遗漏依赖 | `scripts/test/site-build.test.mjs`, `scripts/test/build-manifest.test.mjs`, `scripts/test/build-db.test.mjs`；配置、已有文档与范围内目录 | 反查空内容、清单版本/指纹不一致、无凭据图片核对和平台配置关闭路径；检查真实构建测试的生成目录副作用，确定本轮不运行该测试。 |
+| Pass 2（初次建档） | 反查失败与遗漏依赖 | `scripts/test/site-build.test.mjs`, `scripts/test/build-manifest.test.mjs`, `scripts/test/build-db.test.mjs`；配置、已有文档与范围内目录 | 反查空内容、清单版本/指纹不一致、无凭据图片核对和平台配置关闭路径；检查真实构建测试的生成目录副作用，初次建档时未运行该测试。 |
+| Pass 1（2026-11-02） | 跟进四平台构建与部署交接 | `packages/platform/src/targets.js`、`packages/platform/src/generators/deploy.js`、`scripts/lib/release.mjs`、`.cnb/web_trigger.yml` | `all` 是四个主要目标，旧 Pages 独立保留；部署控制模板不进入公开产物。 |
+| Pass 2（2026-11-02） | 反查容量、预览与上线确认 | `scripts/lib/deploy-budget.mjs`、`scripts/lib/deploy-proof.mjs`、`scripts/lib/deploy-ready.mjs`、`scripts/deploy.mjs`、`scripts/check.mjs` | 预留随机验证文件后检查预算；命令成功仍须读回本次目标的证明；ESA staging 请求与连接器同包；多目标失败不承诺跨平台回滚。 |
 
 ## 证据表
 
 | Claim | Evidence | Confidence | Caveat | Used by |
 | --- | --- | --- | --- | --- |
-| 把配置和内容固定为一次构建输入 | [源码定位](../../scripts/build-manifest.mjs)：`buildManifest、verifyOnly、MISSING_FILE` | Confirmed | 源码静态确认；本轮未运行业务路径 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
-| 给检索库绑定相同版本 | [源码定位](../../scripts/build-db.mjs)：`readManifest、resolveVersion、galleryFingerprint` | Confirmed | 源码静态确认；本轮未运行业务路径 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
-| 每话生成一个可直接浏览的页面 | [源码定位](../../scripts/build-site.mjs)：`writeSiteGalleryJson、manifest.sourceSha256 检查、astro build` | Confirmed | 源码静态确认；本轮未运行业务路径 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
-| 补齐静态托管需要的文件 | [源码定位](../../scripts/build-site.mjs)：`GENERATED_FILES、.nojekyll、metaRefresh` | Confirmed | 源码静态确认；本轮未运行业务路径 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
-| 用预算与真实构建约束结果 | [源码定位](../../scripts/test/site-build.test.mjs)：`CONFIG_FILE / DATA_DIR / DIST_DIR / OUT_DIR、run` | Confirmed | 源码静态确认；本轮未运行业务路径 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
+| 把配置和内容固定为一次构建输入 | [源码定位](../../scripts/build-manifest.mjs)：`buildManifest、verifyOnly、MISSING_FILE` | Confirmed | 初次调查为源码确认；最近运行结果见同步记录 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
+| 给检索库绑定相同版本 | [源码定位](../../scripts/build-db.mjs)：`readManifest、resolveVersion、galleryFingerprint` | Confirmed | 初次调查为源码确认；最近运行结果见同步记录 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
+| 每话生成一个可直接浏览的页面 | [源码定位](../../scripts/build-site.mjs)：`writeSiteGalleryJson、manifest.sourceSha256 检查、astro build` | Confirmed | 初次调查为源码确认；最近运行结果见同步记录 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
+| 补齐静态托管需要的文件 | [源码定位](../../scripts/build-site.mjs)：`GENERATED_FILES、.nojekyll、metaRefresh` | Confirmed | 初次调查为源码确认；最近运行结果见同步记录 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
+| 用预算与真实构建约束结果 | [源码定位](../../scripts/test/site-build.test.mjs)：`CONFIG_FILE / DATA_DIR / DIST_DIR / OUT_DIR、run` | Confirmed | 初次调查为源码确认；最近运行结果见同步记录 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
+| 公开响应配置与部署控制模板分离 | [生成物分类](../../packages/platform/src/index.js)：`GENERATED_FILES / DEPLOY_CONFIG_FILES`；[模板生成](../../packages/platform/src/generators/deploy.js) | Confirmed | 模板不含项目身份；实际部署配置临时注入，云端未验收 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
+| ESA 与四端共同发布拒绝超过 1,999 文件的业务产物 | [目标预算](../../packages/platform/src/targets.js)：`TARGET_CAPABILITIES`；[产物检查](../../scripts/lib/deploy-budget.mjs)：`validateDeploymentBudget` | Confirmed | 总量预留 1 文件和 4,096 字节供部署证明；文件数包含非章节资源，实际包仍受 CLI 限额约束 | [主流程](../walkthroughs/one-real-run.md) |
+| 新目标须读回本次随机证明才生成成功回执，其他平台及旧证明均不匹配 | [随机证明](../../scripts/lib/deploy-proof.mjs)：`createDeploymentProof / matchesDeploymentProof`；[目标核对](../../scripts/lib/deploy-ready.mjs)：`waitForDeployment`；[部署入口](../../scripts/deploy.mjs)：`recordDeployment` | Confirmed | 证明只进入目标上传副本；源码和本地测试不证明真实云服务已上线 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
+| ESA staging 用同一 Undici 包的请求和连接器保留指定 IP、Host 与证书校验 | [预览连接](../../scripts/lib/deploy-ready.mjs)：`createStagingVerifier` | Confirmed | 账户的测试 IP、证书和云端连通性仍需真实预览验证 | [主流程](../walkthroughs/one-real-run.md) |
+| 新目标同样禁止 push 自动部署 | [流水线守卫](../../scripts/lib/pipeline-policy.mjs)：`hasDeploymentCommand` | Confirmed | 只允许现有手动发布入口，未实际触发远端流水线 | [代码地图](../code-map.md) |
 
 ## 反证与后续问题
 
@@ -27,8 +34,8 @@
 
 ## 范围与未验证事项
 
-覆盖构建命令编排、清单与检索库交接、站点生成和预算守卫；源码地图只列这条路径涉及的文件。浏览器阅读偏好、备份恢复、在线检索细节、OCR 导入与三平台真实部署未展开。未提交的阅读器及外观变更保持原样，不作为已发布事实。
+覆盖构建命令编排、清单与检索库交接、站点生成、目标预算及部署回执边界。浏览器阅读偏好、备份恢复、在线检索细节、OCR 导入与平台真实部署验收未展开。当前工作区实现不等于已发布版本。
 
-以上业务检查未执行；npm run build 和站点集成测试都可能写入共享生成目录，本轮只运行独立文档站构建。正式验收仍需 npm run check、npm test、npm run build，涉及平台适配时按根规则另做预览部署。
+表中的源码确认描述初次调查依据，不代表后续测试结果。各轮实际执行记录见[同步记录](../change-log.md)；完整构建与集成测试可能写入共享生成目录，执行前需保护已有工作。平台适配仍须另做真实预览部署。
 
 本轮文档结构校验与站点构建结果记在[同步记录](../change-log.md)。源码链接在仓库阅读时指向真实文件；独立站点只发布指南；文档目录之外的仓库源码链接在网页中显示为精确路径，源码不随站点打包。原始 Markdown 保留本地可核对链接。已有 VitePress 使用原文包含，正文只维护一份。

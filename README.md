@@ -17,7 +17,7 @@
 
 **页间是一个通用的静态漫画站。** 它把作品目录、漫画阅读器和台词检索放在一起，以纸色、墨色与青绿为基础，提供三套深浅配色，适合建立自己的漫画资料库。
 
-站点由 Astro 构建，可部署到 Cloudflare Pages、EdgeOne Makers 或 GitHub Pages。图片与检索库保存在对象存储中，经 CDN 读取；浏览与检索不需要常驻应用服务器。仓库默认不附带实际漫画、线上账号或已配置的部署项目。
+站点由 Astro 构建，提供 EdgeOne Makers、ESA Pages、GitHub Pages 和 Cloudflare Workers Static Assets 部署入口，并保留 Cloudflare Pages。图片与检索库保存在对象存储中，经 CDN 读取；浏览与检索不需要常驻应用服务器。仓库默认不附带实际漫画、线上账号或已配置的部署项目。各平台容量与预览边界见下方部署说明，适配代码不代表已经完成云端验收。
 
 中文是默认 README；顶部按钮可切换到英文。网站当前默认中文界面，README 的语言切换只切换文档。
 
@@ -129,7 +129,7 @@ npm run init -- --help
 
 参数模式默认只预览，确认后在同一条命令末尾加 `--write` 才写入；`--dry-run` 可显式预览，不能与 `--write` 同用。非交互环境应使用参数模式。图片源可重复传入 `--image-host`，最多两个；`--text-layer`、`--enhanced-reader` 和 `--platform-config` 接受 `true` 或 `false`。`--site-lang` 只设置 HTML 语言标记，不翻译网站界面。
 
-`--target` 取 `none`（默认）、`cloudflare`、`edgeone` 或 `github`，仅选择平台设置提示；实际发布目标仍由手动发布表单指定。`--project` 写入 Cloudflare 项目名，其他平台的账号标识和凭据仍放在 secrets。初始化允许示例域名用于预览，不创建云资源或触发部署。
+`--target` 取 `none`（默认）、`edgeone`、`esa`、`github`、`workers` 或 `cloudflare`，仅选择平台设置提示；实际发布目标仍由手动发布表单指定。`--project` 写入 Cloudflare Pages 项目名，其他平台的账号标识和凭据仍放在 secrets。初始化允许示例域名用于预览，不创建云资源或触发部署。
 
 工具保留已有注释和未选择的字段，复用完整配置校验；写入前将原文件备份到 `out/init/`（可由 `OUT_DIR` 覆盖），通过同目录临时文件原子替换，并在检测到配置被同时修改时中止。`--config` 可指定其他现有配置，未指定时依次使用 `CONFIG_FILE` 环境变量或仓库根文件。初始化后运行 `npm run build` 刷新派生配置和站点产物。
 
@@ -196,7 +196,19 @@ JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`em
 
 ## 部署
 
-现有部署适配器支持 **Cloudflare Pages、EdgeOne Makers、GitHub Pages**。`npm run build` 只产生文件；正式发布由 CNB 分支详情页的「发布」按钮手动触发。推送 `main` 只自动检查，不自动部署，也没有定时发布。
+部署目标包括 **EdgeOne Makers、ESA Pages、GitHub Pages、Cloudflare Workers Static Assets**，并保留独立的 Cloudflare Pages 入口。`npm run build` 只产生文件；正式发布由 CNB 分支详情页的「发布」按钮手动触发。推送 `main` 只自动检查，不自动部署，也没有定时发布。
+
+| 发布目标 | 命令 | 预览与容量边界 |
+| --- | --- | --- |
+| `edgeone` | `npm run deploy:edgeone` | Makers preview；沿用仓库文件预算 |
+| `esa` | `npm run deploy:esa` | preview 映射到 staging；上传最多 2,000 文件，业务产物最多 1,999 文件；未压缩总量不超过 1,024,000,000 字节，包含部署验证预留 |
+| `github` | `npm run deploy:github` | 尚无独立预览目标；站点总大小不超过 1,000,000,000 字节 |
+| `workers` | `npm run deploy:workers` | 独立预览 Worker，不能与生产同名；使用 Static Assets |
+| `cloudflare` | `npm run deploy:cloudflare` | 原有 Cloudflare Pages 入口，仍按分支区分预览 |
+
+`all` 发布到 Makers、ESA、GitHub Pages、Workers 四个目标，**不包含旧的 Cloudflare Pages**；需要 Pages 时单独选择 `cloudflare`。`preview` 配合 `github` 或 `all` 会在上传前拒绝。站点使用自定义域名或用户站的根目录；GitHub 项目站的 `/仓库名/` 子路径尚未适配。
+
+仓库仍限制最多 18,000 个文件、单文件 20 MiB。Workers 与 ESA 在上传前另预留 1 个文件和 4,096 字节供本次部署验证：默认预算下，业务产物最多分别为 17,999 和 1,999 文件；ESA 总大小检查也包含这 4,096 字节。超额即拒绝，不自动拆站或引入函数取数，实际部署包仍受 CLI 限额约束。同一业务产物要发布四端就必须满足最严格目标的预算。ESA Pages 流量使用站点套餐额度，维护者需核对账户资格与费用；适配器不自动开通付费服务。[ESA 限额](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/what-is-functions-and-pages/)、[ESA 计费](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/functions-and-pages-billing)
 
 发布流程为：**核对 → 准备基线 → 上传不可变资源 → 部署 → 启用生产版本 → 状态记录与搜索推送**。预览与仅上传不会改动生产指针，搜索页面固定使用同次构建的数据库。
 
@@ -204,6 +216,17 @@ JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`em
 上传同一份数据库、摘要与清单字节，拒绝同尺寸损坏或混入其他构建的文件。
 
 CNB 发布表单中的 `publish_secrets_url` 必填；选择部署目标时还需提供 `deploy_secrets_url`，分别指向有权引用的发布与部署密钥文件。仅上传也需要发布密钥。默认检查不读取外部密钥文件。
+
+新增目标的部署密钥按下表配置，项目标识与验证地址也放在 secrets 中：
+
+| 目标 | 生产环境 | 预览环境另需 |
+| --- | --- | --- |
+| Workers | `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_WORKER_NAME`、`WORKERS_DEPLOY_URL` | `CLOUDFLARE_PREVIEW_WORKER_NAME`、`WORKERS_PREVIEW_DEPLOY_URL`；名称和地址均不得与生产相同 |
+| ESA | `ESA_ACCESS_KEY_ID`、`ESA_ACCESS_KEY_SECRET`、`ESA_PROJECT_NAME`、`ESA_DEPLOY_URL`；临时凭据可加 `ESA_SECURITY_TOKEN` | `ESA_PREVIEW_IP`，填控制台的测试环境 IP；使用同一项目的 staging 环境 |
+
+验证地址填写能实际到达目标平台的 HTTPS 根地址，不填写文件路径，也不携带凭据、端口、查询参数或片段。若共享站点域名当前仍指向 Makers，就不能用它验证备用的 Workers 或 ESA；需配置目标自身可访问的入口。Workers 预览使用独立地址。ESA 预览继续使用正式域名，但 CI 仅为这次验证请求把该域名解析到 `ESA_PREVIEW_IP`，保留 Host、SNI 和 TLS 证书校验；不改系统 hosts，不使用需要人工续期的临时预览地址。生产验证不使用测试 IP。
+
+Workers 与 ESA 每次部署都会在临时上传副本中增加一个随机命名的验证文件，绑定本次随机值、目标、版本、指纹与环境；共享 `dist` 和归档保持原样。CLI 成功后必须从验证地址读回这份文件，拒绝重定向、其他目标和上一次部署的证明；本地 `release.json` 仍用于核对构建，不能单独证明目标已上线。验证文件不含项目名、账号或凭据。多平台发布并非跨平台原子事务：后续目标失败时，前面成功的站点可能已更新，但共享生产指针不会启用。
 
 密钥文件地址使用 HTTPS 和 `/-/blob/<ref>/<file>.yml` 格式，也支持 YAML、JSON；地址中不携带凭据、查询参数或片段。存在性和访问权限由 CNB 检查，账号与凭据不写进仓库。
 
@@ -249,7 +272,8 @@ flowchart LR
 - 归一化后至少输入 2 个字：2 字查询用 `LIKE`，3 字及以上用 FTS5 trigram；只检索已收录的台词稿。
 - OCR 只生成待校对草稿，不自动作为正式台词发布。
 - 当前没有用户系统、评论或在线上传后台；站点界面尚未提供中英文切换。
-- 当前部署入口是三种静态托管平台，尚未提供 Cloudflare Workers 应用部署流程。
+- Workers 入口只部署静态资源，不启用服务端检索；ESA Pages 的 2,000 文件上限中预留 1 个部署验证文件，业务产物最多 1,999 文件。四端部署仍需真实预览验收。
+- 页面链接与索引以域名根目录为基准，尚不支持 GitHub Pages `/仓库名/` 子路径。不同域名的个人记录按浏览器源隔离，可用现有备份恢复迁移。
 
 ## 参与开发
 

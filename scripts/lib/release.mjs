@@ -1,16 +1,17 @@
 // 上传与启用分开：已部署页面绑定自己的库，共享指针只在整次生产部署成功后移动。
 import { createHash } from 'node:crypto';
+import { DEPLOY_TARGETS, DEFAULT_RELEASE_TARGETS } from '@gallery/platform';
 import { getObject, putObject } from './r2.mjs';
 
 export const RELEASE_STATE_FILE = 'release-state.json';
-export const RELEASE_TARGETS = ['cloudflare', 'edgeone', 'github'];
+export const RELEASE_TARGETS = DEPLOY_TARGETS;
 
 const isPlaceholderHost = (host) => !host || /(^|\.)(example\.(com|net|org)|localhost|invalid|test)$/i.test(host);
 
 export function releasePlan({ target = 'none', environment = 'production', domain, imageHosts }) {
   if (!['none', 'all', ...RELEASE_TARGETS].includes(target)) throw new Error('发布目标无效');
   if (!['production', 'preview'].includes(environment)) throw new Error('部署环境只能是 production 或 preview');
-  const targets = target === 'all' ? [...RELEASE_TARGETS] : target === 'none' ? [] : [target];
+  const targets = target === 'all' ? [...DEFAULT_RELEASE_TARGETS] : target === 'none' ? [] : [target];
   if (environment === 'preview' && targets.includes('github')) {
     throw new Error('GitHub Pages 尚未配置独立预览目标：preview 不能选择 github 或 all');
   }

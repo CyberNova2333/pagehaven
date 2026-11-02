@@ -13,7 +13,7 @@ function help(locale) {
 --title <名称>                       站点名称
 --domain <域名>                      站点主机名，不含协议、路径
 --image-host <域名>                  图片主机名，可重复，最多两项
---target <目标>                      none | cloudflare | edgeone | github；仅配置引导
+--target <目标>                      none | cloudflare | edgeone | github | workers | esa；仅配置引导
 --project <名称>                     Cloudflare Pages 项目名
 --site-lang <语言>                   HTML 语言标记，不翻译网站界面
 --text-layer <true|false>            文字层
@@ -28,7 +28,7 @@ function help(locale) {
 --title <name>                       Site title
 --domain <hostname>                  Site hostname, without protocol or path
 --image-host <hostname>              Repeat for up to two image hosts
---target <target>                    none | cloudflare | edgeone | github; setup guidance only
+--target <target>                    none | cloudflare | edgeone | github | workers | esa; setup guidance only
 --project <name>                     Cloudflare Pages project name
 --site-lang <language>               HTML language tag; does not translate the website
 --text-layer <true|false>            Text overlays
@@ -50,6 +50,8 @@ function summary(plan, file, locale) {
   if (plan.target === 'cloudflare') console.log(say(locale, '请准备对应的 Pages 项目，并在部署密钥中配置账号与令牌。', 'Prepare the matching Pages project and configure its account and token in deployment secrets.'));
   if (plan.target === 'edgeone') console.log(say(locale, '请在部署密钥中配置项目 ID、项目名、区域与令牌。', 'Configure the project ID, project name, region, and token in deployment secrets.'));
   if (plan.target === 'github') console.log(say(locale, '请在部署密钥中配置发布仓库与令牌，并将 Pages 来源设为 gh-pages 根目录。', 'Configure the publishing repository and token in deployment secrets, with Pages sourced from the gh-pages root.'));
+  if (plan.target === 'workers') console.log(say(locale, '请在部署密钥中配置账号、令牌、独立生产和预览 Worker 名称及对应验证地址。', 'Configure the account, token, separate production and preview Worker names, and verification URLs in deployment secrets.'));
+  if (plan.target === 'esa') console.log(say(locale, '请核对 ESA 套餐资格，在部署密钥中配置项目及验证地址；每个项目最多 2,000 个静态文件。', 'Check ESA plan eligibility and configure project credentials and verification URLs in deployment secrets; each project allows at most 2,000 static files.'));
   if (!plan.productionDomainsReady) console.log(say(locale, '当前示例域名可用于构建预览；生产发布前需更换站点及图片域名。', 'The current example domains support build previews; replace site and image hostnames before production deployment.'));
   console.log(say(locale, '初始化只编辑配置，不创建平台资源或发布站点。', 'Setup only edits configuration; it does not create hosted resources or deploy the site.'));
 }

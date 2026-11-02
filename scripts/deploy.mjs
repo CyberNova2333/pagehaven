@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// deploy:<target> —— 把 dist 发到 cloudflare | edgeone | github（ARCHITECTURE §3 三平台矩阵）。
+// deploy:<target> —— 将同一静态产物交给已注册目标（ARCHITECTURE §3 平台矩阵）。
 //
 // 命令行与校验规则在 scripts/lib/deploy-plan.mjs（纯函数，有单测）；这里只读配置与环境、打印、执行。
 //   · cloudflare / edgeone：起对应 CLI，stdio 直通——CLI 的报错原样透出，脚本不翻译也不吞；
@@ -7,6 +7,7 @@
 //   · github：先校验 dist 里的基线文件，再把 dist 推到 GITHUB_PAGES_REPO 的 gh-pages 分支
 //     （GitHub Pages 从该分支发布）；凭据是 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN，
 //     只校验不上传用 DEPLOY_DRY_RUN=1。
+//   · workers / esa：临时上传副本、独立预览、目标预算与本次随机部署标记核对。
 // 只在 CI 里真跑；凭据缺失是配置错误，退出 1（铁律 7）。
 //
 // EdgeOne 的项目定位有两层（scripts/lib/edgeone.mjs）：
@@ -21,9 +22,10 @@
 // dist 里的 edgeone.json 是否被识别；EDGEONE_API_REGION 与 token 的签发区域是否一致。
 import { spawnSync } from 'node:child_process';
 import { readFile, readdir, mkdtemp, mkdir, cp, rm, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, constants } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative, sep } from 'node:path';
+import { join, relative, sep, dirname, resolve } from 'node:path';
+import { renderWorkersDeployConfig, renderEsaDeployConfig } from '@gallery/platform';
 import { loadSiteConfig } from './lib/config.mjs';
 import { TARGETS, GITHUB_BASELINE_FILES, planDeployCommand, checkGithubBaseline } from './lib/deploy-plan.mjs';
 import { verifyEdgeoneProject } from './lib/edgeone.mjs';
@@ -32,6 +34,9 @@ import { readManifest } from './lib/manifest.mjs';
 import { releasePlan, releaseFingerprint, deploymentReceipt } from './lib/release.mjs';
 import { DIST_DIR, OUT_DIR, ROOT } from './lib/paths.mjs';
 import { step, ok, fail, note } from './lib/log.mjs';
+import { inspectDeploymentFiles, validateDeploymentBudget } from './lib/deploy-budget.mjs';
+import { waitForDeployment, createStagingVerifier } from './lib/deploy-ready.mjs';
+import { createDeploymentProof, deploymentProofFile } from './lib/deploy-proof.mjs';
 
 const show = (p) => (p.startsWith(ROOT + sep) ? relative(ROOT, p).split(sep).join('/') : p);
 /** 预期中的配置错误：说清楚就退，不打栈——栈只会把手机上的日志推出屏幕。 */
@@ -41,7 +46,6 @@ const bail = (msg) => {
 };
 
 async function deploymentInput(target, environment) {
-  await rm(join(OUT_DIR, `deployed-${target}.json`), { force: true });
   const manifest = await readManifest(OUT_DIR);
   if (!manifest?.db || (process.env.RELEASE_VERSION && manifest.version !== process.env.RELEASE_VERSION)) {
     throw new Error('缺少本次完整构建的发布清单，请先运行 build');
@@ -55,6 +59,14 @@ async function deploymentInput(target, environment) {
 
 async function recordDeployment(receipt) {
   await writeFile(join(OUT_DIR, `deployed-${receipt.target}.json`), JSON.stringify(receipt) + '\n');
+}
+
+async function cleanupDeploymentDirectory(temp) {
+  const absolute = resolve(temp);
+  if (dirname(absolute) !== resolve(tmpdir()) || !absolute.startsWith(join(resolve(tmpdir()), 'pagehaven-deploy-'))) {
+    throw new Error('临时部署目录边界校验失败，拒绝清理');
+  }
+  await rm(absolute, { recursive: true, force: true });
 }
 
 /**
@@ -113,10 +125,19 @@ if (!TARGETS.includes(target)) {
 
 step(`deploy:${target}`);
 try {
+  const dryRun = process.env.DEPLOY_DRY_RUN === '1';
+  if (!dryRun) await rm(join(OUT_DIR, `deployed-${target}.json`), { force: true });
   const config = await loadSiteConfig();
   const environment = process.env.DEPLOY_ENV || 'production';
   releasePlan({ target, environment, domain: config.site.domain, imageHosts: config.images.hosts });
   if (!existsSync(DIST_DIR)) bail(`${show(DIST_DIR)} 不存在：先 npm run build`);
+  const budgetProblems = validateDeploymentBudget({ target, config, files: await inspectDeploymentFiles(DIST_DIR) });
+  if (budgetProblems.length) throw new Error(budgetProblems.join('\n'));
+  if (target === 'workers' || target === 'esa') {
+    for (const file of ['index.html', '404.html']) {
+      if (!(await readFile(join(DIST_DIR, file), 'utf8')).trim()) throw new Error('静态部署缺少非空首页或 404 页面');
+    }
+  }
 
   if (target === 'github') {
     const files = {};
@@ -158,6 +179,7 @@ try {
   note(plan.display);
   if (process.env.DEPLOY_ENV === 'preview') note('DEPLOY_ENV=preview：发到预览环境，核对 CLI 打出的项目名与 URL 后再发 production');
   if (process.env.DEPLOY_DRY_RUN === '1') {
+    if (target === 'workers' || target === 'esa') createDeploymentProof(await deploymentInput(target, environment));
     ok('DEPLOY_DRY_RUN=1：只打印命令，不执行');
     process.exit(0);
   }
@@ -185,19 +207,65 @@ try {
   const childEnv = { ...process.env };
   for (const k of plan.unsetEnv) delete childEnv[k];
   Object.assign(childEnv, plan.env);
+  if (target === 'workers' || target === 'esa') {
+    const credentials = target === 'workers'
+      ? ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']
+      : ['ESA_ACCESS_KEY_ID', 'ESA_ACCESS_KEY_SECRET', 'ESA_SECURITY_TOKEN'];
+    for (const key of Object.keys(childEnv)) {
+      if (/^(CLOUDFLARE_|WORKERS_|ESA_|ALIBABA_CLOUD_|EDGEONE_|GITHUB_)/.test(key) && !credentials.includes(key)) delete childEnv[key];
+    }
+  }
   // 在 npm run 下用 npm 自己的入口（npm_execpath）起，行为与 PATH 无关；直接 node 跑脚本时退回 PATH 里的 npm
   const npmCli = process.env.npm_execpath;
-  const opts = { cwd: ROOT, stdio: 'inherit', env: childEnv };
-  const r = npmCli ? spawnSync(process.execPath, [npmCli, ...plan.npmArgs], opts) : spawnSync('npm', plan.npmArgs, opts);
-  if (r.error) throw new Error(`起不来 npm：${r.error.message}`);
-  if (r.status !== 0) {
-    fail(`deploy:${target} 失败，CLI 退出码 ${r.status}（报错见上方 CLI 输出）`);
-    process.exit(r.status ?? 1);
+  let temp;
+  let proof;
+  try {
+    if (plan.configFile) {
+      proof = createDeploymentProof(receipt);
+      temp = await mkdtemp(join(tmpdir(), 'pagehaven-deploy-'));
+      const assets = join(temp, 'assets');
+      // COPYFILE_FICLONE 在支持的文件系统上避免全量复制字节，其他系统安全回退普通复制。
+      await cp(DIST_DIR, assets, { recursive: true, mode: constants.COPYFILE_FICLONE });
+      const copiedProblems = validateDeploymentBudget({ target, config, files: await inspectDeploymentFiles(assets) });
+      if (copiedProblems.length) throw new Error(copiedProblems.join('\n'));
+      const copiedMarker = JSON.parse(await readFile(join(assets, 'release.json'), 'utf8'));
+      if (['version', 'fingerprint', 'environment'].some((key) => copiedMarker[key] !== receipt[key])) {
+        throw new Error('复制期间构建标记变化，拒绝部署');
+      }
+      await writeFile(join(assets, deploymentProofFile(proof)), JSON.stringify(proof) + '\n', { flag: 'wx' });
+      const render = target === 'workers' ? renderWorkersDeployConfig : renderEsaDeployConfig;
+      await writeFile(join(temp, plan.configFile), render(config, { directory: assets, name: plan.configName }), { mode: 0o600 });
+    }
+    const opts = { cwd: temp || ROOT, env: childEnv, ...(temp ? { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 } : { stdio: 'inherit' }) };
+    const r = npmCli ? spawnSync(process.execPath, [npmCli, ...plan.npmArgs], opts) : spawnSync('npm', plan.npmArgs, opts);
+    if (temp) {
+      const secrets = Object.entries(process.env).filter(([key, value]) => value && /^(CLOUDFLARE_|WORKERS_|ESA_|ALIBABA_CLOUD_)/.test(key)).map(([, value]) => value).sort((a, b) => b.length - a.length);
+      let output = `${r.stdout || ''}${r.stderr || ''}`;
+      for (const secret of secrets) output = output.split(secret).join('***');
+      if (output.trim()) note(output.trim());
+    }
+    if (r.error) throw new Error('无法启动部署 CLI');
+    if (r.status !== 0) {
+      const error = new Error(`deploy:${target} 失败，CLI 退出码 ${r.status}（报错见上方 CLI 输出）`);
+      error.exitCode = r.status ?? 1;
+      throw error;
+    }
+    if (plan.verifyUrl) {
+      note('部署已提交，正在核对目标站点的发布版本');
+      const verifier = plan.verifyAddress ? createStagingVerifier(plan.verifyAddress) : null;
+      try {
+        await waitForDeployment({ url: plan.verifyUrl, receipt, proof, ...(verifier ? { fetchImpl: verifier.fetchImpl } : {}) });
+      } finally { await verifier?.close(); }
+    }
+  } finally {
+    if (temp) {
+      await cleanupDeploymentDirectory(temp);
+    }
   }
   await recordDeployment(receipt);
   ok(`deploy:${target} 完成`);
 } catch (e) {
   fail(e.message);
   if (!e.issues) console.error(e.stack);
-  process.exit(1);
+  process.exit(e.exitCode || 1);
 }

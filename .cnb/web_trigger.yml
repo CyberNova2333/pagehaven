@@ -43,8 +43,10 @@ branch:
               - { name: 仅上传版本化资源（不启用）, value: none }
               - { name: Cloudflare Pages, value: cloudflare }
               - { name: EdgeOne Makers, value: edgeone }
+              - { name: "ESA Pages（最多 2,000 文件）", value: esa }
+              - { name: Cloudflare Workers Static Assets, value: workers }
               - { name: GitHub Pages（需密钥仓库里的 GITHUB_PAGES_*）, value: github }
-              - { name: 全部, value: all }
+              - { name: 四平台（Makers、ESA、GitHub、Workers）, value: all }
           deploy_env:
             name: 部署环境
             description: preview 不影响生产状态；GitHub 与全部目标暂不支持预览

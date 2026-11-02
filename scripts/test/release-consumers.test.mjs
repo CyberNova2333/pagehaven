@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ROOT } from '../lib/paths.mjs';
 import yaml from 'js-yaml';
+import { DEPLOY_TARGETS } from '@gallery/platform';
 
 test('独立配置仍经 schema 校验，生产发布在构建和部署前拒绝占位图片域名', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'gallery-release-config-'));
@@ -85,7 +86,7 @@ test('发布流水线的真实条件：只有已选择目标的生产发布执�
   const guarded = pipeline.stages.filter((stage) => /npm run (release:activate|status|push:search)/.test(stage.script ?? ''));
   assert.equal(guarded.length, 3);
   for (const environment of ['production', 'preview']) {
-    for (const target of ['none', 'cloudflare', 'edgeone', 'github', 'all']) {
+    for (const target of ['none', ...DEPLOY_TARGETS, 'all']) {
       for (const stage of guarded) {
         const r = spawnSync('sh', ['-c', stage.if], {
           env: { ...process.env, DEPLOY_ENV: environment, DEPLOY_TARGET: target }, encoding: 'utf8', timeout: 5000,
@@ -103,5 +104,5 @@ test('发布流水线的真实条件：只有已选择目标的生产发布执�
   assert.deepEqual([...urls].sort(), ['${deploy_secrets_url}', '${publish_secrets_url}']);
   assert.ok(scripts.findIndex((script) => script.includes('npm run release:prepare')) < scripts.indexOf('npm run publish:r2'));
   const activation = scripts.indexOf('npm run release:activate');
-  for (const target of ['cloudflare', 'edgeone', 'github']) assert.ok(scripts.indexOf(`npm run deploy:${target}`) < activation);
+  for (const target of DEPLOY_TARGETS) assert.ok(scripts.indexOf(`npm run deploy:${target}`) < activation);
 });

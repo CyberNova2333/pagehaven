@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// build:config —— site.config.yaml → packages/platform/generated/{_headers,_redirects,edgeone.json}
+// build:config —— site.config.yaml → packages/platform/generated/ 的公开配置与部署控制模板
 //                 以及站点读的 packages/site/src/generated/site-config.json。
 // 生成物入库（前者）是为了让 check 能比对同步；后者不入库，每次构建重生成。
 import { mkdir, writeFile } from 'node:fs/promises';

@@ -17,7 +17,7 @@
 
 **Pagehaven is a general-purpose static comic site.** It brings a comic catalog, reader, and dialogue search together, with three light and dark palettes built around paper, ink, and teal, for building your own comic library.
 
-Built with Astro, the site can be deployed to Cloudflare Pages, EdgeOne Makers, or GitHub Pages. Images and search databases live in object storage and are read through a CDN; browsing and search do not require an always-running application server. The repository includes no actual comics, hosted accounts, or preconfigured deployment projects.
+Built with Astro, the site provides deployment entry points for EdgeOne Makers, ESA Pages, GitHub Pages, and Cloudflare Workers Static Assets, while retaining Cloudflare Pages. Images and search databases live in object storage and are read through a CDN; browsing and search do not require an always-running application server. The repository includes no actual comics, hosted accounts, or preconfigured deployment projects. See Deployment below for capacity and preview boundaries; adapter code does not establish a successful cloud deployment.
 
 Chinese is the default README; use the buttons above to switch languages. The website currently has a Chinese interface. The README language switch changes documentation only.
 
@@ -134,7 +134,7 @@ npm run init -- --ui-lang en --help
 
 Argument mode previews changes by default. Append `--write` to the same command to save them after review. `--dry-run` explicitly requests a preview and cannot be combined with `--write`. Use argument mode in non-interactive environments. Repeat `--image-host` for up to two sources; `--text-layer`, `--enhanced-reader`, and `--platform-config` accept `true` or `false`. `--site-lang` sets the HTML language tag without translating the website interface.
 
-`--target` accepts `none` (the default), `cloudflare`, `edgeone`, or `github` and selects platform setup guidance only. The actual release target is still chosen in the manual release form. `--project` writes the Cloudflare project name; other platform account identifiers and credentials remain in secrets. Initialization accepts example domains for previews and does not create cloud resources or deploy the site.
+`--target` accepts `none` (the default), `edgeone`, `esa`, `github`, `workers`, or `cloudflare` and selects platform setup guidance only. The actual release target is still chosen in the manual release form. `--project` writes the Cloudflare Pages project name; other platform account identifiers and credentials remain in secrets. Initialization accepts example domains for previews and does not create cloud resources or deploy the site.
 
 The tool preserves existing comments and unselected fields and validates the complete configuration. Before saving, it backs up the original in `out/init/` (overridable with `OUT_DIR`), replaces the file atomically through a temporary file in the same directory, and stops if it detects a concurrent configuration edit. Use `--config` to edit another existing configuration; otherwise, `CONFIG_FILE` takes precedence over the repository root file. Run `npm run build` afterwards to refresh generated configuration and site artifacts.
 
@@ -206,7 +206,19 @@ own script banner.
 
 ## Deployment
 
-The deployment adapters support **Cloudflare Pages, EdgeOne Makers, and GitHub Pages**. `npm run build` only generates files. Production releases are started manually with the release button on the CNB branch page. Pushing `main` runs checks only; there are no automatic or scheduled deployments.
+Deployment targets include **EdgeOne Makers, ESA Pages, GitHub Pages, and Cloudflare Workers Static Assets**, with a separate Cloudflare Pages entry point retained. `npm run build` only generates files. Production releases are started manually with the release button on the CNB branch page. Pushing `main` runs checks only; there are no automatic or scheduled deployments.
+
+| Release target | Command | Preview and capacity boundaries |
+| --- | --- | --- |
+| `edgeone` | `npm run deploy:edgeone` | Makers preview; repository file budgets apply |
+| `esa` | `npm run deploy:esa` | preview maps to staging; at most 2,000 uploaded files, including one deployment proof, so the site output is limited to 1,999 files; uncompressed total is capped at 1,024,000,000 bytes including the proof reserve |
+| `github` | `npm run deploy:github` | No independent preview target; site size at most 1,000,000,000 bytes |
+| `workers` | `npm run deploy:workers` | Separate preview Worker, with a different name from production; uses Static Assets |
+| `cloudflare` | `npm run deploy:cloudflare` | Existing Cloudflare Pages entry point, with branch-based previews |
+
+`all` deploys to Makers, ESA, GitHub Pages, and Workers, **excluding the existing Cloudflare Pages target**. Select `cloudflare` separately to deploy to Pages. Combining `preview` with `github` or `all` is rejected before upload. The site uses a custom domain or a user-site root; GitHub project sites under `/repository/` are not supported yet.
+
+Repository budgets remain 18,000 files and 20 MiB per file. Workers and ESA each reserve one file and 4,096 bytes for deployment verification before upload. With the default budgets, the site output is therefore limited to 17,999 files on Workers and 1,999 on ESA; ESA's total-size check also includes the 4,096-byte reserve. Exceeding a limit is rejected without splitting the site or introducing function-based data loading, and CLI package limits still apply. The same site output deployed to all four targets must fit the strictest target's budget. ESA Pages traffic uses the site's plan allowance; maintainers must check account eligibility and costs. The adapter does not activate paid services. [ESA limits](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/what-is-functions-and-pages/), [ESA billing](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/functions-and-pages-billing)
 
 The release sequence is: **validate → prepare baseline → upload immutable resources → deploy → activate production version → record status and submit search updates**. Preview and upload-only runs leave the production pointer unchanged. Search pages use the database from the same build.
 
@@ -215,6 +227,17 @@ contacting storage. The same validated database, digest file, and manifest bytes
 rejecting same-size corruption or files mixed from another build.
 
 The CNB release form requires `publish_secrets_url`. Selecting a deployment target also requires `deploy_secrets_url`. These must point to publishing and deployment secret files that you are authorized to reference. Upload-only runs still require publishing secrets. Default checks do not read external secret files.
+
+Configure the new targets with the following deployment secrets. Keep project identifiers and verification URLs in secrets too:
+
+| Target | Production | Additional preview values |
+| --- | --- | --- |
+| Workers | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_WORKER_NAME`, `WORKERS_DEPLOY_URL` | `CLOUDFLARE_PREVIEW_WORKER_NAME`, `WORKERS_PREVIEW_DEPLOY_URL`; both name and URL must differ from production |
+| ESA | `ESA_ACCESS_KEY_ID`, `ESA_ACCESS_KEY_SECRET`, `ESA_PROJECT_NAME`, `ESA_DEPLOY_URL`; add `ESA_SECURITY_TOKEN` for temporary credentials | `ESA_PREVIEW_IP`, the test-environment IP shown in the console; uses the same project's staging environment |
+
+Verification URLs must be HTTPS roots that actually reach the intended platform, without a file path, credentials, port, query, or fragment. A shared site hostname still pointing to Makers cannot verify a standby Workers or ESA deployment; use a reachable entry point for that target. Workers previews use a separate URL. For ESA previews, CI resolves the production hostname to `ESA_PREVIEW_IP` only for the verification request, preserving Host, SNI, and TLS certificate verification. It does not change the system hosts file or use temporary preview URLs that require manual renewal. Production verification does not use the test IP.
+
+Each Workers or ESA deployment adds a randomly named proof file to an isolated upload copy. It binds a fresh random value to the target, version, fingerprint, and environment; the shared `dist` and archive stay unchanged. After the CLI succeeds, verification must retrieve that exact proof and reject redirects, another target's proof, or a previous deployment's proof. Local `release.json` still checks the build, but cannot prove deployment by itself. The proof contains no project names, accounts, or credentials. Multi-platform publishing is not an atomic transaction across providers: an earlier site may have updated when a later target fails, but the shared production pointer will not be activated.
 
 Secret-file addresses use HTTPS and the `/-/blob/<ref>/<file>.yml` form; YAML and JSON files are also supported. Do not embed credentials, query parameters, or fragments in these addresses. CNB checks file existence and access permissions. Keep account identifiers and credentials out of the repository.
 
@@ -260,7 +283,8 @@ Internal packages keep the `@gallery/*` names, and reading records keep the `gal
 - Queries need at least two characters after normalization. Two-character queries use `LIKE`; longer queries use FTS5 trigram. Only imported transcripts are searchable.
 - OCR generates drafts for review and does not publish them automatically as final transcripts.
 - There are no user accounts, comments, or web-based upload administration. The website does not yet have a Chinese/English interface switch.
-- Current deployment entry points target the three static hosts above. A Cloudflare Workers application deployment workflow is not provided yet.
+- The Workers entry point deploys static assets without server-side search. ESA Pages reserves one of its 2,000 files for deployment verification, leaving at most 1,999 files for the site output. The four targets still require real preview deployment verification.
+- Page links and indexes assume the domain root; GitHub Pages `/repository/` paths are not supported yet. Personal records remain isolated by browser origin on different domains and can be transferred with backup and restore.
 
 ## Contributing
 
