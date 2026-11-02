@@ -12,9 +12,9 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, extname, join } from 'node:path';
+import { dirname, extname, basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SiteConfigSchema } from '@gallery/platform';
+import { SiteConfigSchema, DEPLOY_CONFIG_FILES } from '@gallery/platform';
 import { appearanceVariables } from '../../packages/site/src/lib/site-appearance.js';
 import { loadSiteConfig } from '../lib/config.mjs';
 import { loadGallery } from '../lib/data.mjs';
@@ -152,6 +152,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     // 也只能是独立文件），放在 dist/_astro/ 下；话目录里不许出现独立 JS/CSS。
     // 页码书签与书架共享同源模块，检查真实依赖图，不能再把所有 _astro 引用当成检索执行器。
     const files = await walk(DIST);
+    assert.deepEqual(files.filter((file) => DEPLOY_CONFIG_FILES.includes(basename(file))), [], '部署控制模板不得随业务页面公开');
     const bad = files.filter((f) => ['.avif', '.webp', '.png', '.jpg', '.sqlite'].includes(extname(f)));
     assert.deepEqual(bad, []);
     for (const key of ['sample/vol01/c001', 'sample/vol01/c002', 'sample/vol02/c003', 'zeta/v1/ch1']) {

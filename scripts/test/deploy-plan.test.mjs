@@ -39,7 +39,7 @@ after(() => rm(configDir, { recursive: true, force: true }));
 const DIST = '/tmp/some dist';
 
 test('requiredEnv：三个目标各自的凭据；返回副本', () => {
-  assert.deepEqual(TARGETS, ['cloudflare', 'edgeone', 'github']);
+  assert.deepEqual(new Set(TARGETS), new Set(['cloudflare', 'edgeone', 'github', 'workers', 'esa']));
   assert.deepEqual(requiredEnv('cloudflare'), ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']);
   assert.deepEqual(requiredEnv('edgeone'), ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID', 'EDGEONE_PROJECT_NAME']);
   assert.deepEqual(requiredEnv('github'), []);
@@ -145,6 +145,31 @@ test('checkGithubBaseline：三个基线文件 + CNAME 与 site.domain 一致', 
   assert.match(stale[0], /cname 为 false 但 dist\/CNAME 存在/);
 });
 
+test('Workers 生产与预览都在计划阶段拒绝末尾连字符，ESA 名称继续兼容', () => {
+  const workers = {
+    CLOUDFLARE_API_TOKEN: 'fixture-token', CLOUDFLARE_ACCOUNT_ID: 'fixture-account',
+    CLOUDFLARE_WORKER_NAME: 'fixture-production', CLOUDFLARE_PREVIEW_WORKER_NAME: 'fixture-preview',
+    WORKERS_DEPLOY_URL: 'https://worker.unit-fixture.org', WORKERS_PREVIEW_DEPLOY_URL: 'https://preview-worker.unit-fixture.org',
+  };
+  for (const environment of ['production', 'preview']) {
+    const nameKey = environment === 'preview' ? 'CLOUDFLARE_PREVIEW_WORKER_NAME' : 'CLOUDFLARE_WORKER_NAME';
+    for (const name of ['fixture-', '-fixture', 'x'.repeat(64)]) {
+      const plan = planDeployCommand({ target: 'workers', config, distDir: DIST,
+        env: { ...workers, DEPLOY_ENV: environment, [nameKey]: name } });
+      assert.equal(plan.ok, false);
+      assert.match(plan.problems.join(), /项目名.*格式无效/);
+    }
+    for (const name of ['a', 'fixture-valid', 'x'.repeat(63)]) {
+      assert.equal(planDeployCommand({ target: 'workers', config, distDir: DIST,
+        env: { ...workers, DEPLOY_ENV: environment, [nameKey]: name } }).ok, true);
+    }
+  }
+  assert.equal(planDeployCommand({ target: 'esa', config, distDir: DIST, env: {
+    ESA_ACCESS_KEY_ID: 'fixture-id', ESA_ACCESS_KEY_SECRET: 'fixture-secret',
+    ESA_PROJECT_NAME: 'Fixture_Production-', ESA_DEPLOY_URL: 'https://esa.unit-fixture.org',
+  } }).ok, true);
+});
+
 // ── deploy 脚本（cloudflare / edgeone）────────────────────────────────
 
 function cleanEnv() {
@@ -213,7 +238,7 @@ test('deploy 脚本：未知目标退 2；dist 不存在退 1；缺凭据退 1�
 
   const usage = run(['vercel'], {});
   assert.equal(usage.status, 2);
-  assert.match(usage.out, /用法：node scripts\/deploy\.mjs <cloudflare\|edgeone\|github>/);
+  assert.match(usage.out, /用法：node scripts\/deploy\.mjs <cloudflare\|edgeone\|github\|workers\|esa>/);
   assert.equal(run([], {}).status, 2);
 
   const noDist = run(['cloudflare'], { DIST_DIR: join(tmp, 'nope'), CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' });

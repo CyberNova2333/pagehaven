@@ -21,11 +21,14 @@
 // 任何一节失败退出码都是 1，但所有节都会跑完——一次看全，不用来回改。
 import { readdir, readFile, stat, open } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, relative, extname, sep } from 'node:path';
+import { join, relative, extname, basename, sep } from 'node:path';
 import { builtinModules } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import yaml from 'js-yaml';
-import { generateAll } from '@gallery/platform';
+import { generateAll, DEPLOY_TARGETS, DEFAULT_RELEASE_TARGETS, DEPLOY_CONFIG_FILES } from '@gallery/platform';
+import { hasDeploymentCommand } from './lib/pipeline-policy.mjs';
+import { inspectDeploymentFiles, validateDeploymentBudget } from './lib/deploy-budget.mjs';
+import { isDeploymentProofPath } from './lib/deploy-proof.mjs';
 import { loadSiteConfig } from './lib/config.mjs';
 import { loadGallery } from './lib/data.mjs';
 import { ROOT, DATA_DIR, DIST_DIR, OUT_DB_DIR, PLATFORM_GENERATED_DIR, CNB_FILE, CNB_DIR, WORKFLOWS_DIR } from './lib/paths.mjs';
@@ -210,7 +213,7 @@ await section('流水线：main 的 push 只跑检查，发布只手动，没有
         for (const needle of ['npm run check', 'npm test', 'npm run build']) {
           if (!text.includes(needle)) problems.push(`${branch}.push：检查流水线里没有 \`${needle}\`——push 触发的流水线只能是检查类`);
         }
-        if (/publish:r2|release:activate|deploy:(cloudflare|edgeone|github)/.test(text)) {
+        if (hasDeploymentCommand(text)) {
           problems.push(`${branch}.push：出现发布/部署步骤——发布只能手动（铁律 6）`);
         }
         continue;
@@ -243,6 +246,13 @@ await section('流水线：main 的 push 只跑检查，发布只手动，没有
           if (!manualEvents.has(event)) {
             problems.push(`web_trigger.yml：按钮「${button?.name ?? '?'}」的事件 ${JSON.stringify(event)} 在 .cnb.yml 里没有定义`);
           }
+          if (event === 'web_trigger_release') {
+            const choices = button?.inputs?.target?.options ?? [];
+            const values = choices.map((choice) => choice.value);
+            for (const target of ['none', 'all', ...DEPLOY_TARGETS]) {
+              if (!values.includes(target)) problems.push(`发布按钮缺少目标 ${target}`);
+            }
+          }
         }
       }
     }
@@ -271,7 +281,10 @@ await section('data/：meta 与 text 过 schema 且互相对得上', async () =>
 await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰好一个 HTML / sitemap 覆盖每话 / IndexNow key 文件', async () => {
   if (!config) return ['配置不合法，跳过'];
   if (!gallery) return ['data/ 不合法，跳过'];
+  const selected = process.env.DEPLOY_TARGET || 'none';
+  if (!['none', 'all', ...DEPLOY_TARGETS].includes(selected)) return ['DEPLOY_TARGET 不是已注册目标'];
   if (!existsSync(DIST_DIR)) {
+    if (selected !== 'none') return ['发布前必须存在完整 dist，请先运行完整构建'];
     warn('dist/ 不存在（尚未 npm run build），产物守卫跳过——CI 会在 build 之后再跑一遍');
     return [];
   }
@@ -279,7 +292,7 @@ await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰�
   const files = await walk(DIST_DIR);
   note(`dist 文件数 ${files.length} / ${config.budgets.max_files}`);
   if (files.length > config.budgets.max_files) {
-    problems.push(`dist 文件数 ${files.length} 超过 ${config.budgets.max_files}（三平台 20 000 上限留余量；是不是每页一个 HTML 了？）`);
+    problems.push(`dist 文件数 ${files.length} 超过仓库预算 ${config.budgets.max_files}（目标平台还可能有更小限制；是不是每页一个 HTML 了？）`);
   }
   let biggest = 0;
   for (const f of files) {
@@ -287,8 +300,18 @@ await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰�
     biggest = Math.max(biggest, s.size);
     if (s.size > config.budgets.max_file_bytes) problems.push(`${rel(f)} 有 ${s.size} 字节，超过 ${config.budgets.max_file_bytes}`);
     if (IMAGE_OR_DB_EXT.has(extname(f).toLowerCase())) problems.push(`${rel(f)}：图片与 DB 不进 dist（它们在对象存储，经 CDN 读）`);
+    if (DEPLOY_CONFIG_FILES.includes(basename(f))) problems.push(`${rel(f)}：部署控制文件不得进入公开静态产物`);
+    if (isDeploymentProofPath(relative(DIST_DIR, f).split(sep).join('/'))) problems.push(`${rel(f)}：部署验证保留路径只能出现在临时上传副本`);
   }
   note(`最大单文件 ${biggest} 字节 / ${config.budgets.max_file_bytes}`);
+
+  // 发布检查发生在上传前；all 取四平台预算交集，不把 ESA 超额留到上传之后才发现。
+  if (selected !== 'none') {
+    const inventory = await inspectDeploymentFiles(DIST_DIR);
+    for (const target of selected === 'all' ? DEFAULT_RELEASE_TARGETS : [selected]) {
+      problems.push(...validateDeploymentBudget({ target, config, files: inventory }));
+    }
+  }
 
   for (const c of gallery.chapters) {
     const dir = join(DIST_DIR, c.seriesId, c.issueId, c.id);

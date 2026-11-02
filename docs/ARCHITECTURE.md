@@ -14,8 +14,9 @@
 
 四条硬约束，优先级从高到低：
 
-1. **三平台快速流转**：Cloudflare Pages、EdgeOne Makers、GitHub Pages 之间 30 分钟
-   内整体切换。GitHub Pages 是最小公分母——没有自定义响应头、没有重定向、
+1. **多平台快速流转**：EdgeOne Makers、ESA Pages、GitHub Pages、Cloudflare Workers
+   之间保持可迁移，旧 Cloudflare Pages 独立入口继续保留。切换耗时尚未实测。
+   GitHub Pages 是最小公分母——没有自定义响应头、没有重定向、
    没有函数——站点在这种条件下必须完整可用。
 2. **弃维护后仍能存活**：维护者可能长期不再操作。账号级依赖只允许域名、R2、
    至少一个 CDN 账号三处。
@@ -37,7 +38,7 @@ data/meta/*.yaml + data/text/<series>/<issue>/<chapter>.json ← 仓库（公开
 dist/            静态 HTML(每话一文件，内嵌文字层) + 元数据索引 JSON 分片 + sitemap.xml
 gallery.sqlite   FTS5 trigram 台词库；manifest.json；dist 归档
         │
-        ├─ dist ──────────→ Cloudflare Pages | EdgeOne Makers | GitHub Pages（三选一，CNAME 切换）
+        ├─ dist ──────────→ Makers | ESA Pages | GitHub Pages | Workers（旧 Pages 入口保留）
         └─ 图片/DB/归档 ──→ Cloudflare R2（私有桶，唯一持久数据源）
                                └─ 图片域名 img.<domain>：EdgeOne + ESA，CNAME 接入，
                                   以 S3 私有回源（SigV4）读 R2；所有读取都经这里
@@ -64,14 +65,49 @@ Makers Blob / KV、Cloudflare D1 一律不作为必需依赖。
 Edge Functions 的 CPU 配额小到放不下任何检索逻辑，所以函数版检索只能在
 Cloudflare Workers 或 Makers Cloud Functions，且永远可选。
 
-## 3. 三平台矩阵
+## 3. 平台矩阵
 
-发布环境约定：三个目标的页面都绑定构建时的检索库版本，上传只产生不可变资源。
+### 四平台扩展矩阵（2026-11-02，工作区实现，尚未部署验收）
+
+保留静态核心与根域名部署方式，新增 Workers Static Assets 和 ESA Pages。
+现有 `cloudflare` 仍明确表示 Cloudflare Pages，新增 `workers` 不改变旧命令含义；
+`all` 调整为 EdgeOne Makers、ESA Pages、GitHub Pages、Workers 四个目标。
+GitHub 项目站的 `/仓库名/` 子路径仍不在本轮支持范围；使用自定义域名或用户站根目录。
+
+| 边界 | EdgeOne Makers | ESA Pages | GitHub Pages | Cloudflare Workers |
+| --- | --- | --- | --- | --- |
+| 页面形态 | 静态目录 HTML | 静态目录 HTML | 静态目录 HTML | Static Assets，静态目录 HTML |
+| 平台配置 | `edgeone.json` | `esa.jsonc`，`404Page` | `.nojekyll`、可选 `CNAME`、静态跳转兜底 | Wrangler assets 配置、`_headers`、`_redirects`、404 页面 |
+| 文件预算 | 仍遵守仓库 18,000 文件 / 20 MiB | 总计 2,000 文件、1,024,000,000 字节，含下述验证文件预留；CLI 另验部署包 | 额外限制站点总大小 1,000,000,000 字节 | 总计 18,000 文件 / 20 MiB，含下述验证文件预留 |
+| 检索与数据 | 浏览器执行，共用版本化 CDN 资源 | 同左 | 同左 | 同左，不增加服务端检索 |
+| 预览 | 独立 preview | staging；CI 按控制台测试 IP 连接，保留正式域名的 Host 与 TLS 校验 | 未配置，继续拒绝 | 独立预览 Worker，禁止覆盖生产 |
+| 发布入口 | CNB 手动按钮 | 同左 | 同左 | 同左 |
+
+内部审查后的修复契约：Workers 与 ESA 每次部署在隔离的上传副本中增加一个随机命名的
+验证文件，绑定本次随机值、目标、版本、指纹与环境；共享 `dist` 和归档不包含该文件。
+线上确认必须读取本次验证文件，不能用其他目标共用的 `release.json` 代替。两端预算均为
+该文件预留一个名额和 4 KiB；因此 ESA 的业务静态产物最多 1,999 文件。
+ESA 测试 IP 连接的请求实现与连接器使用同一 Undici 包，保留 Host、SNI 和 TLS 校验。
+
+平台标识与凭据只从 secrets 输入，配置文件从 `site.config.yaml` 派生。
+ESA 预览使用 `ESA_PREVIEW_IP` 在单次验证请求内选择测试节点，不修改系统 hosts，
+不要求维护者操作电脑，也不依赖需手工续期的临时访问令牌。
+ESA 的套餐资格和费用须由维护者核对；适配器不自动开通付费服务。
+超出 ESA 文件数限制不改为函数取数，也不静默拆分站点。
+新增平台只有在目标入口返回本次随机验证文件、各字段均匹配后才记录成功；本地测试不表示线上验收。
+
+官方依据：[ESA 限额](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/what-is-functions-and-pages/)、
+[ESA 路由](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/build-pages)、
+[Workers 静态站](https://developers.cloudflare.com/workers/static-assets/routing/static-site-generation/)。
+
+发布环境约定：各目标的页面都绑定构建时的检索库版本，上传只产生不可变资源。
 生产部署全部成功后才启用共享版本指针、写发布状态及通知搜索引擎；预览和仅上传不执行这些步骤。
 GitHub Pages 当前没有独立预览目标，`preview` 配合 `github` 或 `all` 必须在上传前拒绝。
 预览页面带 `noindex`，生产发布拒绝示例域名。平台适配变更仍须通过手动预览部署验收。
 GitHub Pages 推送后需通过 Pages API 确认本次提交构建成功，再记录部署成功；发布凭据需要
 Pages 读取权限，页面发布来源必须是 `gh-pages` 根目录。
+
+以下保留旧目标的兼容行为，新增两端与 `all` 语义以上表为准：
 
 | | Cloudflare Pages | EdgeOne Makers | GitHub Pages |
 |---|---|---|---|
@@ -321,8 +357,9 @@ release:check      检查目标、环境与正式域名，拒绝 GitHub Pages �
 release:prepare    生产部署前保存当前指针原文、ETag 与发布身份；清理旧部署记录
 publish:r2         上传 gallery-<v>.sqlite(+chunks.json) / archive/site-<v>.tar.zst / 新图片
                    → 逐 key 核对 → db/manifest-<v>.json；不可变 key 不得覆盖不同内容
-deploy:cloudflare  deploy:edgeone  deploy:github（DEPLOY_ENV=production|preview）
-                   核对 dist/release.json 与清单身份及构建环境，成功后保存本目标的部署记录
+deploy:cloudflare  deploy:edgeone  deploy:github  deploy:workers  deploy:esa（DEPLOY_ENV=production|preview）
+                   核对本地 dist/release.json；Workers/ESA 另上传并读取本次随机验证文件
+                   确认目标、随机值、版本、指纹与环境后保存本目标的部署记录
 release:activate   所选生产目标全部成功，且版本化清单一致后，用条件写入启用 db/manifest.json
 purge              可选救火：EdgeOne CreatePurgeTask（任一目标被拒即失败）；ESA 未实现
 push:search        部署之后（发布流水线写 STATUS 的那一步之后）主动把本次新增的页面推给搜索引擎：
@@ -348,7 +385,7 @@ status             写 STATUS.md（只由发布流水线调用）
 `.cnb.yml`：main 的 `push` 触发检查，手动按钮触发发布与归档（按钮在
 `.cnb/web_trigger.yml`）。检查步骤：提交信息（本次推送区间）→ check → test → build →
 再 check → 用测试样本全量空跑 → 分层提示 → 移动 `last-green`。发布输入 `chapters`、`target`
-（none | cloudflare | edgeone | github | all）、`ocr`、`deploy_env`（production | preview）、
+（none | cloudflare | edgeone | github | workers | esa | all）、`ocr`、`deploy_env`（production | preview）、
 `version`（留空 = 日期.构建号）、`push_all`；步骤：参数检查 → ingest → build → check → verify:manifest →
 release:prepare → publish:r2 → deploy → release:activate → 写 `STATUS.md` → push:search →
 连同 ingest 写回的 `data/text` 提交。预览与 `target=none` 在上传或部署后结束，不启用生产指针、

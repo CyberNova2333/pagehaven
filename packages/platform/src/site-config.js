@@ -14,6 +14,10 @@ const hostname = z.string().regex(HOST, '必须是不带协议与路径的主机
 const absPath = z.string().regex(/^\/[^\s]*$/, '必须以 / 开头的路径');
 const POWER_OF_TWO_PAGE = new Set([512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]);
 const noControls = (value) => [...value].every((char) => char.codePointAt(0) >= 32 && char.codePointAt(0) !== 127);
+const compatibilityDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
+}, '兼容日期必须是真实的 YYYY-MM-DD 日期');
 
 // 不接受脚本、内联数据、带凭据的地址与路径归一化绕过。站内资源只指向 SVG 文件；
 // 图片实际是否可达由站点预览确认，解析配置时不发起网络请求。
@@ -69,7 +73,7 @@ export const SiteConfigSchema = z
       comimi_reader: z.boolean().default(false),
     }),
     budgets: z.strictObject({
-      // 上限来自三平台里最紧的那家再留余量（ARCHITECTURE §2）；只许往下调，不许往上放
+      // 仓库通用预算只许收紧；ESA 等目标的额外限制由平台注册表在部署前检查。
       max_files: z.number().int().positive().max(18000, '守卫线 18 000 是平台 20 000 上限留余量后的值，不能往上放'),
       max_file_bytes: z.number().int().positive().max(20971520, '守卫线 20 MB 是平台 25 MB 上限留余量后的值，不能往上放'),
     }),
@@ -102,6 +106,9 @@ export const SiteConfigSchema = z
       cloudflare: z.strictObject({ project: z.string().min(1) }),
       edgeone: z.strictObject({ functions_dir: z.string().min(1).default('edge-functions') }),
       github: z.strictObject({ cname: z.boolean().default(true) }),
+      workers: z.strictObject({ compatibility_date: compatibilityDate.default('2026-11-02') }).default({ compatibility_date: '2026-11-02' }),
+      // 实际项目名与凭据从 secrets 提供，禁止写进站点配置及生成模板。
+      esa: z.strictObject({}).default({}),
     }),
   })
   .refine((c) => c.search.request_chunk_size === c.db.page_size, {

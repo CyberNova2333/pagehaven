@@ -1,7 +1,7 @@
 # site.config.yaml —— 唯一配置源（CLAUDE.md 铁律 5）
 #
 # 域名、缓存、响应头、重定向、功能开关只在这里改。
-# _headers / _redirects / edgeone.json 由 `npm run build:config` 生成到
+# 响应配置与 wrangler.jsonc / esa.jsonc 部署模板由 `npm run build:config` 生成到
 # packages/platform/generated/，不手改；`npm run check` 会比对生成物与本文件是否同步。
 # 字段的含义与取值约束见 packages/platform/src/site-config.js（zod schema）。
 
@@ -83,8 +83,13 @@ deploy:
     # Pages 项目名（不是账号 ID；账号 ID 与 token 在 secrets）
     project: pagehaven
   edgeone:
-    # 项目名在 secrets（EDGEONE_PROJECT_ID，值是 Makers 项目名）；这里只放部署形态
+    # EDGEONE_PROJECT_ID 与 EDGEONE_PROJECT_NAME 分别在 secrets；这里只放部署形态
     functions_dir: edge-functions
   github:
     # 写 CNAME 文件（内容 = site.domain）与 .nojekyll
     cname: true
+  workers:
+    # 静态资源使用此兼容日期；生产/预览 Worker 名称由 secrets 分别指定。
+    compatibility_date: '2026-11-02'
+  # ESA 项目标识和访问凭据只在 secrets；静态部署不配置函数入口。
+  esa: {}

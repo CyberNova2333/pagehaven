@@ -30,7 +30,7 @@ test('增强分页不改变平台响应头、重定向或配置生成物', async
   const baseline = await generateAll(parseSiteConfig(yaml.dump(config)));
   config.features.comimi_reader = true;
   assert.deepEqual(await generateAll(parseSiteConfig(yaml.dump(config))), baseline);
-  assert.deepEqual(Object.keys(baseline).sort(), ['_headers', '_redirects', 'edgeone.json']);
+  assert.deepEqual(Object.keys(baseline).sort(), ['_headers', '_redirects', 'edgeone.json', 'esa.jsonc', 'wrangler.jsonc']);
 });
 
 test('旧配置缺少品牌与外观设置时沿用原站点外观，部分外观也补齐默认值', () => {

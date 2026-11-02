@@ -1,0 +1,8 @@
+{
+  "installCommand": "",
+  "buildCommand": "",
+  "assets": {
+    "directory": "../../../dist",
+    "notFoundStrategy": "404Page"
+  }
+}

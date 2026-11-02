@@ -26,10 +26,16 @@
 // preview 真实部署一次，这个开关就是给那一步用的。cloudflare 用 --branch 区分（等于项目的 production
 // branch 才是生产，其它名字都是预览），edgeone 用 -e。
 
-export const TARGETS = ['cloudflare', 'edgeone', 'github'];
+import { DEPLOY_TARGETS, isDeploymentName } from '@gallery/platform';
+import { isIP } from 'node:net';
+import { deploymentRoot } from './deploy-ready.mjs';
+
+export const TARGETS = DEPLOY_TARGETS;
 export const DEPLOY_ENVS = ['production', 'preview'];
 export const WRANGLER_SPEC = 'wrangler@4';
 export const EDGEONE_CLI_SPEC = 'edgeone@1';
+// 此版本的官方 CLI 支持环境凭据和 --no-preview，防止预览访问令牌进入日志。
+export const ESA_CLI_SPEC = 'esa-cli@1.0.13';
 /** 没有这三个文件 GitHub Pages 就不完整：.nojekyll 防 _ 开头的路径被吞、404 页、首页。 */
 export const GITHUB_BASELINE_FILES = ['.nojekyll', '404.html', 'index.html'];
 /**
@@ -44,6 +50,8 @@ const REQUIRED_ENV = {
   // EdgeOne 三件套：ID 是权威定位（部署前由 lib/edgeone.mjs 校验），名字只是 CLI -n 的参数
   edgeone: ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID', 'EDGEONE_PROJECT_NAME'],
   github: [],
+  workers: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_WORKER_NAME', 'WORKERS_DEPLOY_URL'],
+  esa: ['ESA_ACCESS_KEY_ID', 'ESA_ACCESS_KEY_SECRET', 'ESA_PROJECT_NAME', 'ESA_DEPLOY_URL'],
 };
 
 /** 该目标必须有的环境变量（凭据）。 */
@@ -80,6 +88,36 @@ export function planDeployCommand({ target, config, env, distDir }) {
   const deployEnv = env.DEPLOY_ENV || 'production';
   if (!DEPLOY_ENVS.includes(deployEnv)) {
     return { ok: false, problems: [`DEPLOY_ENV 只能是 ${DEPLOY_ENVS.join(' | ')}，现在是 ${JSON.stringify(deployEnv)}`] };
+  }
+
+  if (target === 'workers' || target === 'esa') {
+    const preview = deployEnv === 'preview';
+    const name = target === 'workers'
+      ? env[preview ? 'CLOUDFLARE_PREVIEW_WORKER_NAME' : 'CLOUDFLARE_WORKER_NAME']
+      : env.ESA_PROJECT_NAME;
+    if (!isDeploymentName(target, name)) {
+      return { ok: false, problems: [`${target} 部署项目名缺失或格式无效`] };
+    }
+    if (target === 'workers' && preview && name.toLowerCase() === env.CLOUDFLARE_WORKER_NAME.toLowerCase()) {
+      return { ok: false, problems: ['预览 Worker 必须使用不同于生产的独立名称'] };
+    }
+    const urlKey = target === 'workers' ? 'WORKERS_DEPLOY_URL' : 'ESA_DEPLOY_URL';
+    let verifyUrl;
+    try {
+      const productionUrl = deploymentRoot(env[urlKey]);
+      verifyUrl = target === 'workers' && preview ? deploymentRoot(env.WORKERS_PREVIEW_DEPLOY_URL) : productionUrl;
+      if (target === 'workers' && preview && verifyUrl === productionUrl) throw new Error('预览验证地址必须与生产不同');
+      if (target === 'esa' && preview && !isIP(env.ESA_PREVIEW_IP || '')) throw new Error('ESA_PREVIEW_IP 必须是控制台提供的测试环境 IP');
+    } catch (e) { return { ok: false, problems: [e.message] }; }
+    const configFile = target === 'workers' ? 'wrangler.jsonc' : 'esa.jsonc';
+    const npmArgs = target === 'workers'
+      ? ['exec', '--yes', '--', WRANGLER_SPEC, 'deploy', '--config', configFile]
+      : ['exec', '--yes', '--package', ESA_CLI_SPEC, '--', 'esa-cli', 'deploy', '--environment', preview ? 'staging' : 'production', '--no-preview'];
+    return {
+      ok: true, npmArgs, display: `npm ${npmArgs.join(' ')}`, env: { CI: 'true' },
+      unsetEnv: target === 'esa' ? ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET', 'ALIBABA_CLOUD_SECURITY_TOKEN'] : [],
+      configFile, configName: name, verifyUrl, ...(target === 'esa' && preview ? { verifyAddress: env.ESA_PREVIEW_IP } : {}),
+    };
   }
 
   if (target === 'cloudflare') {

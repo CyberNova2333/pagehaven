@@ -43,6 +43,17 @@ test('init 参数默认预览：呈现更改与示例域名提示，不修改配
   assert.deepEqual(await readdir(ws.dir), ['site.config.yaml']);
 });
 
+test('init 为新增静态托管目标提供引导，不保存凭据、不写入配置', async (t) => {
+  for (const target of ['workers', 'esa']) {
+    const ws = await workspace(t);
+    const result = run(ws, ['--target', target]);
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.output, /部署密钥/);
+    assert.equal(await readFile(ws.config, 'utf8'), ws.text);
+    assert.deepEqual(await readdir(ws.dir), ['site.config.yaml']);
+  }
+});
+
 test('init --write：备份原文件，只更改选定字段，保留注释和自定义配置', async (t) => {
   const custom = '# Owner setup note\n' + TEMPLATE
     .replace(/^ {2}title: .+$/m, '  title: "原有书库" # Owner title note')

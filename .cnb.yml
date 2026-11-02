@@ -11,7 +11,7 @@
 #
 # 凭据只从密钥仓库来（铁律 7），文件地址由手动发布参数提供，不绑定特定组织或仓库：
 #   publish_secrets_url —— 对象存储写凭据（verify:manifest / publish:r2 / status），必填
-#   deploy_secrets_url  —— 站点部署凭据（cloudflare / edgeone / github），选择部署目标时必填
+#   deploy_secrets_url  —— 站点部署凭据（cloudflare / edgeone / github / workers / esa），选择部署目标时必填
 # 检查与归档不导入外部密钥；失败信息保留在构建日志中。
 # SEO 不需要密钥文件：只走 IndexNow，key 按协议公开在 site.config.yaml 的 seo.indexnow_key。
 # 密钥都由**脚本任务**读取，所以文件里不能写 allow_images（平台规则：写了就只能被
@@ -260,7 +260,7 @@ main:
           script: npm run publish:r2
 
         - name: deploy:cloudflare
-          if: '[ "$DEPLOY_TARGET" = "cloudflare" ] || [ "$DEPLOY_TARGET" = "all" ]'
+          if: '[ "$DEPLOY_TARGET" = "cloudflare" ]'
           imports: &deploy_secrets ${deploy_secrets_url}
           script: npm run deploy:cloudflare
 
@@ -271,6 +271,16 @@ main:
           if: '[ "$DEPLOY_TARGET" = "edgeone" ] || [ "$DEPLOY_TARGET" = "all" ]'
           imports: *deploy_secrets
           script: npm run deploy:edgeone
+
+        - name: deploy:esa
+          if: '[ "$DEPLOY_TARGET" = "esa" ] || [ "$DEPLOY_TARGET" = "all" ]'
+          imports: *deploy_secrets
+          script: npm run deploy:esa
+
+        - name: deploy:workers
+          if: '[ "$DEPLOY_TARGET" = "workers" ] || [ "$DEPLOY_TARGET" = "all" ]'
+          imports: *deploy_secrets
+          script: npm run deploy:workers
 
         # GitHub Pages 没有响应头、没有重定向、没有函数，是站点完整性的最小公分母（铁律 2）。
         # CNB 流水线在这里校验 dist 基线，并用密钥仓库里的 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN
