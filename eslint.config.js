@@ -28,7 +28,7 @@ export default [
   },
   {
     // 平台无关代码：浏览器 / Worker 全局，只有 Web 标准 API
-    files: ['packages/*/src/**/*.js'],
+    files: ['packages/*/src/**/*.js', 'packages/site/public/**/*.js'],
     languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: { ...globals.browser, ...globals.worker } },
   },
   {

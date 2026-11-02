@@ -10,6 +10,7 @@
 | Pass 2（初次建档） | 反查失败与遗漏依赖 | `scripts/test/site-build.test.mjs`, `scripts/test/build-manifest.test.mjs`, `scripts/test/build-db.test.mjs`；配置、已有文档与范围内目录 | 反查空内容、清单版本/指纹不一致、无凭据图片核对和平台配置关闭路径；检查真实构建测试的生成目录副作用，初次建档时未运行该测试。 |
 | Pass 1（2026-11-02） | 跟进四平台构建与部署交接 | `packages/platform/src/targets.js`、`packages/platform/src/generators/deploy.js`、`scripts/lib/release.mjs`、`.cnb/web_trigger.yml` | `all` 是四个主要目标，旧 Pages 独立保留；部署控制模板不进入公开产物。 |
 | Pass 2（2026-11-02） | 反查容量、预览与上线确认 | `scripts/lib/deploy-budget.mjs`、`scripts/lib/deploy-proof.mjs`、`scripts/lib/deploy-ready.mjs`、`scripts/deploy.mjs`、`scripts/check.mjs` | 预留随机验证文件后检查预算；命令成功仍须读回本次目标的证明；ESA staging 请求与连接器同包；多目标失败不承诺跨平台回滚。 |
+| 接线复核（2026-11-02） | 核对新增场景开关与原有偏好、配色接口的交互 | `packages/site/src/lib/day-night-control.js`、`packages/site/src/lib/color-scheme.js`、`packages/site/src/lib/site-appearance.js`、`packages/site/src/layouts/Base.astro` | 场景开关保留三态入口、订阅既有配色事件；按钮和纸页表面继续使用语义变量，避免覆盖可读对比色。 |
 
 ## 证据表
 
@@ -25,6 +26,7 @@
 | 新目标须读回本次随机证明才生成成功回执，其他平台及旧证明均不匹配 | [随机证明](../../scripts/lib/deploy-proof.mjs)：`createDeploymentProof / matchesDeploymentProof`；[目标核对](../../scripts/lib/deploy-ready.mjs)：`waitForDeployment`；[部署入口](../../scripts/deploy.mjs)：`recordDeployment` | Confirmed | 证明只进入目标上传副本；源码和本地测试不证明真实云服务已上线 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
 | ESA staging 用同一 Undici 包的请求和连接器保留指定 IP、Host 与证书校验 | [预览连接](../../scripts/lib/deploy-ready.mjs)：`createStagingVerifier` | Confirmed | 账户的测试 IP、证书和云端连通性仍需真实预览验证 | [主流程](../walkthroughs/one-real-run.md) |
 | 新目标同样禁止 push 自动部署 | [流水线守卫](../../scripts/lib/pipeline-policy.mjs)：`hasDeploymentCommand` | Confirmed | 只允许现有手动发布入口，未实际触发远端流水线 | [代码地图](../code-map.md) |
+| 昼夜场景开关与三态选择共用原有配色状态，页面外观继续使用语义变量 | [配色接线](../../packages/site/src/lib/day-night-control.js)：`mountDayNightControl`；[偏好状态](../../packages/site/src/lib/color-scheme.js)：`initializeColorScheme`；[布局](../../packages/site/src/layouts/Base.astro) | Confirmed | 仅覆盖配色接线；实际测试与浏览器验证结果另记同步记录，不扩大为所有阅读偏好已验收 | [代码地图](../code-map.md) |
 
 ## 反证与后续问题
 
@@ -34,7 +36,7 @@
 
 ## 范围与未验证事项
 
-覆盖构建命令编排、清单与检索库交接、站点生成、目标预算及部署回执边界。浏览器阅读偏好、备份恢复、在线检索细节、OCR 导入与平台真实部署验收未展开。当前工作区实现不等于已发布版本。
+覆盖构建命令编排、清单与检索库交接、站点生成、目标预算及部署回执边界；另记录配色控件与主题变量的兼容接线。其余浏览器阅读偏好、备份恢复、在线检索细节、OCR 导入与平台真实部署验收未展开。当前工作区实现不等于已发布版本。
 
 表中的源码确认描述初次调查依据，不代表后续测试结果。各轮实际执行记录见[同步记录](../change-log.md)；完整构建与集成测试可能写入共享生成目录，执行前需保护已有工作。平台适配仍须另做真实预览部署。
 

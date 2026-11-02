@@ -80,9 +80,15 @@ async function readerChunks(dist, html) {
   const roots = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"[^>]*>/g)];
   const inline = [...html.matchAll(/<script\b(?=[^>]*\btype="module")(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
   assert.ok(roots.length + inline.length > 0, '阅读器应包含构建后的浏览器模块');
+  const classic = new Set();
   for (const [tag, src] of roots) {
-    assert.match(tag, /\btype="module"/, '增强分页脚本应为 module');
-    assert.match(src, /^\/_astro\/[^?#]+\.js$/, '增强分页脚本应来自本站静态产物');
+    if (/\btype="module"/.test(tag)) {
+      assert.match(src, /^\/_astro\/[^?#]+\.js$/, '增强分页模块应来自本站静态产物');
+    } else {
+      // 外壳可有同源普通脚本（例如明暗开关）；也读取其正文，不能漏掉不应加载的依赖。
+      assert.match(src, /^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.js$/, '普通脚本必须来自本站静态产物');
+      classic.add(src);
+    }
   }
   const pending = roots.map(([, src]) => src);
   const seen = new Set();
@@ -94,12 +100,14 @@ async function readerChunks(dist, html) {
     const src = pending.pop();
     if (seen.has(src)) continue;
     seen.add(src);
-    assert.ok(src.startsWith('/_astro/'), '模块依赖必须留在本站构建目录内');
+    assert.ok(src.startsWith('/_astro/') || classic.has(src), '模块依赖必须留在本站构建目录内');
     const text = await readFile(join(dist, src.slice(1)), 'utf8');
     chunks.push(text);
     // Vite 的 import/export 与预加载映射均使用带引号的相对 JS 路径。
     for (const [, specifier] of text.matchAll(/["']((?:\.{1,2}\/|\/_astro\/)[^"'\s]+\.js)["']/g)) {
-      pending.push(new URL(specifier, `https://static.invalid${src}`).pathname);
+      const dependency = new URL(specifier, `https://static.invalid${src}`).pathname;
+      assert.ok(dependency.startsWith('/_astro/'), '模块依赖必须留在本站构建目录内');
+      pending.push(dependency);
     }
   }
   return chunks.join('\n');

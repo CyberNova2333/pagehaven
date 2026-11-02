@@ -8,7 +8,7 @@
 | `scripts/lib/` | 加载内容，核对清单、预算和部署回执 | `scripts/lib/manifest.mjs`、`scripts/lib/release.mjs` | 构建与发布交接 |
 | `packages/core/src/` | 统一进入 CDN URL 的安全对象路径契约 | `packages/core/src/object-path.js` | 配置、发布和浏览器检索共享；仅覆盖此辅助文件 |
 | `packages/core/src/db/` | 构造浏览器可用检索库与分块描述 | `packages/core/src/db/build.js` | build:db 的库构造入口 |
-| `packages/site/src/pages/` | 将生成内容映射为静态页面 | `packages/site/src/pages/index.astro` | build:site 调用 Astro |
+| `packages/site/` | 生成静态页面，接入布局、配色状态及公开场景脚本 | `packages/site/src/pages/index.astro`、`packages/site/src/layouts/Base.astro`、`packages/site/src/lib/day-night-control.js`、`packages/site/public/day-night-switch.js` | 仅覆盖页面入口及配色接线；其余页面行为与公开资源未展开 |
 | `packages/platform/src/` | 集中验证配置、声明目标并生成平台文件 | `packages/platform/src/site-config.js`、`packages/platform/src/targets.js` | 构建响应配置及部署控制模板 |
 
 ## `scripts/`
@@ -61,15 +61,22 @@
 
 相关验证：`scripts/test/build-db.test.mjs`。实际执行结果见[同步记录](change-log.md)。
 
-## `packages/site/src/pages/`
+## `packages/site/`
 
-将生成内容映射为静态页面。范围仅为下表入口及主流程直接使用的契约，其余文件没有逐一审核。
+页面入口把生成内容映射为静态 HTML，共享布局接入主题变量和浏览器配色控件。读者选择“跟随系统”时，页面和昼夜场景一起跟随系统外观；点击场景开关改成固定的浅色或深色后，仍可从旁边的三态选项恢复跟随系统。两种控件共用原有偏好状态，不各自读写存储。场景脚本没有载入时，三态选项仍可使用。
+
+纸页装饰从既有表面变量取色，按钮从主色与对比色变量取色，避免新增样式改掉维护者的配色配置。本节仅覆盖下列页面入口及配色接线，其余页面行为与公开资源没有逐一审核。
 
 | 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
 | --- | --- | --- | --- |
-| [职责入口](../packages/site/src/pages/index.astro) | 将生成内容映射为静态页面 | `首页与动态章节路由` | build:site 调用 Astro |
+| [页面入口](../packages/site/src/pages/index.astro) | 将生成内容映射为静态页面 | `首页与动态章节路由` | build:site 调用 Astro |
+| [共享布局](../packages/site/src/layouts/Base.astro) | 挂载控件，以 `--surface`、`--accent`、`--on-accent` 等变量绘制页面 | `mountDayNightControl` | 构建输出的各页面 |
+| [偏好状态](../packages/site/src/lib/color-scheme.js) | 恢复三态选择、持久化及系统与跨标签同步，通知解析后的配色 | `initializeColorScheme` | 页面首屏与两种配色控件 |
+| [场景接线](../packages/site/src/lib/day-night-control.js) | 保留三态选择，把快捷操作交给原状态源并同步场景显示 | `mountDayNightControl` | 共享布局 |
+| [语义配色](../packages/site/src/lib/site-appearance.js) | 从主题和主色计算表面、文字及按钮对比色 | `appearanceVariables` | 共享布局与维护者编辑器 |
+| [场景组件](../packages/site/public/day-night-switch.js) | 昼夜外观、快捷切换和无障碍状态 | `DayNightSwitch.mount / apply / destroy` | 场景接线 |
 
-相关验证：`scripts/test/site-build.test.mjs`。实际执行结果见[同步记录](change-log.md)。
+相关验证：`scripts/test/site-build.test.mjs`、`packages/site/test/day-night-control.test.js`、`packages/site/test/color-scheme.test.js`、`packages/site/test/site-appearance.test.js`。实际执行结果见[同步记录](change-log.md)。
 
 ## `packages/platform/src/`
 
@@ -87,7 +94,7 @@
 
 ## 覆盖范围
 
-覆盖构建命令编排、清单与检索库交接、站点生成、目标预算及部署回执边界。浏览器阅读偏好、备份恢复、在线检索细节、OCR 导入与平台真实部署验收未展开。当前工作区实现不等于已发布版本。
+覆盖构建命令编排、清单与检索库交接、站点生成、目标预算及部署回执边界；另记录配色控件与主题变量的兼容接线。其余浏览器阅读偏好、备份恢复、在线检索细节、OCR 导入与平台真实部署验收未展开。当前工作区实现不等于已发布版本。
 
 生成物、依赖安装目录、临时日志及第三方供应商源码不作为本次第一方模块地图。修改范围外机制前应重新调查，不能从本页推断兼容性。
 
