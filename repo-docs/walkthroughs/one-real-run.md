@@ -51,7 +51,7 @@ Workers 和 ESA 的部署控制模板也由配置生成，但不复制进 `dist`
 
 ## Step 6: 核对部署目标再启用生产版本
 
-发布由 CNB 手动按钮触发，`all` 展开为 Makers、ESA、GitHub Pages 和 Workers，旧的 Cloudflare Pages 保留为单独的 `cloudflare` 目标。GitHub 尚无独立预览环境，因此 `preview` 搭配 `github` 或 `all` 会提前拒绝。Workers 使用独立预览名称和地址；ESA 使用 staging，CI 验证请求单独将正式域名解析到控制台测试 IP，保留 Host、SNI 和证书校验，不改系统 hosts。预览始终不启用生产指针。
+发布由 CNB 手动按钮或 GitHub Actions 的手动发布工作流触发，两端共用同一套构建、部署与启用脚本。`all` 展开为 Makers、ESA、GitHub Pages 和 Workers，旧的 Cloudflare Pages 保留为单独的 `cloudflare` 目标。GitHub 尚无独立预览环境，因此 `preview` 搭配 `github` 或 `all` 会提前拒绝。Workers 使用独立预览名称和地址；ESA 使用 staging，CI 验证请求单独将正式域名解析到控制台测试 IP，保留 Host、SNI 和证书校验，不改系统 hosts。预览始终不启用生产指针。
 
 部署脚本先用本地 `release.json` 核对产物与构建清单。Workers 和 ESA 随后各自创建临时上传副本，并在其中写入一个随机命名的验证文件，记录本次随机值、目标、版本、指纹与环境。即使内容版本相同，重试也会产生新随机值。验证文件不含账号、项目名或凭据，且不写回共享 `dist` 或归档；支持写时复制的文件系统可复用原文件数据块，其他系统使用普通复制。
 

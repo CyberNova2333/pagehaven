@@ -92,6 +92,7 @@ Requires **Node.js 22.19.0+ and npm 9.6.5+** to meet the locked dependencies' mi
 
 ```bash
 npm ci
+npm --prefix docs-site ci  # The full test suite also needs the documentation dependencies
 npm run init -- --ui-lang en # Interactive setup; confirm to save, or build with the defaults
 npm run build     # Generate configuration, database, pages, indexes, and sitemap; no deployment
 npm run check     # Check configuration sync, data, artifact budgets, and lint
@@ -208,7 +209,7 @@ own script banner.
 
 ## Deployment
 
-Deployment targets include **EdgeOne Makers, ESA Pages, GitHub Pages, and Cloudflare Workers Static Assets**, with a separate Cloudflare Pages entry point retained. `npm run build` only generates files. Production releases are started manually with the release button on the CNB branch page. Pushing `main` runs checks only; there are no automatic or scheduled deployments.
+Deployment targets include **EdgeOne Makers, ESA Pages, GitHub Pages, and Cloudflare Workers Static Assets**, with a separate Cloudflare Pages entry point retained. `npm run build` only generates files. Production releases are started manually with the release button on the CNB branch page or the **发布** workflow on GitHub. Pushing `main` runs checks only on both platforms; there are no automatic or scheduled deployments. Both platforms also provide manual checks and branch archiving that creates and verifies a tag before deleting the branch. Only a successful `main` push check moves `last-green`.
 
 | Release target | Command | Preview and capacity boundaries |
 | --- | --- | --- |
@@ -229,6 +230,8 @@ contacting storage. The same validated database, digest file, and manifest bytes
 rejecting same-size corruption or files mixed from another build.
 
 The CNB release form requires `publish_secrets_url`. Selecting a deployment target also requires `deploy_secrets_url`. These must point to publishing and deployment secret files that you are authorized to reference. Upload-only runs still require publishing secrets. Default checks do not read external secret files.
+
+For GitHub releases, store the original publishing and deployment YAML/JSON objects in repository Actions secrets named `PUBLISH_SECRETS_YML` and `DEPLOY_SECRETS_YML`; secret-file URLs are not used. `scripts/ci/run-with-secrets.mjs` injects scalar fields only into the corresponding child process, ignores `allow_*` control fields, and never prints or writes the secrets to disk. Ordinary checks, builds, and unrelated steps cannot read them. OCR drafts are retained as GitHub workflow artifacts.
 
 Configure the new targets with the following deployment secrets. Keep project identifiers and verification URLs in secrets too:
 
@@ -310,6 +313,7 @@ The [Chinese living guide](repo-docs/README.md) follows one real workflow and st
 npm --prefix docs-site ci
 npm --prefix docs-site run docs:dev -- --host 127.0.0.1
 npm --prefix docs-site run docs:build
+npm run test:docs  # Real build, page links, and local search index regression; also included in npm test
 ```
 
 The documentation site uses the default VitePress theme, with dependencies installed separately from the application. Output defaults to `docs-site/.vitepress/dist/`; append `-- --outDir <external-absolute-directory>` for an isolated build. Markdown remains in `repo-docs/` and is included by the site. Repository source links are shown as exact paths; source files and local resources are not published.

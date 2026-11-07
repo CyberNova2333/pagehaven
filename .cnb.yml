@@ -1,4 +1,4 @@
-# .cnb.yml —— 本仓库唯一的流水线载体（CNB 云原生构建，cnb.cool）
+# .cnb.yml —— CNB 云原生构建配置；GitHub Actions 入口位于 .github/workflows/
 #
 # 三条流水线，与 CLAUDE.md 铁律 6 一一对应：
 #   · main 的 push        → 检查：check / test / 全量 build 空跑，通过后移动 last-green

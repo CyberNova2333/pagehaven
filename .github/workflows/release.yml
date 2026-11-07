@@ -1,0 +1,225 @@
+name: 发布
+
+on:
+  workflow_dispatch:
+    inputs:
+      chapters:
+        description: 要导入或 OCR 的话；留空则不导入
+        required: false
+        type: string
+        default: ''
+      target:
+        description: 部署目标；none 表示只上传
+        required: true
+        type: choice
+        default: none
+        options: [none, edgeone, esa, github, workers, cloudflare, all]
+      deploy_env:
+        description: 部署环境
+        required: true
+        type: choice
+        default: production
+        options: [production, preview]
+      ocr:
+        description: 对 chapters 只补 OCR 缺稿
+        required: true
+        type: boolean
+        default: false
+      version:
+        description: 发布版本；留空使用 UTC 日期与运行 ID
+        required: false
+        type: string
+        default: ''
+      push_all:
+        description: 搜索推送包含全部页面而非仅新增页面
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: 手动发布
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 安装依赖
+        run: npm ci
+        timeout-minutes: 15
+      - name: 发布参数与版本号
+        env:
+          DEPLOY_TARGET: ${{ inputs.target }}
+          DEPLOY_ENV: ${{ inputs.deploy_env }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          v="${INPUT_VERSION:-$(date -u +%Y-%m-%d).$GITHUB_RUN_ID}"
+          RELEASE_VERSION="$v" npm run release:check
+          echo "版本 $v"
+          {
+            echo "RELEASE_VERSION=$v"
+            echo "RELEASE_STARTED_AT=$(date -u +%FT%TZ)"
+            echo "DEPLOY_TARGET=$DEPLOY_TARGET"
+            echo "DEPLOY_ENV=$DEPLOY_ENV"
+          } >> "$GITHUB_ENV"
+      - name: ingest:labelplus
+        if: ${{ inputs.chapters != '' }}
+        env:
+          CHAPTERS: ${{ inputs.chapters }}
+        run: npm run ingest:labelplus
+      - name: ingest:ocr（只补缺稿）
+        id: ocr
+        if: ${{ inputs.ocr }}
+        continue-on-error: true
+        env:
+          CHAPTERS: ${{ inputs.chapters }}
+        run: |
+          set -eu
+          test -n "$CHAPTERS" || { echo 'OCR 必须显式选择要识别的话'; exit 1; }
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng
+          ocr_result=0
+          npm run ingest:ocr || ocr_result=$?
+          mkdir -p out/ocr-review
+          tar -czf "out/ocr-review-${RELEASE_VERSION}.tar.gz" -C out ocr-review
+          exit "$ocr_result"
+      - name: 保存待校对台词附件
+        if: ${{ inputs.ocr && always() && steps.ocr.outcome != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocr-review-${{ env.RELEASE_VERSION || github.run_id }}
+          path: out/ocr-review-*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+      - name: 核对 OCR 结果（失败前先保留已完成草稿）
+        if: ${{ inputs.ocr }}
+        run: test "${{ steps.ocr.outcome }}" = "success"
+      - name: build（config → manifest → db → site → index → sitemap）
+        run: npm run build
+      - name: check（预算守卫）
+        run: npm run check
+      - name: dist 文件数（给 STATUS.md）
+        run: echo "DIST_FILES=$(find dist -type f | wc -l)" >> "$GITHUB_ENV"
+      - name: 归档工具（tar --zstd）
+        run: |
+          if command -v zstd >/dev/null 2>&1; then
+            echo "zstd 已可用：$(zstd --version)"
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zstd
+      - name: 核对对象存储里的图片清单
+        env:
+          PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
+        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML npm run verify:manifest
+      - name: 准备发布基线
+        env:
+          PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
+        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML npm run release:prepare
+      - name: publish:r2
+        env:
+          PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
+        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML npm run publish:r2
+      - name: deploy:cloudflare
+        if: ${{ env.DEPLOY_TARGET == 'cloudflare' }}
+        env:
+          DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
+        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML npm run deploy:cloudflare
+      - name: deploy:edgeone
+        if: ${{ env.DEPLOY_TARGET == 'edgeone' || env.DEPLOY_TARGET == 'all' }}
+        env:
+          DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
+        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML npm run deploy:edgeone
+      - name: deploy:esa
+        if: ${{ env.DEPLOY_TARGET == 'esa' || env.DEPLOY_TARGET == 'all' }}
+        env:
+          DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
+        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML npm run deploy:esa
+      - name: deploy:workers
+        if: ${{ env.DEPLOY_TARGET == 'workers' || env.DEPLOY_TARGET == 'all' }}
+        env:
+          DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
+        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML npm run deploy:workers
+      - name: deploy:github（校验基线 → 推 gh-pages）
+        if: ${{ env.DEPLOY_TARGET == 'github' || env.DEPLOY_TARGET == 'all' }}
+        env:
+          DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
+        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML npm run deploy:github
+      - name: 启用生产版本
+        if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
+        env:
+          PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
+        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML npm run release:activate
+      - name: 写 STATUS.md
+        if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
+        env:
+          PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
+        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML npm run status
+      - name: 推送新页面给搜索引擎
+        if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
+        continue-on-error: true
+        run: |
+          if [ "${{ inputs.push_all }}" = "true" ]; then
+            npm run push:search -- --all
+          else
+            npm run push:search
+          fi
+      - name: 提交 data/ 与 STATUS.md
+        if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
+        run: |
+          set -eu
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+          git add STATUS.md data/text
+          if git diff --cached --quiet; then
+            echo '没有需要提交的变化'
+            exit 0
+          fi
+          git commit -F - <<MSG
+          chore(status): 发布 ${RELEASE_VERSION}（target=${{ inputs.target }}）后自动更新 STATUS.md
+
+          由 GitHub Actions 发布工作流自动写入；同时写回本次 ingest 产出的 data/text。
+
+          [skip-hooks]
+          MSG
+          git pull --rebase origin main
+          git push origin HEAD:main
+      - name: 🔴 发布失败
+        if: failure()
+        run: |
+          echo "🔴 发布失败：请按失败阶段核对已部署的目标，部分站点可能已经更新。"
+          echo "生产指针仅在所有目标部署成功后的启用阶段更新；若启用后失败，也需核对发布状态。"
+      - name: 失败时也写回 ingest 产出的 data/text
+        if: ${{ failure() && env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
+        run: |
+          set -eu
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+          git add data/text
+          if git diff --cached --quiet; then
+            echo 'data/text 没有需要提交的变化'
+            exit 0
+          fi
+          git commit -F - <<MSG
+          chore(data): 发布中断时写回 ingest 产出的 data/text
+
+          由 GitHub Actions 发布工作流在失败路径上自动写回，避免稿只留在构建容器里。
+
+          [skip-hooks]
+          MSG
+          git pull --rebase origin main || true
+          git push origin HEAD:main || echo '⚠ data/text 写回失败：稿仍在构建容器里，重新发布或手动取回'

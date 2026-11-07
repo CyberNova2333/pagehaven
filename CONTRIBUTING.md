@@ -25,7 +25,7 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
 ## 二、提交规则
 
 1. **一个逻辑改动一个 commit**，禁止攒批量提交；
-2. 提交前必过 `npm run check && npm test`（命令见 AGENTS.md §3）；
+2. 提交前必过 `npm run check && npm test`；首次运行先安装业务和独立文档依赖：`npm ci`、`npm --prefix docs-site ci`（命令见 AGENTS.md）；
 3. **分层验证**——按改动路径决定进入 main 的要求：
 
    | 改动路径 | 进入 main 的要求 |
@@ -108,20 +108,26 @@ LGPL 的 `sharp` 条目，都会被拦下。
 
 ```
 push 到 main
- └── .cnb.yml 的 push 流水线（唯一的自动触发）
-      ├── npm run check（预算守卫、配置同步、lint）
+ ├── .cnb.yml 的 push 流水线
+ └── .github/workflows/checks.yml
+      ├── 独立安装文档依赖并审计（含开发依赖，moderate 及以上阻止继续）
+      ├── npm run check（预算守卫、配置同步、lint、文档检查流程完整性）
       ├── npm test + npm run build（dry-run，不发布）
       ├── 分层提示：按 diff 路径给出验证级别
       ├── 通过 → 自动移动 tag `last-green` 到本次提交
       └── 失败 → 🔴 红灯流程（§五）
 
-人类在 main 分支详情页点按钮（.cnb/web_trigger.yml）
- ├── 发布（web_trigger_release）
+人类在 CNB 的 main 分支详情页点按钮（.cnb/web_trigger.yml），
+或在 GitHub 手动运行同名工作流（.github/workflows/）
+ ├── 发布（web_trigger_release / release.yml）
  │    输入 chapters / target / deploy_env / ocr / version / push_all
  │    参数检查 → ingest → build → check → verify:manifest → release:prepare
  │    → publish:r2 → deploy:<target> → release:activate → STATUS.md → push:search
- └── 归档分支（web_trigger_archive）：archive/<分支> tag → 核对 → 删分支
+ ├── 手动检查（web_trigger_check / checks.yml）：不移动 last-green
+ └── 归档分支（web_trigger_archive / archive.yml）：archive/<分支> tag → 核对 → 删分支
 ```
+
+CNB 发布凭据继续来自手动表单指定的密钥文件。GitHub 使用仓库 Actions secrets 中的 `PUBLISH_SECRETS_YML` 与 `DEPLOY_SECRETS_YML`，内容分别为原发布、部署 YAML/JSON 对象；辅助脚本仅在对应子进程合并这些变量，不打印或落盘，普通构建和其他步骤不可见。OCR 草稿在 GitHub 保存为工作流工件，成功及失败写回仍只允许 `data/text` 与 `STATUS.md`。
 
 - `last-green` 是稳定锚点：`git checkout last-green` 立刻回到最近一次全绿；
 - 构建 / 发布 / 部署**只手动**；`crontab:` 一律禁止（CLAUDE.md 铁律 6）；

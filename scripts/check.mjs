@@ -31,7 +31,7 @@ import { inspectDeploymentFiles, validateDeploymentBudget } from './lib/deploy-b
 import { isDeploymentProofPath } from './lib/deploy-proof.mjs';
 import { loadSiteConfig } from './lib/config.mjs';
 import { loadGallery } from './lib/data.mjs';
-import { ROOT, DATA_DIR, DIST_DIR, OUT_DB_DIR, PLATFORM_GENERATED_DIR, CNB_FILE, CNB_DIR, WORKFLOWS_DIR } from './lib/paths.mjs';
+import { ROOT, DATA_DIR, DIST_DIR, OUT_DB_DIR, PLATFORM_GENERATED_DIR, CNB_FILE, CNB_DIR } from './lib/paths.mjs';
 import { parseSitemap, indexNowKeyFile, SITEMAP_FILE, SITEMAP_PROTOCOL_MAX_URLS } from './lib/sitemap.mjs';
 import { step, ok, fail, note, warn } from './lib/log.mjs';
 import { checkReadmeLinks } from './lib/readme-links.mjs';
@@ -257,9 +257,6 @@ await section('流水线：main 的 push 只跑检查，发布只手动，没有
       }
     }
   }
-
-  // 不允许残留第二份流水线真相
-  if (existsSync(WORKFLOWS_DIR)) problems.push('.github/workflows 还在——流水线已全部迁到 CNB，别留第二份真相');
 
   return problems;
 });

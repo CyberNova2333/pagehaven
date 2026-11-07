@@ -1,0 +1,79 @@
+name: 检查
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: checks-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  check:
+    name: test · build（dry-run，不发布）
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            docs-site/package-lock.json
+      - name: 安装依赖
+        run: npm ci
+        timeout-minutes: 15
+      - name: 安装文档依赖
+        run: npm --prefix docs-site ci
+        timeout-minutes: 15
+      - name: 文档依赖安全审计
+        run: cd docs-site && npm audit --include=dev --audit-level=moderate
+      - name: 本次推送新增的提交信息
+        if: github.event_name == 'push'
+        run: |
+          set -eu
+          before="${{ github.event.before }}"
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+            echo "拿不到 before（新建分支），跳过"
+            exit 0
+          fi
+          if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            git fetch --quiet origin "$before" 2>/dev/null || true
+          fi
+          if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            echo "before=$before 在本地不可达，跳过"
+            exit 0
+          fi
+          python3 tools/check-commit-messages.py "$before..$GITHUB_SHA"
+      - name: npm run check（预算守卫 + 配置同步 + lint）
+        run: npm run check
+      - name: npm test
+        run: npm test
+      - name: npm run build（全量静态构建，dry-run）
+        run: npm run build
+      - name: 产物再过一遍守卫
+        run: npm run check
+      - name: 用测试样本全量空跑
+        run: |
+          export DATA_DIR=packages/core/test/fixtures/data
+          export DIST_DIR="$GITHUB_WORKSPACE/fixture-dist"
+          export OUT_DIR="$GITHUB_WORKSPACE/fixture-out"
+          npm run build && npm run check
+      - name: 分层验证提示
+        run: python3 tools/verification-tier.py "${{ github.event.before || '' }}" "$GITHUB_SHA" || true
+      - name: 移动 last-green
+        if: github.event_name == 'push'
+        run: git push --force origin "HEAD:refs/tags/last-green"
+      - name: 🔴 main 红灯
+        if: failure()
+        run: |
+          echo "🔴 main 红灯：检查流水线失败，这次推送没有移动 last-green。"
+          echo "红灯期间只允许修复类提交推 main；修不了就先 revert 恢复绿灯。"

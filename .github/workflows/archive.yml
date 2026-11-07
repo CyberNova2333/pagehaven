@@ -1,0 +1,61 @@
+name: 归档分支
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 要归档为 archive/<分支> tag 并删除的远端分支
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    name: 打 tag → 验证 → 删分支
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: 打 tag → 验证 → 删分支
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -eu
+          case "$BRANCH" in
+            '') echo '✘ 必须填要归档的分支名'; exit 1;;
+            main) echo '✘ 不能归档 main'; exit 1;;
+            archive/*) echo '✘ 分支名不该以 archive/ 开头——那是 tag 的命名空间'; exit 1;;
+          esac
+          branch_ref="refs/heads/$BRANCH"
+          if ! git check-ref-format "$branch_ref"; then echo '✘ 分支名无效'; exit 1; fi
+          sha=$(git ls-remote --heads origin "$branch_ref" | cut -f1)
+          if [ -z "$sha" ]; then echo "✘ 远端没有分支 $BRANCH"; exit 1; fi
+          tag="archive/$BRANCH"
+          existing_tag=$(git ls-remote --tags origin "refs/tags/$tag" | cut -f1)
+          if [ -n "$existing_tag" ]; then
+            echo "✘ tag $tag 已存在（archive/* 不可变）；换个分支名或先人工核对"; exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "$branch_ref"
+          fetched_sha=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
+          if [ "$fetched_sha" != "$sha" ]; then
+            echo '✘ 获取期间分支已变化，不创建归档标签或删除分支；请重新核对'; exit 1
+          fi
+          git push origin "$sha:refs/tags/$tag"
+          remote_tag=$(git ls-remote --tags origin "refs/tags/$tag" | cut -f1)
+          if [ "$remote_tag" != "$sha" ]; then
+            echo "✘ tag 校验失败（远端 $remote_tag ≠ $sha），不删分支"; exit 1
+          fi
+          git push --force-with-lease="$branch_ref:$sha" origin ":$branch_ref"
+          echo "## 已归档" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "- 分支 \`$BRANCH\` → tag \`$tag\`（\`$sha\`）" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 分支已从远端删除；要找回：\`git checkout -b $BRANCH $tag\`" >> "$GITHUB_STEP_SUMMARY"
