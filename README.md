@@ -87,6 +87,7 @@
 
 ```bash
 npm ci
+npm --prefix docs-site ci  # 完整测试需要独立的文档依赖
 npm run init      # 中文交互配置站点，确认后写入；也可保留默认配置直接构建
 npm run build     # 生成配置、检索库、静态页面、索引和 sitemap，不发布
 npm run check     # 配置同步、数据校验、产物预算与 lint
@@ -198,7 +199,7 @@ JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`em
 
 ## 部署
 
-部署目标包括 **EdgeOne Makers、ESA Pages、GitHub Pages、Cloudflare Workers Static Assets**，并保留独立的 Cloudflare Pages 入口。`npm run build` 只产生文件；正式发布由 CNB 分支详情页的「发布」按钮手动触发。推送 `main` 只自动检查，不自动部署，也没有定时发布。
+部署目标包括 **EdgeOne Makers、ESA Pages、GitHub Pages、Cloudflare Workers Static Assets**，并保留独立的 Cloudflare Pages 入口。`npm run build` 只产生文件；正式发布由 CNB 分支详情页的「发布」按钮或 GitHub 的「发布」工作流手动触发。推送 `main` 只在两端自动检查，不自动部署，也没有定时发布。CNB 与 GitHub 还提供手动检查和「打 tag、核对后删分支」的归档入口；只有 main 推送检查成功才移动 `last-green`。
 
 | 发布目标 | 命令 | 预览与容量边界 |
 | --- | --- | --- |
@@ -218,6 +219,8 @@ JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`em
 上传同一份数据库、摘要与清单字节，拒绝同尺寸损坏或混入其他构建的文件。
 
 CNB 发布表单中的 `publish_secrets_url` 必填；选择部署目标时还需提供 `deploy_secrets_url`，分别指向有权引用的发布与部署密钥文件。仅上传也需要发布密钥。默认检查不读取外部密钥文件。
+
+GitHub 发布改为在仓库 Actions secrets 中保存 `PUBLISH_SECRETS_YML` 与 `DEPLOY_SECRETS_YML`，内容分别是原发布、部署密钥文件的 YAML/JSON 对象，不再填写密钥文件 URL。`scripts/ci/run-with-secrets.mjs` 只在对应命令的子进程中注入标量字段，忽略 `allow_*` 控制字段，不打印或落盘秘密；普通检查、构建和未授权步骤不会读取这两项 secret。OCR 草稿保存为 GitHub 工作流工件。
 
 新增目标的部署密钥按下表配置，项目标识与验证地址也放在 secrets 中：
 
@@ -301,6 +304,7 @@ flowchart LR
 npm --prefix docs-site ci
 npm --prefix docs-site run docs:dev -- --host 127.0.0.1
 npm --prefix docs-site run docs:build
+npm run test:docs  # 真实构建、页面链接和本地搜索索引回归，也包含在 npm test 中
 ```
 
 文档站采用 VitePress 默认主题；默认输出 `docs-site/.vitepress/dist/`，独立验证使用 `-- --outDir <仓库外绝对目录>`。指南正文由 repo-docs include 引入，源码链接在网页中显示为精确路径。

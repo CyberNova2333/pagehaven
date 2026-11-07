@@ -19,7 +19,7 @@
 | --- | --- | --- | --- |
 | [职责入口](../scripts/build-site.mjs) | 串联配置、清单、库、页面、索引与 sitemap | `站点步骤；build-manifest.mjs / build-db.mjs` | 根 package 的 build 顺序 |
 | [部署入口](../scripts/deploy.mjs) | 检查产物，创建临时部署配置，执行 CLI 并记录成功回执 | `deploymentInput / recordDeployment` | 手动发布流水线 |
-| [验收与发布检查](../scripts/check.mjs) | 检查生成配置、静态产物及所选目标预算，禁止自动发布 | `inspectDeploymentFiles / validateDeploymentBudget` | 本地检查与 CNB 发布前检查 |
+| [验收与发布检查](../scripts/check.mjs) | 检查生成配置、静态产物及所选目标预算，禁止自动发布 | `inspectDeploymentFiles / validateDeploymentBudget` | 本地检查与 CNB、GitHub Actions 发布前检查 |
 
 相关验证：`scripts/test/site-build.test.mjs`、`scripts/test/deploy-plan.test.mjs`、`scripts/test/deploy-static.test.mjs`。实际执行结果见[同步记录](change-log.md)。
 

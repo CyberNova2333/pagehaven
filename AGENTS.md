@@ -28,7 +28,7 @@
 - 默认直接 main、无 PR，除非人类明确要求。用 feature flags 管功能，不为了形式另开 feature 分支。切分支、提交与推送按当前人类授权执行。
 - 仅 `hotfix/*`（修红灯，小时级）和 `surgery/*`（core/构建/三平台大改，≤3天）可例外，先登记 ACTIVE.md，全会话至多一条，优先接续现有分支。
 - 开分支前 `python3 tools/check-branch-hygiene.py --can-branch` 须为 0；收尾 `python3 tools/check-branch-hygiene.py`。远端未删除的非白名单分支 2 小时内有活动时，不许另开。
-- 分支退役先以 archive/<原分支名> tag 归档并确认远端，再用 CNB 归档按钮删除分支；archive tag 不可变，不留长期 archive/research 分支。远端长期仅 main，短期 hotfix/surgery；main 禁强推/删除。
+- 分支退役先以 archive/<原分支名> tag 归档并确认远端，再用 CNB 或 GitHub Actions 归档入口删除分支；archive tag 不可变，不留长期 archive/research 分支。远端长期仅 main，短期 hotfix/surgery；main 禁强推/删除。
 - 不用 ci/build/driver/success/run-id 分支触发 CI。仅 main push 可自动检查；构建/发布与归档只由人类 web_trigger 按钮触发。禁止 crontab 与自动部署，失败不新增触发分支。
 
 ## 提交、署名和内容卫生
