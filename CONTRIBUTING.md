@@ -19,8 +19,7 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
 - 禁止第三种分支存在，feature 分支全部用 feature flag 替代（§三）；
 - `surgery/*` 开工前在 [ACTIVE.md](ACTIVE.md) 登记，完工立即合入删除；
 - 超期（hotfix 24 小时、surgery 3 天）会被 `tools/check-branch-hygiene.py` 点名；
-- **分支退役不许直接删**：先打 `archive/<原分支名>` tag 存档再删，走
-  CNB 分支详情页 →「归档分支」按钮。
+- **分支退役不许直接删**：先打 `archive/<原分支名>` tag 存档再删，可在 GitHub Actions 运行「归档分支」工作流。
 
 ## 二、提交规则
 
@@ -32,10 +31,10 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
    |---|---|
    | 文档、`data/`、`site.config.yaml` | `npm run check` |
    | `packages/core` `packages/site` `packages/search` | + `npm test` + `npm run build` 全量 |
-   | `packages/platform/`、`scripts/deploy.mjs` `scripts/publish-r2.mjs` `scripts/seo-push.mjs` `scripts/lib/deploy-plan.mjs`、流水线（`.cnb.yml`） | + 以 `target=<平台>`、`deploy_env=preview` 真实部署一次 |
+   | `packages/platform/`、`scripts/deploy.mjs` `scripts/publish-r2.mjs` `scripts/seo-push.mjs` `scripts/lib/deploy-plan.mjs`、流水线（工作流） | + 以 `target=<平台>`、`deploy_env=preview` 真实部署一次 |
    | 数据 schema、DB 结构 | + 重建 DB 并在检索页上用真实数据查一次 |
 
-   CNB 的检查流水线会按 diff 路径在日志里标出级别。最后两级 CI 替代不了，
+   检查流水线会按 diff 路径在日志里标出级别。最后两级 CI 替代不了，
    必须有人真跑过才算完。
 4. `git config pull.rebase true` + `rebase.autoStash true` + `rerere.enabled true`，
    开工第一件事是 rebase 到最新 main；
@@ -108,26 +107,24 @@ LGPL 的 `sharp` 条目，都会被拦下。
 
 ```
 push 到 main
- ├── .cnb.yml 的 push 流水线
- └── .github/workflows/checks.yml
-      ├── 独立安装文档依赖并审计（含开发依赖，moderate 及以上阻止继续）
-      ├── npm run check（预算守卫、配置同步、lint、文档检查流程完整性）
-      ├── npm test + npm run build（dry-run，不发布）
-      ├── 分层提示：按 diff 路径给出验证级别
-      ├── 通过 → 自动移动 tag `last-green` 到本次提交
-      └── 失败 → 🔴 红灯流程（§五）
+  └── .github/workflows/checks.yml
+       ├── 独立安装文档依赖并审计（含开发依赖，moderate 及以上阻止继续）
+       ├── npm run check（预算守卫、配置同步、lint、文档检查流程完整性）
+       ├── npm test + npm run build（dry-run，不发布）
+       ├── 分层提示：按 diff 路径给出验证级别
+       ├── 通过 → 自动移动 tag `last-green` 到本次提交
+       └── 失败 → 🔴 红灯流程（§五）
 
-人类在 CNB 的 main 分支详情页点按钮（.cnb/web_trigger.yml），
-或在 GitHub 手动运行同名工作流（.github/workflows/）
- ├── 发布（web_trigger_release / release.yml）
+人类在 GitHub 手动运行工作流（.github/workflows/）：
+ ├── 发布（release.yml）
  │    输入 chapters / target / deploy_env / ocr / version / push_all
  │    参数检查 → ingest → build → check → verify:manifest → release:prepare
  │    → publish:r2 → deploy:<target> → release:activate → STATUS.md → push:search
- ├── 手动检查（web_trigger_check / checks.yml）：不移动 last-green
- └── 归档分支（web_trigger_archive / archive.yml）：archive/<分支> tag → 核对 → 删分支
+ ├── 手动检查（checks.yml）：不移动 last-green
+ └── 归档分支（archive.yml）：archive/<分支> tag → 核对 → 删分支
 ```
 
-CNB 发布凭据继续来自手动表单指定的密钥文件。GitHub 使用仓库 Actions secrets 中的 `PUBLISH_SECRETS_YML` 与 `DEPLOY_SECRETS_YML`，内容分别为原发布、部署 YAML/JSON 对象；辅助脚本仅在对应子进程合并这些变量，不打印或落盘，普通构建和其他步骤不可见。OCR 草稿在 GitHub 保存为工作流工件，成功及失败写回仍只允许 `data/text` 与 `STATUS.md`。
+GitHub 发布使用仓库 Actions secrets 中的 `PUBLISH_SECRETS_YML` 与 `DEPLOY_SECRETS_YML`，内容分别为发布、部署 YAML/JSON 对象；辅助脚本仅在对应子进程合并这些变量，不打印或落盘，普通构建和其他步骤不可见。OCR 草稿在 GitHub 保存为工作流工件，成功及失败写回仍只允许 `data/text` 与 `STATUS.md`。
 
 - `last-green` 是稳定锚点：`git checkout last-green` 立刻回到最近一次全绿；
 - 构建 / 发布 / 部署**只手动**；`crontab:` 一律禁止（CLAUDE.md 铁律 6）；
@@ -139,8 +136,7 @@ CNB 发布凭据继续来自手动表单指定的密钥文件。GitHub 使用仓
 
 ## 五、红灯协议（main 挂了的处理 SOP）
 
-1. CNB 的检查流水线失败 → 构建页标红（流水线末尾打印红灯说明；CNB 没有 GitHub
-   那种「在失败提交下留言」的接口，判断红灯以构建状态为准）；
+1. 检查流水线失败 → 构建页标红；
 2. 红灯期间只允许修复主线的提交推 main（pre-push 红灯闸门执行：新增提交不全是
    `fix(` / `fix:` / `revert` 开头就拦；查不到状态时放行并提示；
    逃生口 `SKIP_REDLIGHT_HOOK=1`）；

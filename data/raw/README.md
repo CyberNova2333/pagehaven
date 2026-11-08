@@ -11,7 +11,7 @@ data/raw/ocr/<series>/<issue>/<chapter>.json          人工校对后的 OCR 稿
 
 路径就是这一话的 key（与 `data/meta/<series>.yaml` 里的 id 对应，也与
 `data/text/<series>/<issue>/<chapter>.json` 同形）。在手机上交稿 = 用 GitHub 网页
-把 LabelPlus 导出的 txt 传到这个位置，然后在 CNB 的 main 分支详情页点「发布」按钮，`chapters` 填
+把 LabelPlus 导出的 txt 传到这个位置，然后在 GitHub Actions 运行「发布」工作流，`chapters` 填
 `<series>/<issue>/<chapter>`（多话逗号分隔）。扩展名 `.TXT` 也认；`data/raw/labelplus/` 下除 README
 与点文件之外的其它文件会被提示「不是 .txt」——不是稿就删掉。
 同一话同时有多份仅扩展名大小写不同的稿时，全部列为冲突，不会自动挑一份导入；请只保留一份。
@@ -60,7 +60,7 @@ OCR 只补缺稿，**不会把未经校对的识别结果自动变成台词**。
 默认识别简体中文与英文（`chi_sim+eng`），采用稀疏文字模式。漫画中的手写字、竖排、特殊字体、
 阅读顺序与气泡边界仍可能识别错误；输出只能当草稿。已有 `data/text` 的章节会跳过，不覆盖。
 
-1. 在 CNB 手动发布表单开启 OCR，并在 `chapters` 中明确填写少量章节；或在 Codespaces 中运行下列命令。
+1. 在 GitHub Actions 手动发布工作流开启 OCR，并在 `chapters` 中明确填写少量章节；或在 Codespaces 中运行下列命令。
    OCR 不允许省略 `CHAPTERS`，不会隐式识别全库。Codespaces 若尚无引擎，可先安装
    `tesseract-ocr`、`tesseract-ocr-chi-sim`、`tesseract-ocr-eng` 软件包；普通构建不需要它们。
 
@@ -68,7 +68,7 @@ OCR 只补缺稿，**不会把未经校对的识别结果自动变成台词**。
    CHAPTERS=sample/v/c npm run ingest:ocr
    ```
 
-2. 校对产物在 `out/ocr-review/`，通过 CNB 提交详情页的附件下载取得（以发布版本命名的压缩包）。每话包含：
+2. 校对产物在 `out/ocr-review/`，通过工作流工件下载取得（以发布版本命名的压缩包）。每话包含：
 
    ```text
    <series>/<issue>/<chapter>.json          待校对的结构化台词

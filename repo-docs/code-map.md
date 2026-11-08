@@ -19,7 +19,7 @@
 | --- | --- | --- | --- |
 | [职责入口](../scripts/build-site.mjs) | 串联配置、清单、库、页面、索引与 sitemap | `站点步骤；build-manifest.mjs / build-db.mjs` | 根 package 的 build 顺序 |
 | [部署入口](../scripts/deploy.mjs) | 检查产物，创建临时部署配置，执行 CLI 并记录成功回执 | `deploymentInput / recordDeployment` | 手动发布流水线 |
-| [验收与发布检查](../scripts/check.mjs) | 检查生成配置、静态产物及所选目标预算，禁止自动发布 | `inspectDeploymentFiles / validateDeploymentBudget` | 本地检查与 CNB、GitHub Actions 发布前检查 |
+| [验收与发布检查](../scripts/check.mjs) | 检查生成配置、静态产物及所选目标预算，禁止自动发布 | `inspectDeploymentFiles / validateDeploymentBudget` | 本地检查与 GitHub Actions 发布前检查 |
 
 相关验证：`scripts/test/site-build.test.mjs`、`scripts/test/deploy-plan.test.mjs`、`scripts/test/deploy-static.test.mjs`。实际执行结果见[同步记录](change-log.md)。
 
@@ -30,7 +30,7 @@
 | 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
 | --- | --- | --- | --- |
 | [职责入口](../scripts/lib/manifest.mjs) | 加载内容并定义跨步骤清单契约 | `buildManifest / galleryFingerprint` | 清单、建库与站点步骤共享 |
-| [README 章节链接校验](../scripts/lib/readme-links.mjs) | 校验双语导航是否指向标题生成的 CNB 锚点 | `checkReadmeLinks` | `scripts/check.mjs`；回归见 `scripts/test/readme-links.test.mjs` |
+| [README 章节链接校验](../scripts/lib/readme-links.mjs) | 校验双语导航是否指向标题生成的有效锚点 | `checkReadmeLinks` | `scripts/check.mjs`；回归见 `scripts/test/readme-links.test.mjs` |
 | [静态跳转输出边界](../scripts/lib/static-output.mjs) | 预检重定向的规范路径及输出根边界，转义跳转页属性 | `redirectOutputPaths / metaRefresh` | `scripts/build-site.mjs`；回归见 `scripts/test/static-output.test.mjs` |
 | [部署计划](../scripts/lib/deploy-plan.mjs) | 将目标、环境和 secrets 变成 CLI 参数，隔离预览名称与地址 | `planDeployCommand` | 部署入口 |
 | [平台预算](../scripts/lib/deploy-budget.mjs) | 遍历普通文件，为新目标预留部署证明容量，拒绝链接、保留路径及超预算产物 | `inspectDeploymentFiles / validateDeploymentBudget` | 检查入口与部署入口共用 |
@@ -94,7 +94,7 @@
 
 ## 文档构建回归
 
-[文档站集成测试](../scripts/test/docs-site.test.mjs)由 `npm test` 自动发现，也可通过 `npm run test:docs` 单独运行。它调用已安装的 VitePress，在系统临时目录构建现有指南，读取最终 HTML 校验页面与链接，再加载同次产物的 MiniSearch 索引执行真实查询。依赖缺失直接报安装命令，不跳过；不模拟浏览器交互，也不覆盖默认文档产物。CNB 与 GitHub Actions 的检查流水线负责独立依赖安装与联网审计，业务发布入口保持原有职责。
+[文档站集成测试](../scripts/test/docs-site.test.mjs)由 `npm test` 自动发现，也可通过 `npm run test:docs` 单独运行。它调用已安装的 VitePress，在系统临时目录构建现有指南，读取最终 HTML 校验页面与链接，再加载同次产物的 MiniSearch 索引执行真实查询。依赖缺失直接报安装命令，不跳过；不模拟浏览器交互，也不覆盖默认文档产物。GitHub Actions 的检查流水线负责独立依赖安装与联网审计，业务发布入口保持原有职责。
 
 ## 覆盖范围
 
