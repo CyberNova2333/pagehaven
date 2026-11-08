@@ -209,7 +209,7 @@ own script banner.
 
 ## Deployment
 
-Deployment targets include **EdgeOne Makers, ESA Pages, GitHub Pages, and Cloudflare Workers Static Assets**, with a separate Cloudflare Pages entry point retained. `npm run build` only generates files. Production releases are started manually with the release button on the CNB branch page or the **发布** workflow on GitHub. Pushing `main` runs checks only on both platforms; there are no automatic or scheduled deployments. Both platforms also provide manual checks and branch archiving that creates and verifies a tag before deleting the branch. Only a successful `main` push check moves `last-green`.
+Deployment targets include **EdgeOne Makers, ESA Pages, GitHub Pages, and Cloudflare Workers Static Assets**, with a separate Cloudflare Pages entry point retained. `npm run build` only generates files. Production releases are started manually with the release workflow on GitHub. Pushing `main` runs automated checks; there are no automatic or scheduled deployments. GitHub also provides manual checks and branch archiving that creates and verifies a tag before deleting the branch. Only a successful `main` push check moves `last-green`.
 
 | Release target | Command | Preview and capacity boundaries |
 | --- | --- | --- |
@@ -229,8 +229,6 @@ Uploads and dry-runs verify the database SHA-256, chunk digests, version, and co
 contacting storage. The same validated database, digest file, and manifest bytes are then uploaded,
 rejecting same-size corruption or files mixed from another build.
 
-The CNB release form requires `publish_secrets_url`. Selecting a deployment target also requires `deploy_secrets_url`. These must point to publishing and deployment secret files that you are authorized to reference. Upload-only runs still require publishing secrets. Default checks do not read external secret files.
-
 For GitHub releases, store the original publishing and deployment YAML/JSON objects in repository Actions secrets named `PUBLISH_SECRETS_YML` and `DEPLOY_SECRETS_YML`; secret-file URLs are not used. `scripts/ci/run-with-secrets.mjs` injects scalar fields only into the corresponding child process, ignores `allow_*` control fields, and never prints or writes the secrets to disk. Ordinary checks, builds, and unrelated steps cannot read them. OCR drafts are retained as GitHub workflow artifacts.
 
 Configure the new targets with the following deployment secrets. Keep project identifiers and verification URLs in secrets too:
@@ -244,9 +242,7 @@ Verification URLs must be HTTPS roots that actually reach the intended platform,
 
 Each Workers or ESA deployment adds a randomly named proof file to an isolated upload copy. It binds a fresh random value to the target, version, fingerprint, and environment; the shared `dist` and archive stay unchanged. After the CLI succeeds, verification must retrieve that exact proof and reject redirects, another target's proof, or a previous deployment's proof. Local `release.json` still checks the build, but cannot prove deployment by itself. The proof contains no project names, accounts, or credentials. Multi-platform publishing is not an atomic transaction across providers: an earlier site may have updated when a later target fails, but the shared production pointer will not be activated.
 
-Secret-file addresses use HTTPS and the `/-/blob/<ref>/<file>.yml` form; YAML and JSON files are also supported. Do not embed credentials, query parameters, or fragments in these addresses. CNB checks file existence and access permissions. Keep account identifiers and credentials out of the repository.
-
-See the [architecture](docs/ARCHITECTURE.md), [collaboration and pipeline guide](CONTRIBUTING.md), and [release form](.cnb/web_trigger.yml) for platform differences and release parameters. The latest recorded release status is in [`STATUS.md`](STATUS.md).
+See the [architecture](docs/ARCHITECTURE.md) and [collaboration and pipeline guide](CONTRIBUTING.md) for platform differences and release parameters. The latest recorded release status is in [`STATUS.md`](STATUS.md).
 
 ## Architecture
 
@@ -276,7 +272,7 @@ Platform-independent code uses Web-standard APIs. Filesystem access and publishi
 | [`packages/platform/`](packages/platform/README.md) | Site configuration schema and platform configuration generators |
 | [`scripts/`](scripts/) | Import, build, validation, upload, and release orchestration |
 | [`data/`](data/meta/README.md) | Comic metadata, source transcripts, and text layers |
-| [`.cnb.yml`](.cnb.yml) | Automated checks and manual release pipelines |
+| [`.github/workflows/`](.github/workflows/) | Automated checks and release workflows |
 | [`tools/`](tools/) | Collaboration guards and Git hooks |
 | `dist/`, `out/` | Generated artifacts, excluded from version control |
 
@@ -295,7 +291,7 @@ Internal packages keep the `@gallery/*` names, and reading records keep the `gal
 
 Work directly on `main`; there is no routine PR workflow. Keep one feature per commit, use a Conventional Commits prefix with a Chinese description, and follow the authorship, signing, and documentation rules. Keep feature descriptions, commands, and limits synchronized between both README languages.
 
-When changing a section heading, update the navigation fragment to match the section link generated beside that heading on CNB. English headings use lowercase and hyphens (`Getting started` becomes `#getting-started`). `npm run check` checks section links in both READMEs.
+When changing a section heading, update the navigation fragment to match the section link. English headings use lowercase and hyphens (`Getting started` becomes `#getting-started`). `npm run check` checks section links in both READMEs.
 
 Before committing, run `npm run check`, `npm test`, and `npm run build`. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full rules. Automated collaborators must also read [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md). These maintenance documents are currently authoritative in Chinese.
 

@@ -45,13 +45,13 @@ Workers 和 ESA 的部署控制模板也由配置生成，但不复制进 `dist`
 
 维护检查守住文件数、单文件大小、每话 HTML、配置同步等约束。选择发布目标后，还会按该目标检查静态产物预算；`all` 需要同时满足四端预算。Workers 与 ESA 额外预留 1 个文件和 4,096 字节供部署验证，所以默认业务产物上限分别为 17,999 和 1,999 文件。ESA 的总大小检查也包括这份字节预留；文件数还要计入章节以外的页面和资源，不能解释成可容纳 1,999 话。集成测试会用最小夹具走实际构建，也会触及共享生成目录。
 
-同一检查入口还核对双语 README 的章节链接。修改标题后，导航参数必须同步到 CNB 生成的锚点，例如 `Getting started` 使用 `#getting-started`；旧的 `#section-1` 或错误大小写会导致检查失败。
+同一检查入口还核对双语 README 的章节链接。修改标题后，导航参数必须同步到生成的有效锚点，例如 `Getting started` 使用 `#getting-started`；旧的 `#section-1` 或错误大小写会导致检查失败。
 
 [对应实现](../../scripts/test/site-build.test.mjs)，定位 `CONFIG_FILE / DATA_DIR / DIST_DIR / OUT_DIR、run`。
 
 ## Step 6: 核对部署目标再启用生产版本
 
-发布由 CNB 手动按钮或 GitHub Actions 的手动发布工作流触发，两端共用同一套构建、部署与启用脚本。`all` 展开为 Makers、ESA、GitHub Pages 和 Workers，旧的 Cloudflare Pages 保留为单独的 `cloudflare` 目标。GitHub 尚无独立预览环境，因此 `preview` 搭配 `github` 或 `all` 会提前拒绝。Workers 使用独立预览名称和地址；ESA 使用 staging，CI 验证请求单独将正式域名解析到控制台测试 IP，保留 Host、SNI 和证书校验，不改系统 hosts。预览始终不启用生产指针。
+发布由 GitHub Actions 的手动发布工作流触发，共用同一套构建、部署与启用脚本。`all` 展开为 Makers、ESA、GitHub Pages 和 Workers，旧的 Cloudflare Pages 保留为单独的 `cloudflare` 目标。GitHub 尚无独立预览环境，因此 `preview` 搭配 `github` 或 `all` 会提前拒绝。Workers 使用独立预览名称和地址；ESA 使用 staging，CI 验证请求单独将正式域名解析到控制台测试 IP，保留 Host、SNI 和证书校验，不改系统 hosts。预览始终不启用生产指针。
 
 部署脚本先用本地 `release.json` 核对产物与构建清单。Workers 和 ESA 随后各自创建临时上传副本，并在其中写入一个随机命名的验证文件，记录本次随机值、目标、版本、指纹与环境。即使内容版本相同，重试也会产生新随机值。验证文件不含账号、项目名或凭据，且不写回共享 `dist` 或归档；支持写时复制的文件系统可复用原文件数据块，其他系统使用普通复制。
 

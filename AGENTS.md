@@ -11,16 +11,16 @@
 | 业务测试 | `npm test` |
 | 完整静态构建 | `npm run build`（会替换生成目录与 dist） |
 
-三项验证分别记结果，未运行不能写通过。平台适配改动还需 CNB 预览环境真实部署，单测不能代替；部署按人类授权另行执行。
+三项验证分别记结果，未运行不能写通过。平台适配改动还需预览环境真实部署，单测不能代替；部署按人类授权另行执行。
 
 ## 平台与数据铁律
 
-1. `packages/core`、`packages/site`、`packages/search` 只用 fetch/Request/Response/Web Crypto/Web Streams/WebAssembly 等 Web 标准，不 import Node 或原生依赖；SQLite 只用 Wasm。Node 与原生依赖限构建期 scripts，须能在 Linux CNB/Codespaces 跑。
+1. `packages/core`、`packages/site`、`packages/search` 只用 fetch/Request/Response/Web Crypto/Web Streams/WebAssembly 等 Web 标准，不 import Node 或原生依赖；SQLite 只用 Wasm。Node 与原生依赖限构建期 scripts，须能在 Linux CI/Codespaces 跑。
 2. 平台绑定只在 `packages/platform/`，必须能关闭并降级到 GitHub Pages 的纯静态基线：无自定义响应头、重定向或函数仍完整可用。检索和数据加载不进 Edge Functions；可选加速不可用时回退浏览器。
 3. sitemap、索引和页面构建期生成；每话恰好一个 HTML。dist ≤ 18 000 文件，单文件 ≤ 20 MB，不含图片/DB；DB page_size 与 requestChunkSize 一致，配置生成物同步，sitemap 覆盖每话。依据见原架构文档预算。
 4. 配置唯一来源 `site.config.yaml`；域名、缓存、响应头、重定向从这里改，不手改 `_headers`、`_redirects`、`edgeone.json`、`wrangler.jsonc`、`esa.jsonc`。平台或配置改动先记平台矩阵再改实现，各目标一起同步。四个主要目标为 Makers、ESA、GitHub Pages、Workers；`cloudflare` 保留为旧 Pages 目标，`all` 仅包含四个主要目标。ESA 额外守住 2,000 文件限制，部署控制文件不进入公开静态产物。
 5. 凭据、账号 ID、桶名、实际地址只在 secrets，不入源码/文档/历史。R2 永远私有读，读走 CDN，写只在 CI。数据源只有 R2 和仓库 data；托管内容都是可再生产物。
-6. 不新增绑卡、月付、平台审批或人工续期依赖。人类操作必须可在手机浏览器 + Codespaces/CNB 页面完成，不要求维护者拥有电脑；验证进入现有 check/test 入口。
+6. 不新增绑卡、月付、平台审批或人工续期依赖。人类操作必须可在手机浏览器 + Codespaces/GitHub 页面完成，不要求维护者拥有电脑；验证进入现有 check/test 入口。
 7. `STATUS.md` 由发布流水线写，禁止手改。一次性应用器、迁移脚手架、驱动流水线留仓库外；scripts/tools 只收反复使用的工具。
 
 ## 发布和分支纪律
@@ -28,7 +28,7 @@
 - 默认直接 main、无 PR，除非人类明确要求。用 feature flags 管功能，不为了形式另开 feature 分支。切分支、提交与推送按当前人类授权执行。
 - 仅 `hotfix/*`（修红灯，小时级）和 `surgery/*`（core/构建/三平台大改，≤3天）可例外，先登记 ACTIVE.md，全会话至多一条，优先接续现有分支。
 - 开分支前 `python3 tools/check-branch-hygiene.py --can-branch` 须为 0；收尾 `python3 tools/check-branch-hygiene.py`。远端未删除的非白名单分支 2 小时内有活动时，不许另开。
-- 分支退役先以 archive/<原分支名> tag 归档并确认远端，再用 CNB 或 GitHub Actions 归档入口删除分支；archive tag 不可变，不留长期 archive/research 分支。远端长期仅 main，短期 hotfix/surgery；main 禁强推/删除。
+- 分支退役先以 archive/<原分支名> tag 归档并确认远端，再用 GitHub Actions 归档入口删除分支；archive tag 不可变，不留长期 archive/research 分支。远端长期仅 main，短期 hotfix/surgery；main 禁强推/删除。
 - 不用 ci/build/driver/success/run-id 分支触发 CI。仅 main push 可自动检查；构建/发布与归档只由人类 web_trigger 按钮触发。禁止 crontab 与自动部署，失败不新增触发分支。
 
 ## 提交、署名和内容卫生

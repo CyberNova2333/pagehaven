@@ -199,7 +199,7 @@ JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`em
 
 ## 部署
 
-部署目标包括 **EdgeOne Makers、ESA Pages、GitHub Pages、Cloudflare Workers Static Assets**，并保留独立的 Cloudflare Pages 入口。`npm run build` 只产生文件；正式发布由 CNB 分支详情页的「发布」按钮或 GitHub 的「发布」工作流手动触发。推送 `main` 只在两端自动检查，不自动部署，也没有定时发布。CNB 与 GitHub 还提供手动检查和「打 tag、核对后删分支」的归档入口；只有 main 推送检查成功才移动 `last-green`。
+部署目标包括 **EdgeOne Makers、ESA Pages、GitHub Pages、Cloudflare Workers Static Assets**，并保留独立的 Cloudflare Pages 入口。`npm run build` 只产生文件；正式发布由 GitHub 的「发布」工作流手动触发。推送 `main` 自动运行检查，不自动部署，也没有定时发布。GitHub 还提供手动检查和「打 tag、核对后删分支」的归档入口；只有 main 推送检查成功才移动 `last-green`。
 
 | 发布目标 | 命令 | 预览与容量边界 |
 | --- | --- | --- |
@@ -218,9 +218,7 @@ JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`em
 上传及 dry-run 会在访问存储前校验数据库实际 SHA-256、分块摘要、版本和配置；校验后直接
 上传同一份数据库、摘要与清单字节，拒绝同尺寸损坏或混入其他构建的文件。
 
-CNB 发布表单中的 `publish_secrets_url` 必填；选择部署目标时还需提供 `deploy_secrets_url`，分别指向有权引用的发布与部署密钥文件。仅上传也需要发布密钥。默认检查不读取外部密钥文件。
-
-GitHub 发布改为在仓库 Actions secrets 中保存 `PUBLISH_SECRETS_YML` 与 `DEPLOY_SECRETS_YML`，内容分别是原发布、部署密钥文件的 YAML/JSON 对象，不再填写密钥文件 URL。`scripts/ci/run-with-secrets.mjs` 只在对应命令的子进程中注入标量字段，忽略 `allow_*` 控制字段，不打印或落盘秘密；普通检查、构建和未授权步骤不会读取这两项 secret。OCR 草稿保存为 GitHub 工作流工件。
+GitHub 发布使用仓库 Actions secrets 中保存的 `PUBLISH_SECRETS_YML` 与 `DEPLOY_SECRETS_YML`，内容分别是发布、部署密钥文件的 YAML/JSON 对象。`scripts/ci/run-with-secrets.mjs` 只在对应命令的子进程中注入标量字段，忽略 `allow_*` 控制字段，不打印或落盘秘密；普通检查、构建和未授权步骤不会读取这两项 secret。OCR 草稿保存为 GitHub 工作流工件。
 
 新增目标的部署密钥按下表配置，项目标识与验证地址也放在 secrets 中：
 
@@ -233,9 +231,7 @@ GitHub 发布改为在仓库 Actions secrets 中保存 `PUBLISH_SECRETS_YML` 与
 
 Workers 与 ESA 每次部署都会在临时上传副本中增加一个随机命名的验证文件，绑定本次随机值、目标、版本、指纹与环境；共享 `dist` 和归档保持原样。CLI 成功后必须从验证地址读回这份文件，拒绝重定向、其他目标和上一次部署的证明；本地 `release.json` 仍用于核对构建，不能单独证明目标已上线。验证文件不含项目名、账号或凭据。多平台发布并非跨平台原子事务：后续目标失败时，前面成功的站点可能已更新，但共享生产指针不会启用。
 
-密钥文件地址使用 HTTPS 和 `/-/blob/<ref>/<file>.yml` 格式，也支持 YAML、JSON；地址中不携带凭据、查询参数或片段。存在性和访问权限由 CNB 检查，账号与凭据不写进仓库。
-
-平台差异和发布参数见 [架构说明](docs/ARCHITECTURE.md)、[协作与流水线说明](CONTRIBUTING.md) 及 [发布表单](.cnb/web_trigger.yml)。最近一次发布状态见 [`STATUS.md`](STATUS.md)。
+平台差异和发布参数见 [架构说明](docs/ARCHITECTURE.md) 与 [协作与流水线说明](CONTRIBUTING.md)。最近一次发布状态见 [`STATUS.md`](STATUS.md)。
 
 ## 架构
 
@@ -265,7 +261,7 @@ flowchart LR
 | [`packages/platform/`](packages/platform/README.md) | 站点配置 schema 与平台配置生成器 |
 | [`scripts/`](scripts/) | 导入、构建、检查、上传和发布编排 |
 | [`data/`](data/meta/README.md) | 漫画元数据、原始稿与台词层 |
-| [`.cnb.yml`](.cnb.yml) | 自动检查与手动发布流水线 |
+| [`.github/workflows/`](.github/workflows/) | 自动检查与发布工作流 |
 | [`tools/`](tools/) | 协作守卫与 Git 钩子 |
 | `dist/`、`out/` | 构建产物，不入库 |
 
@@ -284,7 +280,7 @@ flowchart LR
 
 直接提交 `main`，没有常规 PR 流程。一功能一 commit，使用 Conventional Commits 前缀和中文描述，遵循署名、签名与文档约定。修改双语 README 时，同步更新两种语言的功能描述、命令和限制。
 
-修改章节标题时，同步更新顶部导航的链接参数，以 CNB 标题旁生成的章节链接为准；英文标题使用小写和连字符（例如 `Getting started` 对应 `#getting-started`）。`npm run check` 会检查两份 README 的章节链接。
+修改章节标题时，同步更新顶部导航的链接参数；英文标题使用小写和连字符（例如 `Getting started` 对应 `#getting-started`）。`npm run check` 会检查两份 README 的章节链接。
 
 提交前运行 `npm run check`、`npm test` 和 `npm run build`。完整规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，自动化协作者还需阅读 [`CLAUDE.md`](CLAUDE.md) 与 [`AGENTS.md`](AGENTS.md)。这些维护文档目前以中文为准。
 

@@ -33,7 +33,7 @@
         │  ingest（LabelPlus 可在发布流水线里导入；OCR 草稿须校对并显式接受）
         ▼
 data/meta/*.yaml + data/text/<series>/<issue>/<chapter>.json ← 仓库（公开）
-        │  build（CNB 云原生构建；Makers 构建机仅作纯静态构建备用）
+        │  build（云端 CI 构建；Makers 构建机仅作纯静态构建备用）
         ▼
 dist/            静态 HTML(每话一文件，内嵌文字层) + 元数据索引 JSON 分片 + sitemap.xml
 gallery.sqlite   FTS5 trigram 台词库；manifest.json；dist 归档
@@ -81,7 +81,7 @@ GitHub 项目站的 `/仓库名/` 子路径仍不在本轮支持范围；使用�
 | 文件预算 | 仍遵守仓库 18,000 文件 / 20 MiB | 总计 2,000 文件、1,024,000,000 字节，含下述验证文件预留；CLI 另验部署包 | 额外限制站点总大小 1,000,000,000 字节 | 总计 18,000 文件 / 20 MiB，含下述验证文件预留 |
 | 检索与数据 | 浏览器执行，共用版本化 CDN 资源 | 同左 | 同左 | 同左，不增加服务端检索 |
 | 预览 | 独立 preview | staging；CI 按控制台测试 IP 连接，保留正式域名的 Host 与 TLS 校验 | 未配置，继续拒绝 | 独立预览 Worker，禁止覆盖生产 |
-| 发布入口 | CNB 手动按钮 | 同左 | 同左 | 同左 |
+| 发布入口 | GitHub Actions 手动工作流 | 同左 | 同左 | 同左 |
 
 内部审查后的修复契约：Workers 与 ESA 每次部署在隔离的上传副本中增加一个随机命名的
 验证文件，绑定本次随机值、目标、版本、指纹与环境；共享 `dist` 和归档不包含该文件。
@@ -382,8 +382,7 @@ status             写 STATUS.md（只由发布流水线调用）
 并发更新会被拒绝；同次启用响应丢失可安全重试。部署步骤核对的是清单身份，正常流水线须
 连续使用同一份 dist；它不是对目录任意后续修改的逐文件签名。
 
-`.cnb.yml`：main 的 `push` 触发检查，手动按钮触发发布与归档（按钮在
-`.cnb/web_trigger.yml`）。检查步骤：提交信息（本次推送区间）→ check → test → build →
+工作流配置：main 的 `push` 触发检查，手动触发发布与归档。检查步骤：提交信息（本次推送区间）→ check → test → build →
 再 check → 用测试样本全量空跑 → 分层提示 → 移动 `last-green`。发布输入 `chapters`、`target`
 （none | cloudflare | edgeone | github | workers | esa | all）、`ocr`、`deploy_env`（production | preview）、
 `version`（留空 = 日期.构建号）、`push_all`；步骤：参数检查 → ingest → build → check → verify:manifest →
@@ -392,14 +391,13 @@ release:prepare → publish:r2 → deploy → release:activate → 写 `STATUS.m
 不改生产状态、不推送搜索引擎。预览 HTML 带 `noindex`；GitHub Pages 没有独立预览环境，
 `preview + github/all` 在上传前拒绝。多平台部署失败时已完成的目标可能已更新，但各自页面
 绑定自己的检索库，生产指针保持原值；启用之后的状态记录失败不会撤回已上线页面。
-OCR 草稿通过提交附件保留，可在浏览器下载校对；发布不会自动导入草稿。默认模板不附带作品
+OCR 草稿通过工作流工件保留，可在浏览器下载校对；发布不会自动导入草稿。默认模板不附带作品
 与台词稿，OCR 功能本身不代表已完成内容识别或校对。
-凭据经独立密钥仓库的 `imports` 注入，只有需要的步骤才拿得到；发布与归档只能手动触发，
-`crontab:` 被 `npm run check` 解析 `.cnb.yml` 拦住。
+凭据经 Actions secrets 注入，只有需要的步骤才拿得到；发布与归档只能手动触发。
 
-为什么构建在 CNB 而不是平台构建机：构建机与应用托管解耦，产物能同时发往三个目标并归档到 R2；
+为什么构建在独立 CI 而不是平台构建机：构建机与应用托管解耦，产物能同时发往多个目标并归档到 R2；
 平台构建机只会把 dist 留在那一家。Makers 构建机（500 次/月、20 分钟、无 Python）留作纯静态构建的
-备用，OCR 不放那里。`scripts/` 仍是流水线的全部内容，`.cnb.yml` 只是壳——任何 CI 都能跑同一条流水线。
+备用，OCR 不放那里。`scripts/` 仍是流水线的全部内容，工作流配置只是壳——任何 CI 都能跑同一条流水线。
 
 ## 6. 检索
 
@@ -497,10 +495,7 @@ OCR 草稿通过提交附件保留，可在浏览器下载校对；发布不会�
 - Makers 与 Cloudflare Pages 同为 20 000 文件上限：每页一 HTML 会很快撞线。
 - GitHub Pages 无响应头：CORS / 缓存 / 安全头全部只能在 CDN 侧解决。
 - trigram `MATCH` 少于 3 字无结果；繁简混输靠 `text_norm` 归一。
-- （GitHub Actions 时期）自托管 runner 计入配额（公开库除外）：不要在 Droidspaces
-  里挂 self-hosted runner 省额度；迁到 CNB 后不再适用。
-- 平台的定时任务（GitHub Actions 的 cron、CNB 的 crontab）在仓库长期无活动后会停用，
-  所以定时触发被铁律禁止。
+- 平台的定时任务在仓库长期无活动后会停用，所以定时触发被铁律禁止。
 - Pagefind 1.5 虽已自动分词 CJK，但仍是按词匹配，台词检索不够用。
 
 ## 10. 落地顺序
@@ -508,8 +503,7 @@ OCR 草稿通过提交附件保留，可在浏览器下载校对；发布不会�
 每步以 `npm run check` 通过为完成：
 
 1. 仓库骨架与空跑：`packages/{core,site,search,platform}`、`data/{meta,text}`、
-   `scripts/`、`site.config.yaml`、全部 scripts 占位、`.cnb.yml` /
-   `.cnb/web_trigger.yml`、`README.md`、`STATUS.md`。
+   `scripts/`、`site.config.yaml`、全部 scripts 占位、工作流配置、`README.md`、`STATUS.md`。
 2. `core`：schema（zod）、LabelPlus 解析器 + 测试样本、`tn` 归一化、分块摘要清单；
    发布 manifest 的编排在 `scripts/lib/manifest.mjs`。
 3. `site`：Astro，作品 / 期 / 话页面 + 阅读器（绝对定位透明 span 文字层，
@@ -585,15 +579,11 @@ OCR 草稿通过提交附件保留，可在浏览器下载校对；发布不会�
   `sitemap.xml` 永远是入口（单文件或 index），分片 `sitemap-<n>.xml`，robots 与外部登记只指入口。
   IndexNow 的 key 进 `site.config.yaml` 而不是 secrets：协议要求它公开放在站点根，不是凭据。
   推送脚本不做已下线页面的通知（IndexNow 支持推已删除 URL 让引擎重抓，将来需要再加）。
-- 2026-10-20 流水线迁到 CNB 云原生构建。`.cnb.yml` 承载三条流水线：main 的 `push` 跑检查并
-  移动 `last-green`、`web_trigger_release` 手动发布、`web_trigger_archive` 手动归档；
-  `.cnb/web_trigger.yml` 放 main 分支详情页的按钮。`.github/workflows` 删除，避免两份真相；
-  `npm run check` 改为解析 `.cnb.yml`，守「只有 main 的 push 跑检查、发布只手动、无 `crontab:`」。
-  凭据从平台 secrets 改为独立密钥仓库的 `imports`（铁律 7 不变）；GitHub Pages 目标改由流水线把
-  dist 推到 `gh-pages` 分支，需要 `GITHUB_PAGES_REPO` / `GITHUB_PAGES_TOKEN`。CNB 没有「在失败
-  提交下留言」的接口，红灯以构建状态为准（pre-push 闸门仍查 CNB 构建状态）。
-  首次真实发布时要验证：密钥仓库引用权限、`git push` last-green 与回写 main 的令牌权限、
-  CNB 仓库是否强制提交签名（CI 提交未签名；强制的话需要给构建令牌登记签名密钥或对 CI 提交放宽）。
+- 2026-10-20 流水线持续演进。工作流承载三条流水线：main 的 `push` 跑检查并
+  移动 `last-green`、手动发布、手动归档。
+  `npm run check` 守「只有 main 的 push 跑检查、发布只手动、无 `crontab:`」。
+  GitHub Pages 目标改由流水线把 dist 推到 `gh-pages` 分支。
+  红灯以构建状态为准。首次真实发布时要验证凭据权限与签名规则。
 - 2026-10-20 EdgeOne 项目定位改为「ID 权威 + 名字部署 + 部署前校验」。CLI 的 `makers deploy -n`
   只按名字解析（源码里按 Name 过滤取第一个；EdgeOne 允许多个同名项目），没有按 ID 部署的参数。
   因此 `EDGEONE_PROJECT_ID` 填项目 ID，新增 `EDGEONE_PROJECT_NAME`（仅作 `-n`）与 `EDGEONE_API_REGION`
