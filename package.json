@@ -26,6 +26,7 @@
     "check:data": "node scripts/check-data.mjs",
     "lint": "eslint .",
     "test": "node --test --test-concurrency=1",
+    "test:docs": "node --test scripts/test/docs-site.test.mjs",
     "publish:r2": "node scripts/publish-r2.mjs",
     "release:check": "node scripts/release.mjs check",
     "release:prepare": "node scripts/release.mjs prepare",
