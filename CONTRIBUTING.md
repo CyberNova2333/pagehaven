@@ -24,13 +24,13 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
 ## 二、提交规则
 
 1. **一个逻辑改动一个 commit**，禁止攒批量提交；
-2. 提交前必过 `npm run check && npm test`；首次运行先安装业务和独立文档依赖：`npm ci`、`npm --prefix docs-site ci`（命令见 AGENTS.md）；
+2. 提交前必过 `pnpm run check && pnpm test`；首次运行先安装业务和独立文档依赖：`pnpm install --frozen-lockfile`、`pnpm --dir docs-site install --frozen-lockfile`（命令见 AGENTS.md）；
 3. **分层验证**——按改动路径决定进入 main 的要求：
 
    | 改动路径 | 进入 main 的要求 |
    |---|---|
-   | 文档、`data/`、`site.config.yaml` | `npm run check` |
-   | `packages/core` `packages/site` `packages/search` | + `npm test` + `npm run build` 全量 |
+   | 文档、`data/`、`site.config.yaml` | `pnpm run check` |
+   | `packages/core` `packages/site` `packages/search` | + `pnpm test` + `pnpm run build` 全量 |
    | `packages/platform/`、`scripts/deploy.mjs` `scripts/publish-r2.mjs` `scripts/seo-push.mjs` `scripts/lib/deploy-plan.mjs`、流水线（工作流） | + 以 `target=<平台>`、`deploy_env=preview` 真实部署一次 |
    | 数据 schema、DB 结构 | + 重建 DB 并在检索页上用真实数据查一次 |
 
@@ -74,11 +74,11 @@ main（唯一长期分支，已保护：禁 force push / 禁删除）
 `astro` 的可选依赖 `sharp`（连带一批 LGPL-3.0 的 `@img/sharp-libvips-*`）**已经摘掉**，
 因为它根本不是必需的：站点图片全走 CDN，没有一处 `<Image>` / `<Picture>`。做法是
 `packages/site/astro.config.mjs` 把 `image.service` 指向 Astro 自带的
-`astro/assets/services/noop`（transform 原样返回），再从 `package-lock.json` 里删掉
-那 27 个条目。`npm run check` 会盯着这两件事——改回默认服务、或者 lock 里又出现
+`astro/assets/services/noop`（transform 原样返回），再从 `pnpm-lock.yaml` 里删掉
+那 27 个条目。`pnpm run check` 会盯着这两件事——改回默认服务、或者 lock 里又出现
 LGPL 的 `sharp` 条目，都会被拦下。
 
-> 别用 `npm ci --omit=optional` 代替这一步：`rolldown` 的原生 binding 也是可选依赖，
+> 别用 `pnpm install --frozen-lockfile --omit=optional` 代替这一步：`rolldown` 的原生 binding 也是可选依赖，
 > 一起砍掉之后构建直接挂在 `Cannot find native binding`（wasm 兜底包默认没装）。
 
 新增依赖时按这条自查：
@@ -99,7 +99,7 @@ LGPL 的 `sharp` 条目，都会被拦下。
 - flag 打开 = 功能完成的定义，打开动作本身是一个独立 commit；
 - 稳定运行一个发布周期以上才允许删除旧代码路径和 flag；
 - flag 只能让站点退回更保守的形态（例如关掉函数加速、关掉某平台适配），
-  **不能关掉 `npm run check` 里的任何一条守卫**。
+  **不能关掉 `pnpm run check` 里的任何一条守卫**。
   例：`text_layer` 关掉后阅读器不输出文字层、期页不标「有台词」，索引分片里的 `hasText`
   仍是原始数据。
 
@@ -109,8 +109,8 @@ LGPL 的 `sharp` 条目，都会被拦下。
 push 到 main
   └── .github/workflows/checks.yml
        ├── 独立安装文档依赖并审计（含开发依赖，moderate 及以上阻止继续）
-       ├── npm run check（预算守卫、配置同步、lint、文档检查流程完整性）
-       ├── npm test + npm run build（dry-run，不发布）
+       ├── pnpm run check（预算守卫、配置同步、lint、文档检查流程完整性）
+       ├── pnpm test + pnpm run build（dry-run，不发布）
        ├── 分层提示：按 diff 路径给出验证级别
        ├── 通过 → 自动移动 tag `last-green` 到本次提交
        └── 失败 → 🔴 红灯流程（§五）

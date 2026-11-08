@@ -18,8 +18,8 @@ TIERS = (
 )
 LEVELS = {
     0: "无需额外验证（只动了守卫/工具/配置文件）",
-    1: "级别 1：npm run check（文档、data/、site.config.yaml）",
-    2: "级别 2：+ npm test + npm run build 全量（packages/core、site、search、scripts）",
+    1: "级别 1：pnpm run check（文档、data/、site.config.yaml）",
+    2: "级别 2：+ pnpm test + pnpm run build 全量（packages/core、site、search、scripts）",
     3: "级别 3：+ 以 target=<平台> 向 preview **真实部署一次**——CI 替代不了，必须有人真跑过"
        "（packages/platform、scripts/deploy-*、workflow）",
 }

@@ -19,7 +19,7 @@ if (unknown !== undefined) {
   process.exit(1);
 }
 if (args.includes('--help')) {
-  console.log(`用法：npm run ingest:labelplus -- [--dry-run] [--help]
+  console.log(`用法：pnpm run ingest:labelplus -- [--dry-run] [--help]
 
 --dry-run  预览新增、更新、未变章节及全部诊断，不写入任何文件
 --help     显示帮助

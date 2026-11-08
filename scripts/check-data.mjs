@@ -11,7 +11,7 @@ let report;
 if (unknown.length) {
   report = failedDataReport(DATA_DIR, [`未知参数：${unknown.join('、')}；使用 --help 查看用法`]);
 } else if (args.includes('--help')) {
-  console.log(`用法：npm run check:data -- [--json] [--help]
+  console.log(`用法：pnpm run check:data -- [--json] [--help]
 
 检查 data/meta 与 data/text 的格式和对应关系，汇总台词稿与可检索文字覆盖情况。
 DATA_DIR 可指定其他现有数据目录；空目录有效，不存在的目录会报错。

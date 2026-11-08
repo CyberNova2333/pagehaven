@@ -78,7 +78,7 @@ try {
   const manifest = await readManifest(OUT_DIR);
   if (!manifest) {
     throw new Error(
-      `${show(join(OUT_DIR, 'manifest.json'))} 不存在：status 只在发布末尾跑，先 npm run build（或拿到构建阶段的产物）`,
+      `${show(join(OUT_DIR, 'manifest.json'))} 不存在：status 只在发布末尾跑，先 pnpm run build（或拿到构建阶段的产物）`,
     );
   }
   const config = await loadSiteConfig();

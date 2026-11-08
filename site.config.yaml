@@ -1,8 +1,8 @@
 # site.config.yaml —— 唯一配置源（CLAUDE.md 铁律 5）
 #
 # 域名、缓存、响应头、重定向、功能开关只在这里改。
-# 响应配置与 wrangler.jsonc / esa.jsonc 部署模板由 `npm run build:config` 生成到
-# packages/platform/generated/，不手改；`npm run check` 会比对生成物与本文件是否同步。
+# 响应配置与 wrangler.jsonc / esa.jsonc 部署模板由 `pnpm run build:config` 生成到
+# packages/platform/generated/，不手改；`pnpm run check` 会比对生成物与本文件是否同步。
 # 字段的含义与取值约束见 packages/platform/src/site-config.js（zod schema）。
 
 site:
@@ -39,7 +39,7 @@ search:
 
 features:
   # 牵一发动全身的功能默认关；打开动作本身是一个独立 commit（CONTRIBUTING §三）。
-  # flag 只能让站点退回更保守的形态，不能关掉 npm run check 里的任何守卫。
+  # flag 只能让站点退回更保守的形态，不能关掉 pnpm run check 里的任何守卫。
   search_function: false   # 部署 Hono 函数加速检索
   platform_config: true    # 把 _headers/_redirects/edgeone.json 放进 dist（关掉 = 纯静态基线）
   text_layer: true         # 阅读器叠可选中的文字层
@@ -72,7 +72,7 @@ headers:
 redirects: []
 
 seo:
-  # 主动向搜索引擎推送新页面（npm run push:search，发布流水线部署之后跑）。
+  # 主动向搜索引擎推送新页面（pnpm run push:search，发布流水线部署之后跑）。
   # IndexNow key：协议要求公开放在 https://<domain>/<key>.txt（build:sitemap 自动生成），
   # 所以它不是凭据、可以写在这里；留空 = 不推 IndexNow。只走 IndexNow，不走百度；
   # Google 没有普通页面的推送接口，靠 robots.txt 的 Sitemap。

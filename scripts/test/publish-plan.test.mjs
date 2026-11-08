@@ -323,7 +323,7 @@ test('publish:r2：没凭据 → 退 1 并说明；PUBLISH_DRY_RUN=1 → 只打�
   // dry-run 也做预检：dist 不存在的环境真跑必败，不能说 OK
   const noDist = await run({ ...ws.env, DIST_DIR: join(ws.tmp, 'no-dist'), PUBLISH_DRY_RUN: '1' });
   assert.equal(noDist.status, 1, noDist.out);
-  assert.match(noDist.out, /no-dist 不存在：先 npm run build/);
+  assert.match(noDist.out, /no-dist 不存在：先 pnpm run build/);
   assert.doesNotMatch(noDist.out, /PUBLISH_DRY_RUN=1：只打印计划/);
   assert.doesNotMatch(noDist.out, /\n\s+at /);
   // manifest 记的库大小与 out/db 里的实际字节数对不上：manifest 与库来自不同次构建

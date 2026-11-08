@@ -23,16 +23,16 @@ favicon 与增强阅读器图标，默认书页 SVG；`site.tagline` 控制页�
 | `text/<series>/<issue>/<chapter>.json` | 每话的台词框 `{ chapter, pages: [{ n, boxes: [{ i, x, y, w, h, t }] }] }`；只给有台词稿的话写，只写有框的页 |
 
 `gallery.json` 里标了 `hasText` 的话，`text/` 下必须有对应分片：文字层开着而分片取不到时，阅读器页
-**构建报错退出**（信息含该话 key），不会静默退化成「无文字层」——`npm run check` 只数 HTML，事后抓不到这种丢失。
+**构建报错退出**（信息含该话 key），不会静默退化成「无文字层」——`pnpm run check` 只数 HTML，事后抓不到这种丢失。
 
 ```bash
-npm run build:config   # 先生成 src/generated/site-config.json
-npm run build:site     # = 写 gallery.json + text/ → astro build → 平台生成物 + GitHub Pages 基线文件
+pnpm run build:config   # 先生成 src/generated/site-config.json
+pnpm run build:site     # = 写 gallery.json + text/ → astro build → 平台生成物 + GitHub Pages 基线文件
 ```
 
 ## 站点自定义
 
-在仓库根运行 `npm run customize`，打开终端地址即可在浏览器中预览名称、Logo、页脚文案、
+在仓库根运行 `pnpm run customize`，打开终端地址即可在浏览器中预览名称、Logo、页脚文案、
 主题、主色、标题字体、导航入口及文字层／增强分页。设置只在点击保存后写入唯一的
 `site.config.yaml`，备份原文件、保留注释，检测到并发修改时拒绝覆盖。旧配置无需显式
 添加新字段即可使用默认外观；隐藏搜索或书架导航入口不会删除对应路由或浏览器记录。
@@ -270,7 +270,7 @@ sitemap；功能运行于三平台共同的纯静态基线，不需要服务端�
 - 样式用 `is:global` + `.reader` 前缀而不是作用域样式：作用域样式会给每个台词框加一个
   `data-astro-cid` 属性，18 000 话下是几十 MB 的无用字节。
 - `test/reader.test.js` 在 DOM 夹具中执行页面真实内联脚本，覆盖两种方向的按钮/键盘/点击/滑动、
-  双页边界、长条恢复与滚动保存；随 `npm test` 运行。宽窄屏的实际两列排版仍需浏览器验收。
+  双页边界、长条恢复与滚动保存；随 `pnpm test` 运行。宽窄屏的实际两列排版仍需浏览器验收。
 
 ## 搜索页的约定 id
 

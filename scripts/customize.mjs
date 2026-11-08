@@ -10,8 +10,8 @@ export async function main(args = process.argv.slice(2)) {
   if (options.help) {
     console.log(`页间 · 站点自定义
 
-npm run customize                       在浏览器中设置名称、Logo、色调与阅读功能
-npm run customize -- --host 0.0.0.0      在 Codespaces 中使用私有端口转发
+pnpm run customize                       在浏览器中设置名称、Logo、色调与阅读功能
+pnpm run customize -- --host 0.0.0.0      在 Codespaces 中使用私有端口转发
 
 --host <地址>          默认 127.0.0.1；另支持 localhost、0.0.0.0
 --port <端口>          默认 4318

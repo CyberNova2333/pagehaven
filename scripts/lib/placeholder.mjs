@@ -1,6 +1,6 @@
 // 尚未落地的脚本用它占位（ARCHITECTURE §10 按步落地，先把 package.json 的 scripts 立全）。
 // 占位只做一件事：说清自己将来干什么、按哪一节的设计，然后以 0 退出——
-// 这样 `npm run build` 的流水线从第一天起就是完整的一条，后续每步只是把占位换成实现。
+// 这样 `pnpm run build` 的流水线从第一天起就是完整的一条，后续每步只是把占位换成实现。
 import { warn, note } from './log.mjs';
 
 /**

@@ -1,4 +1,4 @@
-// ESLint 平面配置。`npm run check` 会跑它（AGENTS.md §3：check = 预算守卫 + 配置同步 + lint）。
+// ESLint 平面配置。`pnpm run check` 会跑它（AGENTS.md §3：check = 预算守卫 + 配置同步 + lint）。
 //
 // 只管 JS：.astro 文件由 astro build 自己校验；「packages 里不许 import Node 内置模块」
 // 那条不放在这里——它是铁律，判定在 scripts/check.mjs 里，不能靠一份可被改掉的 lint 配置。

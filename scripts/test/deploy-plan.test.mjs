@@ -54,7 +54,7 @@ test('planDeployCommand cloudflare：wrangler@4 pages deploy，项目名取配�
   assert.equal(plan.ok, true);
   assert.deepEqual(plan.npmArgs, ['exec', '--yes', '--', WRANGLER_SPEC, 'pages', 'deploy', DIST, '--project-name', config.deploy.cloudflare.project, '--branch', 'main', '--commit-dirty=true']);
   assert.equal(WRANGLER_SPEC, 'wrangler@4');
-  assert.equal(plan.display, `npm exec --yes -- wrangler@4 pages deploy ${DIST} --project-name ${config.deploy.cloudflare.project} --branch main --commit-dirty=true`);
+  assert.equal(plan.display, `pnpm exec --yes -- wrangler@4 pages deploy ${DIST} --project-name ${config.deploy.cloudflare.project} --branch main --commit-dirty=true`);
   assert.deepEqual(plan.env, {});
   assert.deepEqual(plan.unsetEnv, [], 'wrangler 要从环境读 CLOUDFLARE_*，什么都不删');
   assert.ok(!plan.npmArgs.includes('tok') && !plan.npmArgs.includes('acc'), 'token 与账号不进命令行');
@@ -72,7 +72,7 @@ test('planDeployCommand edgeone：-n 只取项目名（不是项目 ID）；toke
   assert.deepEqual(plan.npmArgs, ['exec', '--yes', '--', EDGEONE_CLI_SPEC, 'makers', 'deploy', DIST, '-n', 'proj-name', '-e', 'production']);
   assert.ok(!plan.npmArgs.includes('makers-abc123'), '项目 ID 不能进 -n：CLI 会把它当名字，静默新建同名项目');
   assert.equal(EDGEONE_CLI_SPEC, 'edgeone@1');
-  assert.equal(plan.display, `npm exec --yes -- edgeone@1 makers deploy ${DIST} -n *** -e production`);
+  assert.equal(plan.display, `pnpm exec --yes -- edgeone@1 makers deploy ${DIST} -n *** -e production`);
   assert.ok(!plan.npmArgs.includes('-t') && !plan.npmArgs.includes('secret-token-xyz'), 'token 不进命令行');
   assert.deepEqual(plan.env, { EDGEONE_NON_INTERACTIVE: '1', EDGEONE_PAGES_API_TOKEN: 'secret-token-xyz' });
   assert.deepEqual(plan.unsetEnv, ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID', 'EDGEONE_PROJECT_NAME', 'EDGEONE_API_REGION', 'EDGEONE_API_BASE_URL']);
@@ -243,7 +243,7 @@ test('deploy 脚本：未知目标退 2；dist 不存在退 1；缺凭据退 1�
 
   const noDist = run(['cloudflare'], { DIST_DIR: join(tmp, 'nope'), CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' });
   assert.equal(noDist.status, 1, noDist.out);
-  assert.match(noDist.out, /不存在：先 npm run build/);
+  assert.match(noDist.out, /不存在：先 pnpm run build/);
   assert.doesNotMatch(noDist.out, /\n\s+at /, '预期中的错误不打栈');
 
   const noCreds = run(['cloudflare'], { DIST_DIR: dist });
@@ -253,7 +253,7 @@ test('deploy 脚本：未知目标退 2；dist 不存在退 1；缺凭据退 1�
   const cf = run(['cloudflare'], { DIST_DIR: dist, CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc', DEPLOY_DRY_RUN: '1' });
   assert.equal(cf.status, 0, cf.out);
   assert.ok(
-    cf.out.includes(`npm exec --yes -- wrangler@4 pages deploy ${dist} --project-name ${config.deploy.cloudflare.project} --branch main --commit-dirty=true`),
+    cf.out.includes(`pnpm exec --yes -- wrangler@4 pages deploy ${dist} --project-name ${config.deploy.cloudflare.project} --branch main --commit-dirty=true`),
     cf.out,
   );
   assert.match(cf.out, /DEPLOY_DRY_RUN=1：只打印命令，不执行/);

@@ -40,7 +40,7 @@ try {
   if (manifest && manifest.version !== version) {
     throw new Error(
       `${show(manifestPath)} 的版本是 ${JSON.stringify(manifest.version)}，本次 build:db 的版本是 ${version}：` +
-        '库文件名会与 manifest 对不上。先重跑 npm run build:manifest，或给两个脚本统一的 RELEASE_VERSION',
+        '库文件名会与 manifest 对不上。先重跑 pnpm run build:manifest，或给两个脚本统一的 RELEASE_VERSION',
     );
   }
 

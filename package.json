@@ -4,7 +4,7 @@
   "type": "module",
   "engines": {
     "node": ">=22.19.0",
-    "npm": ">=9.6.5"
+    "pnpm": ">=10.0.0"
   },
   "workspaces": [
     "packages/*"
@@ -21,7 +21,7 @@
     "build:site": "node scripts/build-site.mjs",
     "build:index": "node scripts/build-index.mjs",
     "build:sitemap": "node scripts/build-sitemap.mjs",
-    "build": "npm run build:config && npm run build:manifest && npm run build:db && npm run build:site && npm run build:index && npm run build:sitemap",
+    "build": "pnpm run build:config && pnpm run build:manifest && pnpm run build:db && pnpm run build:site && pnpm run build:index && pnpm run build:sitemap",
     "check": "node scripts/check.mjs",
     "check:data": "node scripts/check-data.mjs",
     "lint": "eslint .",

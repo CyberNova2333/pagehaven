@@ -84,15 +84,15 @@
 
 ## 怎么跑
 
-需要 **Node.js 22.19.0+ 和 npm 9.6.5+**，以满足锁定依赖的最低版本。以下命令可在 Codespaces 终端运行；Python 3 用于协作守卫，可选 OCR 另需 Tesseract 和对应语言包。
+需要 **Node.js 22.19.0+ 和 pnpm 10+**，以满足锁定依赖的最低版本。以下命令可在 Codespaces 终端运行；Python 3 用于协作守卫，可选 OCR 另需 Tesseract 和对应语言包。
 
 ```bash
-npm ci
-npm --prefix docs-site ci  # 完整测试需要独立的文档依赖
-npm run init      # 中文交互配置站点，确认后写入；也可保留默认配置直接构建
-npm run build     # 生成配置、检索库、静态页面、索引和 sitemap，不发布
-npm run check     # 配置同步、数据校验、产物预算与 lint
-npm test          # 数据模型、阅读器、搜索与构建发布测试
+pnpm install --frozen-lockfile
+pnpm --dir docs-site install --frozen-lockfile  # 完整测试需要独立的文档依赖
+pnpm run init      # 中文交互配置站点，确认后写入；也可保留默认配置直接构建
+pnpm run build     # 生成配置、检索库、静态页面、索引和 sitemap，不发布
+pnpm run check     # 配置同步、数据校验、产物预算与 lint
+pnpm test          # 数据模型、阅读器、搜索与构建发布测试
 ```
 
 首次完整构建会生成所需的中间文件。空内容目录也能构建，首页会明确显示尚无作品。
@@ -100,10 +100,10 @@ npm test          # 数据模型、阅读器、搜索与构建发布测试
 预览构建结果：
 
 ```bash
-npm run preview --workspace @gallery/site -- --host 0.0.0.0
+pnpm run preview --workspace @gallery/site -- --host 0.0.0.0
 ```
 
-在 Codespaces 的「端口」面板打开终端显示的预览端口。页面开发可运行 `npm run dev --workspace @gallery/site -- --host 0.0.0.0`；修改 `site.config.yaml` 或 `data/` 后，重新构建以刷新生成数据。开发服务器不提供构建到 `dist/index/` 的元数据索引，完整检索验收使用构建后的 `preview`。
+在 Codespaces 的「端口」面板打开终端显示的预览端口。页面开发可运行 `pnpm run dev --workspace @gallery/site -- --host 0.0.0.0`；修改 `site.config.yaml` 或 `data/` 后，重新构建以刷新生成数据。开发服务器不提供构建到 `dist/index/` 的元数据索引，完整检索验收使用构建后的 `preview`。
 
 完整构建顺序：
 
@@ -114,38 +114,38 @@ build:config → build:manifest → build:db → build:site → build:index → 
 若只想查看示例章节，可在 Codespaces 的 Bash 终端使用测试夹具构建：
 
 ```bash
-DATA_DIR=packages/core/test/fixtures/data DIST_DIR=out/demo-dist OUT_DIR=out/demo-build npm run build
+DATA_DIR=packages/core/test/fixtures/data DIST_DIR=out/demo-dist OUT_DIR=out/demo-build pnpm run build
 python3 -m http.server 4173 --bind 0.0.0.0 --directory out/demo-dist
 ```
 
-夹具仅包含虚构元数据与台词，没有漫画图片。上述预览服务器需要 Python 3；实际图像需自行配置。示例构建会刷新共用生成数据，返回默认站点前重新运行 `npm run build`。
+夹具仅包含虚构元数据与台词，没有漫画图片。上述预览服务器需要 Python 3；实际图像需自行配置。示例构建会刷新共用生成数据，返回默认站点前重新运行 `pnpm run build`。
 
 ## 配置与内容
 
-[`site.config.yaml`](site.config.yaml) 是唯一配置源。`npm run init` 可交互设置站名、域名、图片源和功能开关，按当前配置提供默认值；取消时不写入。使用 `npm run init -- --ui-lang en` 可切换初始化工具的界面语言。
+[`site.config.yaml`](site.config.yaml) 是唯一配置源。`pnpm run init` 可交互设置站名、域名、图片源和功能开关，按当前配置提供默认值；取消时不写入。使用 `pnpm run init -- --ui-lang en` 可切换初始化工具的界面语言。
 
 也可以通过参数预览修改：
 
 ```bash
-npm run init -- --title "我的漫画站" --domain gallery.example.org --image-host images.example.org --target cloudflare --project my-comics
-npm run init -- --help
+pnpm run init -- --title "我的漫画站" --domain gallery.example.org --image-host images.example.org --target cloudflare --project my-comics
+pnpm run init -- --help
 ```
 
 参数模式默认只预览，确认后在同一条命令末尾加 `--write` 才写入；`--dry-run` 可显式预览，不能与 `--write` 同用。非交互环境应使用参数模式。图片源可重复传入 `--image-host`，最多两个；`--text-layer`、`--enhanced-reader` 和 `--platform-config` 接受 `true` 或 `false`。`--site-lang` 只设置 HTML 语言标记，不翻译网站界面。
 
 `--target` 取 `none`（默认）、`edgeone`、`esa`、`github`、`workers` 或 `cloudflare`，仅选择平台设置提示；实际发布目标仍由手动发布表单指定。`--project` 写入 Cloudflare Pages 项目名，其他平台的账号标识和凭据仍放在 secrets。初始化允许示例域名用于预览，不创建云资源或触发部署。
 
-工具保留已有注释和未选择的字段，复用完整配置校验；写入前将原文件备份到 `out/init/`（可由 `OUT_DIR` 覆盖），通过同目录临时文件原子替换，并在检测到配置被同时修改时中止。`--config` 可指定其他现有配置，未指定时依次使用 `CONFIG_FILE` 环境变量或仓库根文件。初始化后运行 `npm run build` 刷新派生配置和站点产物。
+工具保留已有注释和未选择的字段，复用完整配置校验；写入前将原文件备份到 `out/init/`（可由 `OUT_DIR` 覆盖），通过同目录临时文件原子替换，并在检测到配置被同时修改时中止。`--config` 可指定其他现有配置，未指定时依次使用 `CONFIG_FILE` 环境变量或仓库根文件。初始化后运行 `pnpm run build` 刷新派生配置和站点产物。
 
 ### 站点自定义
 
 ```bash
-npm run customize
+pnpm run customize
 ```
 
 打开终端显示的地址，即可调整名称、Logo、页脚文案；选择纸白、海蓝或暮紫主题，设置自定义主色和衬线／无衬线标题；显示或隐藏搜索、书架入口，以及开关文字层和增强分页。预览随编辑更新，点击保存才写入 `site.config.yaml`。右侧可分别预览深浅配色，预览切换不会写入配置或更改读者的个人偏好。隐藏导航入口不会删除对应页面、已有书签或阅读记录。
 
-这是维护期间临时启动的编辑器，默认只绑定回环地址，不随正式站点部署。Codespaces 如需外部监听，可运行 `npm run customize -- --host 0.0.0.0`，通过「端口」面板打开对应端口，保持可见性为**私有**，并在转发地址末尾保留终端显示的 `#token=…`。不要公开转发该端口或分享带令牌的地址，结束后停止命令即可。
+这是维护期间临时启动的编辑器，默认只绑定回环地址，不随正式站点部署。Codespaces 如需外部监听，可运行 `pnpm run customize -- --host 0.0.0.0`，通过「端口」面板打开对应端口，保持可见性为**私有**，并在转发地址末尾保留终端显示的 `#token=…`。不要公开转发该端口或分享带令牌的地址，结束后停止命令即可。
 
 Logo 可填写 HTTPS 图片地址或站内 SVG 路径，默认使用 `/favicon.svg`；图片可放在自己的 CDN。当前产物预算禁止在 `dist` 中分发 PNG、JPEG、WebP 等图片，编辑器暂不提供上传。Logo 同时用于导航、网站图标和增强阅读器，第三方许可保持不变。
 
@@ -170,12 +170,12 @@ Logo 可填写 HTTPS 图片地址或站内 SVG 路径，默认使用 `/favicon.s
 
 1. 按 [元数据格式](data/meta/README.md) 在 `data/meta/` 添加作品、期、话和页。
 2. 准备图片资源与 CDN，确保元数据中的图片 key、尺寸与实际文件一致。
-3. 将 LabelPlus 稿放入 `data/raw/labelplus/`，运行 `npm run ingest:labelplus`；OCR 草稿的生成、校对与接受流程见 [原始台词说明](data/raw/README.md)。
+3. 将 LabelPlus 稿放入 `data/raw/labelplus/`，运行 `pnpm run ingest:labelplus`；OCR 草稿的生成、校对与接受流程见 [原始台词说明](data/raw/README.md)。
 4. 重新构建、检查并测试，再通过手动发布流程上线。
 
 没有台词稿的漫画仍可阅读，但不会出现在台词检索结果中。台词层格式见 [`data/text/README.md`](data/text/README.md)。
 
-导入前可运行 `npm run ingest:labelplus -- --dry-run`，查看将新增、更新和保持不变的章节，
+导入前可运行 `pnpm run ingest:labelplus -- --dry-run`，查看将新增、更新和保持不变的章节，
 同时汇总警告与错误；预览不创建目录或写入文件。章节筛选与页码策略沿用 `CHAPTERS` 和
 `LABELPLUS_PAGES`，可用 `--help` 查看用法。不带 `--dry-run` 时导入有效章节，其他章节
 出错仍会保留这些写入，并以非零退出。同一章存在多份 `.txt` / `.TXT` 稿时会报错并跳过
@@ -184,14 +184,14 @@ Logo 可填写 HTTPS 图片地址或站内 SVG 路径，默认使用 `/favicon.s
 编辑内容后，可先检查数据，无需完整构建：
 
 ```bash
-npm run check:data
-npm run --silent check:data -- --json
+pnpm run check:data
+pnpm run --silent check:data -- --json
 ```
 
 检查复用构建时的格式和跨文件校验，汇总作品、章节、页数、台词框，并列出无稿和已有稿但
 无可检索文字的章节。缺稿或空稿仅作提示，空内容模板也能通过；目录不存在、路径不是目录、
 内容或参数错误时以非零退出。`DATA_DIR` 可指定其他现有数据目录。命令只读，不生成产物，
-不读取云凭据或验证远端图片；完整构建与 `npm run check` 仍是发布前的必要检查。
+不读取云凭据或验证远端图片；完整构建与 `pnpm run check` 仍是发布前的必要检查。
 
 JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`emptyText` 与 `issues`。
 `coverage.withText` 统计已有稿的章节，`searchableChapters` / `searchablePages` /
@@ -200,15 +200,15 @@ JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`em
 
 ## 部署
 
-部署目标包括 **EdgeOne Makers、ESA Pages、GitHub Pages、Cloudflare Workers Static Assets**，并保留独立的 Cloudflare Pages 入口。`npm run build` 只产生文件；正式发布由 GitHub 的「发布」工作流手动触发。推送 `main` 自动运行检查，不自动部署，也没有定时发布。GitHub 还提供手动检查和「打 tag、核对后删分支」的归档入口；只有 main 推送检查成功才移动 `last-green`。
+部署目标包括 **EdgeOne Makers、ESA Pages、GitHub Pages、Cloudflare Workers Static Assets**，并保留独立的 Cloudflare Pages 入口。`pnpm run build` 只产生文件；正式发布由 GitHub 的「发布」工作流手动触发。推送 `main` 自动运行检查，不自动部署，也没有定时发布。GitHub 还提供手动检查和「打 tag、核对后删分支」的归档入口；只有 main 推送检查成功才移动 `last-green`。
 
 | 发布目标 | 命令 | 预览与容量边界 |
 | --- | --- | --- |
-| `edgeone` | `npm run deploy:edgeone` | Makers preview；沿用仓库文件预算 |
-| `esa` | `npm run deploy:esa` | preview 映射到 staging；上传最多 2,000 文件，业务产物最多 1,999 文件；未压缩总量不超过 1,024,000,000 字节，包含部署验证预留 |
-| `github` | `npm run deploy:github` | 尚无独立预览目标；站点总大小不超过 1,000,000,000 字节 |
-| `workers` | `npm run deploy:workers` | 独立预览 Worker，不能与生产同名；使用 Static Assets |
-| `cloudflare` | `npm run deploy:cloudflare` | 原有 Cloudflare Pages 入口，仍按分支区分预览 |
+| `edgeone` | `pnpm run deploy:edgeone` | Makers preview；沿用仓库文件预算 |
+| `esa` | `pnpm run deploy:esa` | preview 映射到 staging；上传最多 2,000 文件，业务产物最多 1,999 文件；未压缩总量不超过 1,024,000,000 字节，包含部署验证预留 |
+| `github` | `pnpm run deploy:github` | 尚无独立预览目标；站点总大小不超过 1,000,000,000 字节 |
+| `workers` | `pnpm run deploy:workers` | 独立预览 Worker，不能与生产同名；使用 Static Assets |
+| `cloudflare` | `pnpm run deploy:cloudflare` | 原有 Cloudflare Pages 入口，仍按分支区分预览 |
 
 `all` 发布到 Makers、ESA、GitHub Pages、Workers 四个目标，**不包含旧的 Cloudflare Pages**；需要 Pages 时单独选择 `cloudflare`。`preview` 配合 `github` 或 `all` 会在上传前拒绝。站点使用自定义域名或用户站的根目录；GitHub 项目站的 `/仓库名/` 子路径尚未适配。
 
@@ -281,9 +281,9 @@ flowchart LR
 
 直接提交 `main`，没有常规 PR 流程。一功能一 commit，使用 Conventional Commits 前缀和中文描述，遵循署名、签名与文档约定。修改双语 README 时，同步更新两种语言的功能描述、命令和限制。
 
-修改章节标题时，同步更新顶部导航的链接参数；英文标题使用小写和连字符（例如 `Getting started` 对应 `#getting-started`）。`npm run check` 会检查两份 README 的章节链接。
+修改章节标题时，同步更新顶部导航的链接参数；英文标题使用小写和连字符（例如 `Getting started` 对应 `#getting-started`）。`pnpm run check` 会检查两份 README 的章节链接。
 
-提交前运行 `npm run check`、`npm test` 和 `npm run build`。完整规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，自动化协作者还需阅读 [`CLAUDE.md`](CLAUDE.md) 与 [`AGENTS.md`](AGENTS.md)。这些维护文档目前以中文为准。
+提交前运行 `pnpm run check`、`pnpm test` 和 `pnpm run build`。完整规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，自动化协作者还需阅读 [`CLAUDE.md`](CLAUDE.md) 与 [`AGENTS.md`](AGENTS.md)。这些维护文档目前以中文为准。
 
 ## 许可
 
@@ -298,10 +298,10 @@ flowchart LR
 文档站采用 VitePress 默认主题，依赖与业务项目分开安装。默认输出 `docs-site/.vitepress/dist/`；独立核验可在构建命令后加 `-- --outDir <仓库外绝对目录>`。指南正文只维护 `repo-docs/`，站点通过 include 读取；网页中的仓库源码链接显示为精确文件路径，不复制源码或本机资源。
 
 ```sh
-npm --prefix docs-site ci
-npm --prefix docs-site run docs:dev -- --host 127.0.0.1
-npm --prefix docs-site run docs:build
-npm run test:docs  # 真实构建、页面链接和本地搜索索引回归，也包含在 npm test 中
+pnpm --dir docs-site install --frozen-lockfile
+pnpm --dir docs-site run docs:dev -- --host 127.0.0.1
+pnpm --dir docs-site run docs:build
+pnpm run test:docs  # 真实构建、页面链接和本地搜索索引回归，也包含在 pnpm test 中
 ```
 
 文档站采用 VitePress 默认主题；默认输出 `docs-site/.vitepress/dist/`，独立验证使用 `-- --outDir <仓库外绝对目录>`。指南正文由 repo-docs include 引入，源码链接在网页中显示为精确路径。

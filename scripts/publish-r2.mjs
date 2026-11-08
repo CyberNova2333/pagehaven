@@ -102,7 +102,7 @@ try {
   let manifestBody;
   try { manifestBody = await readFile(join(OUT_DIR, MANIFEST_FILE)); }
   catch (error) {
-    if (error.code === 'ENOENT') bail(`${show(join(OUT_DIR, MANIFEST_FILE))} 不存在：先 npm run build`);
+    if (error.code === 'ENOENT') bail(`${show(join(OUT_DIR, MANIFEST_FILE))} 不存在：先 pnpm run build`);
     throw error;
   }
   const manifest = JSON.parse(manifestBody.toString('utf8'));
@@ -142,7 +142,7 @@ try {
 
   // 预检一次列全：一次跑就把配置错误全看到，而不是修一个再撞下一个
   const problems = [];
-  if (!existsSync(DIST_DIR)) problems.push(`${show(DIST_DIR)} 不存在：先 npm run build`);
+  if (!existsSync(DIST_DIR)) problems.push(`${show(DIST_DIR)} 不存在：先 pnpm run build`);
   const tools = {};
   for (const bin of ['tar', 'zstd']) {
     try {

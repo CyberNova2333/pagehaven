@@ -6,10 +6,10 @@
 
 | 任务 | 命令 |
 | --- | --- |
-| 安装 | `npm ci`；完整测试还需 `npm --prefix docs-site ci` |
-| 必须通过的守卫 | `npm run check` |
-| 业务测试 | `npm test` |
-| 完整静态构建 | `npm run build`（会替换生成目录与 dist） |
+| 安装 | `pnpm install --frozen-lockfile`；完整测试还需 `pnpm --dir docs-site install --frozen-lockfile` |
+| 必须通过的守卫 | `pnpm run check` |
+| 业务测试 | `pnpm test` |
+| 完整静态构建 | `pnpm run build`（会替换生成目录与 dist） |
 
 三项验证分别记结果，未运行不能写通过。平台适配改动还需预览环境真实部署，单测不能代替；部署按人类授权另行执行。
 

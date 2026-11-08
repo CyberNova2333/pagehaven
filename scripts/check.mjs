@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `npm run check` —— 提交前必过的守卫（CLAUDE.md 铁律 4）。
+// `pnpm run check` —— 提交前必过的守卫（CLAUDE.md 铁律 4）。
 //
 // 守的每一条都对应一条铁律或一个平台上限，数字的来历见 docs/ARCHITECTURE.md §2「预算」：
 //
@@ -93,11 +93,11 @@ await section('配置生成物与 site.config.yaml 同步', async () => {
   for (const [name, content] of Object.entries(expected)) {
     const p = join(PLATFORM_GENERATED_DIR, name);
     if (!existsSync(p)) {
-      problems.push(`${rel(p)} 不存在——跑 npm run build:config`);
+      problems.push(`${rel(p)} 不存在——跑 pnpm run build:config`);
       continue;
     }
     const actual = await readFile(p, 'utf8');
-    if (actual !== content) problems.push(`${rel(p)} 与 site.config.yaml 不同步——不要手改它，改 site.config.yaml 后跑 npm run build:config`);
+    if (actual !== content) problems.push(`${rel(p)} 与 site.config.yaml 不同步——不要手改它，改 site.config.yaml 后跑 pnpm run build:config`);
   }
   return problems;
 });
@@ -133,7 +133,7 @@ await section('packages/{core,site,search} 无 Node 内置模块 / 原生依赖'
         continue;
       }
       const depDir = join(ROOT, 'node_modules', dep);
-      if (!existsSync(depDir)) continue; // 没装（npm ci 之前）就不查；CI 一定装了
+      if (!existsSync(depDir)) continue; // 没装（pnpm install --frozen-lockfile 之前）就不查；CI 一定装了
       let depPkg = {};
       try {
         depPkg = JSON.parse(await readFile(join(depDir, 'package.json'), 'utf8'));
@@ -151,15 +151,33 @@ await section('packages/{core,site,search} 无 Node 内置模块 / 原生依赖'
 // ── 3b. 依赖树的许可证底线（CONTRIBUTING §二之三）─────────────────────
 await section('依赖树：非宽松许可证只许出现在构建期工具链里', async () => {
   const problems = [];
-  const lock = JSON.parse(await readFile(join(ROOT, 'package-lock.json'), 'utf8'));
-  const entries = lock.packages ?? {};
+  const sharpish = [];
+  if (existsSync(join(ROOT, 'pnpm-lock.yaml'))) {
+    const lockText = await readFile(join(ROOT, 'pnpm-lock.yaml'), 'utf8');
+    const docs = yaml.loadAll(lockText);
+    for (const doc of docs) {
+      if (!doc?.packages) continue;
+      for (const k of Object.keys(doc.packages)) {
+        if (k === 'sharp' || k.startsWith('sharp@') || k.startsWith('@img/sharp-') || k.includes('/sharp@')) {
+          sharpish.push(k);
+        }
+      }
+    }
+  } else if (existsSync(join(ROOT, 'package-lock.json'))) {
+    const lock = JSON.parse(await readFile(join(ROOT, 'package-lock.json'), 'utf8'));
+    const entries = lock.packages ?? {};
+    for (const [k, v] of Object.entries(entries)) {
+      if (v?.license && /LGPL/i.test(v.license) && (k === 'node_modules/sharp' || k.startsWith('node_modules/@img/'))) {
+        sharpish.push(k);
+      }
+    }
+  } else {
+    return ['缺少 lockfile（pnpm-lock.yaml 或 package-lock.json）'];
+  }
 
   // sharp 是 `astro` 的可选依赖，跟着默认图片服务一起进来，带一批 LGPL 的 libvips 二进制。
   // 站点不做构建期图像处理（图片全走 CDN），所以它不该出现在树里：换 noop 服务 + 从 lock 里摘掉。
   // 按许可证判定，不按包名：@img/colour 挂在同一个 scope 下但它是 MIT，不算。
-  const sharpish = Object.entries(entries).filter(
-    ([k, v]) => v?.license && /LGPL/i.test(v.license) && (k === 'node_modules/sharp' || k.startsWith('node_modules/@img/')),
-  );
   if (sharpish.length > 0) {
     problems.push(
       `lock 里有 ${sharpish.length} 个 sharp/libvips 条目（LGPL）：站点不做构建期图像处理，` +
@@ -167,7 +185,7 @@ await section('依赖树：非宽松许可证只许出现在构建期工具链�
     );
   }
 
-  // 图片服务一旦改回默认（sharp），下一个人 npm ci 就把 LGPL 装回来了。
+  // 图片服务一旦改回默认（sharp），下一个人 pnpm install --frozen-lockfile 就把 LGPL 装回来了。
   const astroConfig = await readFile(join(ROOT, 'packages', 'site', 'astro.config.mjs'), 'utf8');
   if (!astroConfig.includes('astro/assets/services/noop')) {
     problems.push('packages/site/astro.config.mjs 没把 image.service 指向 noop：默认的 sharp 会带 LGPL 的 libvips 进树');
@@ -210,7 +228,7 @@ await section('流水线：main 的 push 只跑检查，发布只手动，没有
           continue;
         }
         const text = JSON.stringify(pipelines[0]);
-        for (const needle of ['npm run check', 'npm test', 'npm run build']) {
+        for (const needle of ['pnpm run check', 'pnpm test', 'pnpm run build']) {
           if (!text.includes(needle)) problems.push(`${branch}.push：检查流水线里没有 \`${needle}\`——push 触发的流水线只能是检查类`);
         }
         if (hasDeploymentCommand(text)) {
@@ -283,7 +301,7 @@ await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰�
   if (!['none', 'all', ...DEPLOY_TARGETS].includes(selected)) return ['DEPLOY_TARGET 不是已注册目标'];
   if (!existsSync(DIST_DIR)) {
     if (selected !== 'none') return ['发布前必须存在完整 dist，请先运行完整构建'];
-    warn('dist/ 不存在（尚未 npm run build），产物守卫跳过——CI 会在 build 之后再跑一遍');
+    warn('dist/ 不存在（尚未 pnpm run build），产物守卫跳过——CI 会在 build 之后再跑一遍');
     return [];
   }
   const problems = [];
@@ -329,7 +347,7 @@ await section('dist：文件数 / 单文件大小 / 无图片与 DB / 每话恰�
   const origin = `https://${config.site.domain}`;
   const sitemapPath = join(DIST_DIR, SITEMAP_FILE);
   if (!existsSync(sitemapPath)) {
-    problems.push(`${rel(sitemapPath)} 不存在——跑 npm run build:sitemap`);
+    problems.push(`${rel(sitemapPath)} 不存在——跑 pnpm run build:sitemap`);
   } else {
     let top = null;
     try {
@@ -421,7 +439,7 @@ await section('out/db：sqlite page_size 与分块大小同配置', async () => 
 // ── 8. lint ─────────────────────────────────────────────────────────
 await section('lint', async () => {
   const eslint = join(ROOT, 'node_modules', 'eslint', 'bin', 'eslint.js');
-  if (!existsSync(eslint)) return ['eslint 没装——先 npm ci'];
+  if (!existsSync(eslint)) return ['eslint 没装——先 pnpm install --frozen-lockfile'];
   const r = spawnSync(process.execPath, [eslint, '.'], { cwd: ROOT, encoding: 'utf8' });
   if (r.status === 0) return [];
   return [(r.stdout || '') + (r.stderr || '')];

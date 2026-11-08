@@ -83,7 +83,7 @@ test('预览与仅上传即使被单独调用，也不读取清单、写生产�
 
 test('发布流水线的真实条件：只有已选择目标的生产发布执行启用、状态与SEO步骤', async () => {
   const pipeline = yaml.load(await readFile(join(ROOT, '.cnb.yml'), 'utf8')).main.web_trigger_release[0];
-  const guarded = pipeline.stages.filter((stage) => /npm run (release:activate|status|push:search)/.test(stage.script ?? ''));
+  const guarded = pipeline.stages.filter((stage) => /pnpm run (release:activate|status|push:search)/.test(stage.script ?? ''));
   assert.equal(guarded.length, 3);
   for (const environment of ['production', 'preview']) {
     for (const target of ['none', ...DEPLOY_TARGETS, 'all']) {
@@ -97,12 +97,12 @@ test('发布流水线的真实条件：只有已选择目标的生产发布执�
     }
   }
   const scripts = pipeline.stages.map((stage) => stage.script ?? '');
-  assert.ok(scripts.some((script) => script.includes('npm run release:check -- --require-secret-imports')));
+  assert.ok(scripts.some((script) => script.includes('pnpm run release:check -- --require-secret-imports')));
   const firstImport = pipeline.stages.findIndex((stage) => stage.imports);
   assert.ok(scripts.findIndex((script) => script.includes('--require-secret-imports')) < firstImport, '缺少密钥地址应在首次导入前明确失败');
   const urls = new Set(pipeline.stages.map((stage) => stage.imports).filter(Boolean));
   assert.deepEqual([...urls].sort(), ['${deploy_secrets_url}', '${publish_secrets_url}']);
-  assert.ok(scripts.findIndex((script) => script.includes('npm run release:prepare')) < scripts.indexOf('npm run publish:r2'));
-  const activation = scripts.indexOf('npm run release:activate');
-  for (const target of DEPLOY_TARGETS) assert.ok(scripts.indexOf(`npm run deploy:${target}`) < activation);
+  assert.ok(scripts.findIndex((script) => script.includes('pnpm run release:prepare')) < scripts.indexOf('pnpm run publish:r2'));
+  const activation = scripts.indexOf('pnpm run release:activate');
+  for (const target of DEPLOY_TARGETS) assert.ok(scripts.indexOf(`pnpm run deploy:${target}`) < activation);
 });
