@@ -17,14 +17,14 @@ export function mountPageMotion() {
       if (targets.length) {
         for (const el of targets) {
           el.style.opacity = "0";
-          el.style.transform = "translateY(10px)";
+          el.style.transform = "translateY(12px)";
         }
         animate(targets, {
           opacity: [0, 1],
-          y: [10, 0],
-          duration: 700,
-          delay: stagger(70),
-          ease: "outCubic",
+          y: [12, 0],
+          duration: 1100,
+          delay: stagger(90),
+          ease: "out(2)",
           onComplete: utils.cleanInlineStyles,
         });
       }
