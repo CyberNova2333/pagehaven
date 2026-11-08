@@ -297,7 +297,7 @@ main:
           script: npm run deploy:workers
 
         # GitHub Pages 没有响应头、没有重定向、没有函数，是站点完整性的最小公分母（铁律 2）。
-        # CNB 流水线在这里校验 dist 基线，并用密钥仓库里的 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN
+        # 流水线在这里校验 dist 基线，并用密钥仓库里的 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN
         # 把 dist 推到该仓库的 gh-pages 分支；两者没配就是配置错误（见 scripts/deploy.mjs）。
         - name: deploy:github（校验基线 → 推 gh-pages）
           if: '[ "$DEPLOY_TARGET" = "github" ] || [ "$DEPLOY_TARGET" = "all" ]'

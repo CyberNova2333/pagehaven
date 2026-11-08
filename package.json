@@ -56,5 +56,6 @@
         "minimatch": "11.0.1"
       }
     }
-  }
+  },
+  "packageManager": "pnpm@12.6.0"
 }

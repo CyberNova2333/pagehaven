@@ -32,6 +32,21 @@ features:
 
 它解决的是“如何把大量文本、排版规则与本地资源，安全、可靠且可验证地编译为高质感离线站点”的问题。通过构建期严格的清单校验、即时轻量检索库生成以及部署回执核验，保障最终展示给读者的页面与本地原稿毫无偏差。
 
+
+## 架构全景
+
+<div class="archify-diagram-card" style="margin: 1.5rem 0; border: 1px solid var(--vp-c-border); border-radius: 12px; overflow: hidden; background: var(--vp-c-bg-soft); box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; background: var(--vp-c-bg-elv); border-bottom: 1px solid var(--vp-c-border); font-size: 13px;">
+    <span style="font-weight: 600; color: var(--vp-c-text-1); display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 16px;">📐</span> 现代书库与阅读引擎架构（交互式架构图表，支持平移 / 缩放 / 探查）
+    </span>
+    <a href="/diagrams/pagehaven-architecture.html" target="_blank" rel="noreferrer" style="font-size: 12px; color: var(--vp-c-brand-1); text-decoration: none; font-weight: 500;">
+      在新窗口全屏打开 ↗
+    </a>
+  </div>
+  <iframe src="/diagrams/pagehaven-architecture.html" width="100%" height="520px" frameborder="0" style="display: block; border: none;" allowfullscreen loading="lazy"></iframe>
+</div>
+
 ## 怎么用 / 快速上手
 
 ### 1. 本地安装与开发预览
@@ -40,17 +55,17 @@ Node.js 22+ 环境下执行：
 
 ```bash
 # 安装依赖
-npm install
+pnpm install
 
 # 启动本地开发服务器并实时预览书库
-npm run docs:dev
+pnpm run docs:dev
 ```
 
 ### 2. 编译发布包
 
 ```bash
 # 执行完整构建流程（含检索索引生成与清单审计）
-npm run docs:build
+pnpm run docs:build
 ```
 
 产物输出至 `docs-site/.vitepress/dist`，可直接部署至任何支持静态文件的边缘网络。
