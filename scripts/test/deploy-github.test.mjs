@@ -103,6 +103,6 @@ test('deploy:github：dist 不存在 → 退 1 并提示先 build，不打栈', 
   t.after(() => rm(tmp, { recursive: true, force: true }));
   const r = run({ DIST_DIR: join(tmp, 'nope') });
   assert.equal(r.status, 1, r.out);
-  assert.match(r.out, /不存在：先 npm run build/);
+  assert.match(r.out, /不存在：先 pnpm run build/);
   assert.doesNotMatch(r.out, /\n\s+at /);
 });

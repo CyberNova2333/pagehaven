@@ -128,7 +128,7 @@ test('check:data 帮助无需数据或站点配置，未知参数以纯 JSON 或
   const { dir } = await setup(t, { copy: false });
   const help = run(dir, ['--help'], { DATA_DIR: 'does-not-exist' });
   assert.equal(help.status, 0, help.out + help.err);
-  assert.match(help.out, /用法：npm run check:data/);
+  assert.match(help.out, /用法：pnpm run check:data/);
   const invalid = run(dir, ['--json', '--write']);
   assert.equal(invalid.status, 1);
   assert.match(JSON.parse(invalid.out).issues[0], /未知参数：--write/);

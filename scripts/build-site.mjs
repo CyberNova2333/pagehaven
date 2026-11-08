@@ -59,7 +59,7 @@ if (config.features.platform_config) {
   for (const f of GENERATED_FILES) {
     const src = join(PLATFORM_GENERATED_DIR, f);
     if (!existsSync(src)) {
-      warn(`${relative(ROOT, src)} 不存在——先跑 npm run build:config`);
+      warn(`${relative(ROOT, src)} 不存在——先跑 pnpm run build:config`);
       process.exit(1);
     }
     await cp(src, join(DIST_DIR, f));

@@ -51,7 +51,7 @@ try {
   let manifest;
   if (verifyOnly) {
     manifest = await readManifest(OUT_DIR);
-    if (!manifest) bail(`${show(manifestPath)} 不存在：--verify-only 只核对已有的 manifest，先 npm run build:manifest`);
+    if (!manifest) bail(`${show(manifestPath)} 不存在：--verify-only 只核对已有的 manifest，先 pnpm run build:manifest`);
     note(`${show(manifestPath)}：版本 ${manifest.version}，${manifest.imageKeys.length} 个图片 key（只核对，不重写）`);
   } else {
     const config = await loadSiteConfig();

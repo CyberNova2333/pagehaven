@@ -2,13 +2,13 @@
 
 [返回「页间 · Pagehaven」项目说明](../../README.md)
 
-每话一个文件：`data/text/<series>/<issue>/<chapter>.json`，由 `npm run ingest:labelplus`
-（首选）生成，或显式指定 `CHAPTERS` 后，用 `npm run ingest:ocr -- --accept-reviewed`
+每话一个文件：`data/text/<series>/<issue>/<chapter>.json`，由 `pnpm run ingest:labelplus`
+（首选）生成，或显式指定 `CHAPTERS` 后，用 `pnpm run ingest:ocr -- --accept-reviewed`
 导入人工校对的 OCR 稿，不手改。
 OCR 默认只生成待校对草稿，不会直接写入这里。
 
-导入后可用 `npm run check:data` 检查正式台词与元数据的对应关系，并查看有稿和可检索文字
-覆盖情况；无稿或空稿仅提示，不算内容错误。机器读取报告用 `npm run --silent check:data -- --json`。
+导入后可用 `pnpm run check:data` 检查正式台词与元数据的对应关系，并查看有稿和可检索文字
+覆盖情况；无稿或空稿仅提示，不算内容错误。机器读取报告用 `pnpm run --silent check:data -- --json`。
 
 ```json
 { "chapter": "sample/vol03/c012",

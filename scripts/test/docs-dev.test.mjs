@@ -29,7 +29,7 @@ test('文档开发：引用正文与直接页面的连续编辑重建索引，�
     MiniSearch = docsRequire('minisearch');
     docsRequire.resolve('vitepress/package.json');
   } catch {
-    assert.fail('文档依赖未安装，请先运行 npm --prefix docs-site ci');
+    assert.fail('文档依赖未安装，请先运行 pnpm --dir docs-site install --frozen-lockfile');
   }
   const temp = await mkdtemp(join(tmpdir(), 'pagehaven-docs-dev-test-'));
   const root = join(temp, 'docs-site');

@@ -7,8 +7,8 @@ import { parseInitArgs, planInit, readInitConfig, say, SETUP_TARGETS, writeInitC
 
 function help(locale) {
   console.log(say(locale, '页间 · 站点初始化', 'Pagehaven · Site setup'));
-  console.log(say(locale, 'npm run init                         交互配置（需要终端）', 'npm run init                         Interactive setup (terminal required)'));
-  console.log(say(locale, 'npm run init -- [参数]                默认仅预览；加 --write 写入', 'npm run init -- [options]             Preview by default; add --write to save'));
+  console.log(say(locale, 'pnpm run init                         交互配置（需要终端）', 'pnpm run init                         Interactive setup (terminal required)'));
+  console.log(say(locale, 'pnpm run init -- [参数]                默认仅预览；加 --write 写入', 'pnpm run init -- [options]             Preview by default; add --write to save'));
   console.log(say(locale, `
 --title <名称>                       站点名称
 --domain <域名>                      站点主机名，不含协议、路径
@@ -108,7 +108,7 @@ export async function main(args = process.argv.slice(2)) {
   }
   const saved = await writeInitConfig(file, original, plan.text, { backupDir: join(OUT_DIR, 'init'), locale });
   if (saved.changed) console.log(say(locale, `配置已更新。原文件备份：${saved.backup}`, `Configuration saved. Original backup: ${saved.backup}`));
-  console.log(say(locale, '下一步运行 npm run build 刷新生成物，再运行 npm run check。', 'Next run npm run build to refresh generated files, then npm run check.'));
+  console.log(say(locale, '下一步运行 pnpm run build 刷新生成物，再运行 pnpm run check。', 'Next run pnpm run build to refresh generated files, then pnpm run check.'));
 }
 
 try { await main(); } catch (error) { console.error(error.message); process.exitCode = 1; }

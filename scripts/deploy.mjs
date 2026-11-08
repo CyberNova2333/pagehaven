@@ -130,7 +130,7 @@ try {
   const config = await loadSiteConfig();
   const environment = process.env.DEPLOY_ENV || 'production';
   releasePlan({ target, environment, domain: config.site.domain, imageHosts: config.images.hosts });
-  if (!existsSync(DIST_DIR)) bail(`${show(DIST_DIR)} 不存在：先 npm run build`);
+  if (!existsSync(DIST_DIR)) bail(`${show(DIST_DIR)} 不存在：先 pnpm run build`);
   const budgetProblems = validateDeploymentBudget({ target, config, files: await inspectDeploymentFiles(DIST_DIR) });
   if (budgetProblems.length) throw new Error(budgetProblems.join('\n'));
   if (target === 'workers' || target === 'esa') {
@@ -215,7 +215,7 @@ try {
       if (/^(CLOUDFLARE_|WORKERS_|ESA_|ALIBABA_CLOUD_|EDGEONE_|GITHUB_)/.test(key) && !credentials.includes(key)) delete childEnv[key];
     }
   }
-  // 在 npm run 下用 npm 自己的入口（npm_execpath）起，行为与 PATH 无关；直接 node 跑脚本时退回 PATH 里的 npm
+  // 在 pnpm run 下用 package manager 自己的入口（npm_execpath，通用环境变量）起，行为与 PATH 无关；直接 node 跑脚本时退回 PATH 里的 npm
   const npmCli = process.env.npm_execpath;
   let temp;
   let proof;

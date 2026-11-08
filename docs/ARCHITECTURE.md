@@ -50,7 +50,7 @@ gallery.sqlite   FTS5 trigram 台词库；manifest.json；dist 归档
 仓库里的 `data/` 是可再生的输入，`dist` 是可再生的产物，任何托管平台都只是缓存。
 Makers Blob / KV、Cloudflare D1 一律不作为必需依赖。
 
-## 2. 预算（`npm run check` 里那些数字的来历）
+## 2. 预算（`pnpm run check` 里那些数字的来历）
 
 | 限制 | Cloudflare Pages | EdgeOne Makers（免费版） | GitHub Pages |
 |---|---|---|---|
@@ -147,7 +147,7 @@ R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 涉及文件系统与部署命令的编排在 `scripts/`。业务代码不 import 平台 SDK；可选函数检索
 与对应平台入口壳尚未实现，`features.search_function` 目前只是预留配置。
 
-**决策记录（2026-10-26）：站点初始化。** `npm run init` 在 `scripts/` 层编辑已有
+**决策记录（2026-10-26）：站点初始化。** `pnpm run init` 在 `scripts/` 层编辑已有
 `site.config.yaml`，复用平台层的完整配置校验，保留注释与未选择的字段。交互默认中文，
 可切换英文；参数模式默认预览，显式 `--write` 才保存。写入前备份原文件，通过同目录
 临时文件原子替换，检测到并发修改则中止。初始化只更新 YAML，派生配置和站点产物仍由
@@ -159,7 +159,7 @@ R2 API token，与 CI 的写凭据分开签发，泄露时各自轮换。
 用于预览，生产发布继续执行已有域名校验。工具的 `--ui-lang` 与站点 HTML 的
 `--site-lang` 分开，后者不提供界面翻译；预留的函数检索开关不作为初始化选项暴露。
 
-**决策记录（2026-10-28）：站点自定义。** `npm run customize` 在 `scripts/` 层启动临时
+**决策记录（2026-10-28）：站点自定义。** `pnpm run customize` 在 `scripts/` 层启动临时
 维护者编辑器，默认绑定回环地址；显式 `--host 0.0.0.0` 可供 Codespaces 转发，端口须
 保持私有。地址片段中的临时令牌用于
 访问设置接口。正式静态站不包含该服务或配置写接口。编辑器只展示和修改允许的界面
@@ -500,7 +500,7 @@ OCR 草稿通过工作流工件保留，可在浏览器下载校对；发布不�
 
 ## 10. 落地顺序
 
-每步以 `npm run check` 通过为完成：
+每步以 `pnpm run check` 通过为完成：
 
 1. 仓库骨架与空跑：`packages/{core,site,search,platform}`、`data/{meta,text}`、
    `scripts/`、`site.config.yaml`、全部 scripts 占位、工作流配置、`README.md`、`STATUS.md`。
@@ -581,7 +581,7 @@ OCR 草稿通过工作流工件保留，可在浏览器下载校对；发布不�
   推送脚本不做已下线页面的通知（IndexNow 支持推已删除 URL 让引擎重抓，将来需要再加）。
 - 2026-10-20 流水线持续演进。工作流承载三条流水线：main 的 `push` 跑检查并
   移动 `last-green`、手动发布、手动归档。
-  `npm run check` 守「只有 main 的 push 跑检查、发布只手动、无 `crontab:`」。
+  `pnpm run check` 守「只有 main 的 push 跑检查、发布只手动、无 `crontab:`」。
   GitHub Pages 目标改由流水线把 dist 推到 `gh-pages` 分支。
   红灯以构建状态为准。首次真实发布时要验证凭据权限与签名规则。
 - 2026-10-20 EdgeOne 项目定位改为「ID 权威 + 名字部署 + 部署前校验」。CLI 的 `makers deploy -n`

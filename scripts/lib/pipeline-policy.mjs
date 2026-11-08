@@ -3,17 +3,17 @@ export function hasDeploymentCommand(text) {
   return /publish:r2|release:activate|deploy:|scripts[\\/]deploy\.mjs|(?:wrangler|esa-cli|edgeone)\b[^\n]*\bdeploy\b/.test(text);
 }
 
-// 文档是独立 npm 项目。检查入口必须先安装和审计它，再运行包含文档构建回归的统一测试。
+// 文档是独立项目。检查入口必须先安装和审计它，再运行包含文档构建回归的统一测试。
 // 只接受仓库约定的独立命令阶段，避免条件跳过、吞掉失败或合并 shell 命令导致假绿。
 export function checkDocumentationPipelines(document) {
   // CNB 除 if 外还有按变更/新分支执行和源分支更新时终止的条件；stage 另可直接跳过。
   const pipelineConditions = ['if', 'ifModify', 'ifNewBranch', 'breakIfModify'];
   const stageConditions = [...pipelineConditions, 'skipIfModify'];
   const commands = [
-    'npm ci',
-    'npm --prefix docs-site ci',
-    'cd docs-site && npm audit --include=dev --audit-level=moderate',
-    'npm test',
+    'pnpm install --frozen-lockfile',
+    'pnpm --dir docs-site install --frozen-lockfile',
+    'pnpm --dir docs-site audit --audit-level=moderate',
+    'pnpm test',
   ];
   const problems = [];
   for (const event of ['push', 'web_trigger_check']) {

@@ -18,7 +18,7 @@ data/raw/ocr/<series>/<issue>/<chapter>.json          人工校对后的 OCR 稿
 
 ## ingest 做什么
 
-`npm run ingest:labelplus`（发布流水线里由 `chapters` 非空时触发）：
+`pnpm run ingest:labelplus`（发布流水线里由 `chapters` 非空时触发）：
 
 - 解析稿 → 每个标签一个框（LabelPlus 的标签是点，`w=h=0`），`t` 原文、`tn` 归一化；
 - 与 `data/meta` 核对：稿里页码超出 meta 页数 → **错误**；meta 里有页而稿里没有 →
@@ -26,7 +26,7 @@ data/raw/ocr/<series>/<issue>/<chapter>.json          人工校对后的 OCR 稿
 - 写 `data/text/<series>/<issue>/<chapter>.json`，内容没变不重写；
 - 所有错误列全再以非零退出；**提示（⚠）不影响退出码**。
 
-导入前可在 Codespaces 运行 `npm run ingest:labelplus -- --dry-run`，列出将新增、更新、
+导入前可在 Codespaces 运行 `pnpm run ingest:labelplus -- --dry-run`，列出将新增、更新、
 保持不变的章节及全部诊断，不创建目录、不写文件。预览沿用下面的环境变量；通过后去掉
 `--dry-run` 才执行导入。普通导入逐章处理，某章失败时其他有效章节仍会写入，最终以非零
 退出；需要先核对整批问题时请先预览。`--help` 显示用法，未知参数会在导入前报错。
@@ -65,7 +65,7 @@ OCR 只补缺稿，**不会把未经校对的识别结果自动变成台词**。
    `tesseract-ocr`、`tesseract-ocr-chi-sim`、`tesseract-ocr-eng` 软件包；普通构建不需要它们。
 
    ```bash
-   CHAPTERS=sample/v/c npm run ingest:ocr
+   CHAPTERS=sample/v/c pnpm run ingest:ocr
    ```
 
 2. 校对产物在 `out/ocr-review/`，通过工作流工件下载取得（以发布版本命名的压缩包）。每话包含：
@@ -87,7 +87,7 @@ OCR 只补缺稿，**不会把未经校对的识别结果自动变成台词**。
 3. 校对完成后，把 JSON 放入 `data/raw/ocr/<series>/<issue>/<chapter>.json`，再明确接受：
 
    ```bash
-   CHAPTERS=sample/v/c npm run ingest:ocr -- --accept-reviewed
+   CHAPTERS=sample/v/c pnpm run ingest:ocr -- --accept-reviewed
    ```
 
    此步骤不需要 OCR 引擎或网络，校验 schema、章节、页码和坐标后才写 `data/text`，仍不覆盖已有文本。

@@ -88,15 +88,15 @@ Backups are limited to **5 MiB and 20,000 records**, counting each bookmarked pa
 
 ## Getting started
 
-Requires **Node.js 22.19.0+ and npm 9.6.5+** to meet the locked dependencies' minimum versions. Run the following commands in a Codespaces terminal. Python 3 is used by collaboration guards; optional OCR also requires Tesseract and the relevant language packs.
+Requires **Node.js 22.19.0+ and pnpm 10+** to meet the locked dependencies' minimum versions. Run the following commands in a Codespaces terminal. Python 3 is used by collaboration guards; optional OCR also requires Tesseract and the relevant language packs.
 
 ```bash
-npm ci
-npm --prefix docs-site ci  # The full test suite also needs the documentation dependencies
-npm run init -- --ui-lang en # Interactive setup; confirm to save, or build with the defaults
-npm run build     # Generate configuration, database, pages, indexes, and sitemap; no deployment
-npm run check     # Check configuration sync, data, artifact budgets, and lint
-npm test          # Test data models, readers, search, builds, and release workflows
+pnpm install --frozen-lockfile
+pnpm --dir docs-site install --frozen-lockfile  # The full test suite also needs the documentation dependencies
+pnpm run init -- --ui-lang en # Interactive setup; confirm to save, or build with the defaults
+pnpm run build     # Generate configuration, database, pages, indexes, and sitemap; no deployment
+pnpm run check     # Check configuration sync, data, artifact budgets, and lint
+pnpm test          # Test data models, readers, search, builds, and release workflows
 ```
 
 The first complete build generates the intermediate files. An empty content directory also builds successfully, with an explicit empty state on the home page.
@@ -104,10 +104,10 @@ The first complete build generates the intermediate files. An empty content dire
 Preview the build:
 
 ```bash
-npm run preview --workspace @gallery/site -- --host 0.0.0.0
+pnpm run preview --workspace @gallery/site -- --host 0.0.0.0
 ```
 
-In the Codespaces **Ports** panel, open the preview port printed in the terminal. For page development, run `npm run dev --workspace @gallery/site -- --host 0.0.0.0`. Rebuild after changing `site.config.yaml` or `data/` to refresh generated data. The development server does not serve metadata indexes generated in `dist/index/`; use the built `preview` for complete search verification.
+In the Codespaces **Ports** panel, open the preview port printed in the terminal. For page development, run `pnpm run dev --workspace @gallery/site -- --host 0.0.0.0`. Rebuild after changing `site.config.yaml` or `data/` to refresh generated data. The development server does not serve metadata indexes generated in `dist/index/`; use the built `preview` for complete search verification.
 
 The complete build runs:
 
@@ -118,38 +118,38 @@ build:config → build:manifest → build:db → build:site → build:index → 
 To explore sample chapters, build the test fixtures in a Codespaces Bash terminal:
 
 ```bash
-DATA_DIR=packages/core/test/fixtures/data DIST_DIR=out/demo-dist OUT_DIR=out/demo-build npm run build
+DATA_DIR=packages/core/test/fixtures/data DIST_DIR=out/demo-dist OUT_DIR=out/demo-build pnpm run build
 python3 -m http.server 4173 --bind 0.0.0.0 --directory out/demo-dist
 ```
 
-Fixtures contain fictional metadata and dialogue, without comic images. This preview server requires Python 3; supply your own images to preview real artwork. The sample build refreshes shared generated data, so run `npm run build` again before returning to the default site.
+Fixtures contain fictional metadata and dialogue, without comic images. This preview server requires Python 3; supply your own images to preview real artwork. The sample build refreshes shared generated data, so run `pnpm run build` again before returning to the default site.
 
 ## Configuration and content
 
-[`site.config.yaml`](site.config.yaml) is the single configuration source. `npm run init` interactively sets the site name, domains, image sources, and feature flags, using the current configuration as defaults. Cancelling leaves the file unchanged. The tool defaults to Chinese; use `npm run init -- --ui-lang en` for English.
+[`site.config.yaml`](site.config.yaml) is the single configuration source. `pnpm run init` interactively sets the site name, domains, image sources, and feature flags, using the current configuration as defaults. Cancelling leaves the file unchanged. The tool defaults to Chinese; use `pnpm run init -- --ui-lang en` for English.
 
 You can also preview changes with command-line arguments:
 
 ```bash
-npm run init -- --ui-lang en --title "My Comic Library" --domain gallery.example.org --image-host images.example.org --target cloudflare --project my-comics
-npm run init -- --ui-lang en --help
+pnpm run init -- --ui-lang en --title "My Comic Library" --domain gallery.example.org --image-host images.example.org --target cloudflare --project my-comics
+pnpm run init -- --ui-lang en --help
 ```
 
 Argument mode previews changes by default. Append `--write` to the same command to save them after review. `--dry-run` explicitly requests a preview and cannot be combined with `--write`. Use argument mode in non-interactive environments. Repeat `--image-host` for up to two sources; `--text-layer`, `--enhanced-reader`, and `--platform-config` accept `true` or `false`. `--site-lang` sets the HTML language tag without translating the website interface.
 
 `--target` accepts `none` (the default), `edgeone`, `esa`, `github`, `workers`, or `cloudflare` and selects platform setup guidance only. The actual release target is still chosen in the manual release form. `--project` writes the Cloudflare Pages project name; other platform account identifiers and credentials remain in secrets. Initialization accepts example domains for previews and does not create cloud resources or deploy the site.
 
-The tool preserves existing comments and unselected fields and validates the complete configuration. Before saving, it backs up the original in `out/init/` (overridable with `OUT_DIR`), replaces the file atomically through a temporary file in the same directory, and stops if it detects a concurrent configuration edit. Use `--config` to edit another existing configuration; otherwise, `CONFIG_FILE` takes precedence over the repository root file. Run `npm run build` afterwards to refresh generated configuration and site artifacts.
+The tool preserves existing comments and unselected fields and validates the complete configuration. Before saving, it backs up the original in `out/init/` (overridable with `OUT_DIR`), replaces the file atomically through a temporary file in the same directory, and stops if it detects a concurrent configuration edit. Use `--config` to edit another existing configuration; otherwise, `CONFIG_FILE` takes precedence over the repository root file. Run `pnpm run build` afterwards to refresh generated configuration and site artifacts.
 
 ### Site customization
 
 ```bash
-npm run customize
+pnpm run customize
 ```
 
 Open the address printed in the terminal to edit the name, logo, and footer text; choose Paper, Ocean, or Plum colors, a custom accent, and serif or sans-serif headings; show or hide search and library navigation entries; and enable or disable text overlays and enhanced pagination. The preview updates as you edit. Only Save writes `site.config.yaml`. Preview light and dark appearances with the selector beside the preview; it does not change configuration or readers' preferences. Hiding navigation entries does not remove the corresponding pages, bookmarks, or reading records.
 
-This is a temporary maintainer tool, bound to the loopback address by default and not deployed with the public site. If Codespaces requires listening on all interfaces, run `npm run customize -- --host 0.0.0.0`, open its port from the Ports panel, keep the port **private**, and append the printed `#token=…` fragment to the forwarded address. Do not make the forwarded port public or share a token-bearing address; stop the command when finished.
+This is a temporary maintainer tool, bound to the loopback address by default and not deployed with the public site. If Codespaces requires listening on all interfaces, run `pnpm run customize -- --host 0.0.0.0`, open its port from the Ports panel, keep the port **private**, and append the printed `#token=…` fragment to the forwarded address. Do not make the forwarded port public or share a token-bearing address; stop the command when finished.
 
 Use an HTTPS image URL or an on-site SVG path for the logo; `/favicon.svg` remains the default. Images can be hosted on your CDN. Current output budgets prohibit PNG, JPEG, WebP, and similar image files in `dist`, so the editor does not offer uploads. The logo is shared by navigation, the favicon, and the enhanced reader; third-party license notices remain intact.
 
@@ -174,12 +174,12 @@ The example domains are for build previews only. Production site deployments rej
 
 1. Add series, issues, chapters, and pages to `data/meta/`, following the [metadata format](data/meta/README.md).
 2. Prepare images and a CDN, ensuring that image keys and dimensions in the metadata match the actual files.
-3. Put LabelPlus transcripts in `data/raw/labelplus/` and run `npm run ingest:labelplus`. For OCR drafting, review, and acceptance, see the [source transcript guide](data/raw/README.md).
+3. Put LabelPlus transcripts in `data/raw/labelplus/` and run `pnpm run ingest:labelplus`. For OCR drafting, review, and acceptance, see the [source transcript guide](data/raw/README.md).
 4. Rebuild, run checks and tests, then publish through the manual release workflow.
 
 Comics without transcripts remain readable but do not appear in dialogue search. See [`data/text/README.md`](data/text/README.md) for the text-layer format.
 
-Before importing, run `npm run ingest:labelplus -- --dry-run` to preview chapters that would be created,
+Before importing, run `pnpm run ingest:labelplus -- --dry-run` to preview chapters that would be created,
 updated, or left unchanged, together with all warnings and errors. The preview creates no directories
 and writes no files. `CHAPTERS` and `LABELPLUS_PAGES` still control selection and page mapping; use
 `--help` for usage. Without `--dry-run`, valid chapters are imported even if other chapters fail; those
@@ -190,8 +190,8 @@ must use lowercase `.yaml` / `.yml` / `.json` extensions.
 Check content after editing, without a full build:
 
 ```bash
-npm run check:data
-npm run --silent check:data -- --json
+pnpm run check:data
+pnpm run --silent check:data -- --json
 ```
 
 This reuses the build's format and cross-file validation, summarizes series, chapters, pages, and text
@@ -199,7 +199,7 @@ boxes, and lists chapters with no transcript or a transcript without searchable 
 transcripts are informational; the empty template is valid. A missing directory, a non-directory path,
 invalid content, or invalid arguments produce a nonzero exit status. `DATA_DIR` can select another
 existing data directory. The command is read-only, generates no artifacts, and does not read cloud
-credentials or verify remote images. A full build and `npm run check` remain required before release.
+credentials or verify remote images. A full build and `pnpm run check` remain required before release.
 
 The JSON report contains `ok`, `dataDir`, `totals`, `coverage`, `missingText`, `emptyText`, and `issues`.
 `coverage.withText` counts chapters with a transcript; `searchableChapters`, `searchablePages`, and
@@ -209,15 +209,15 @@ own script banner.
 
 ## Deployment
 
-Deployment targets include **EdgeOne Makers, ESA Pages, GitHub Pages, and Cloudflare Workers Static Assets**, with a separate Cloudflare Pages entry point retained. `npm run build` only generates files. Production releases are started manually with the release workflow on GitHub. Pushing `main` runs automated checks; there are no automatic or scheduled deployments. GitHub also provides manual checks and branch archiving that creates and verifies a tag before deleting the branch. Only a successful `main` push check moves `last-green`.
+Deployment targets include **EdgeOne Makers, ESA Pages, GitHub Pages, and Cloudflare Workers Static Assets**, with a separate Cloudflare Pages entry point retained. `pnpm run build` only generates files. Production releases are started manually with the release workflow on GitHub. Pushing `main` runs automated checks; there are no automatic or scheduled deployments. GitHub also provides manual checks and branch archiving that creates and verifies a tag before deleting the branch. Only a successful `main` push check moves `last-green`.
 
 | Release target | Command | Preview and capacity boundaries |
 | --- | --- | --- |
-| `edgeone` | `npm run deploy:edgeone` | Makers preview; repository file budgets apply |
-| `esa` | `npm run deploy:esa` | preview maps to staging; at most 2,000 uploaded files, including one deployment proof, so the site output is limited to 1,999 files; uncompressed total is capped at 1,024,000,000 bytes including the proof reserve |
-| `github` | `npm run deploy:github` | No independent preview target; site size at most 1,000,000,000 bytes |
-| `workers` | `npm run deploy:workers` | Separate preview Worker, with a different name from production; uses Static Assets |
-| `cloudflare` | `npm run deploy:cloudflare` | Existing Cloudflare Pages entry point, with branch-based previews |
+| `edgeone` | `pnpm run deploy:edgeone` | Makers preview; repository file budgets apply |
+| `esa` | `pnpm run deploy:esa` | preview maps to staging; at most 2,000 uploaded files, including one deployment proof, so the site output is limited to 1,999 files; uncompressed total is capped at 1,024,000,000 bytes including the proof reserve |
+| `github` | `pnpm run deploy:github` | No independent preview target; site size at most 1,000,000,000 bytes |
+| `workers` | `pnpm run deploy:workers` | Separate preview Worker, with a different name from production; uses Static Assets |
+| `cloudflare` | `pnpm run deploy:cloudflare` | Existing Cloudflare Pages entry point, with branch-based previews |
 
 `all` deploys to Makers, ESA, GitHub Pages, and Workers, **excluding the existing Cloudflare Pages target**. Select `cloudflare` separately to deploy to Pages. Combining `preview` with `github` or `all` is rejected before upload. The site uses a custom domain or a user-site root; GitHub project sites under `/repository/` are not supported yet.
 
@@ -291,9 +291,9 @@ Internal packages keep the `@gallery/*` names, and reading records keep the `gal
 
 Work directly on `main`; there is no routine PR workflow. Keep one feature per commit, use a Conventional Commits prefix with a Chinese description, and follow the authorship, signing, and documentation rules. Keep feature descriptions, commands, and limits synchronized between both README languages.
 
-When changing a section heading, update the navigation fragment to match the section link. English headings use lowercase and hyphens (`Getting started` becomes `#getting-started`). `npm run check` checks section links in both READMEs.
+When changing a section heading, update the navigation fragment to match the section link. English headings use lowercase and hyphens (`Getting started` becomes `#getting-started`). `pnpm run check` checks section links in both READMEs.
 
-Before committing, run `npm run check`, `npm test`, and `npm run build`. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full rules. Automated collaborators must also read [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md). These maintenance documents are currently authoritative in Chinese.
+Before committing, run `pnpm run check`, `pnpm test`, and `pnpm run build`. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full rules. Automated collaborators must also read [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md). These maintenance documents are currently authoritative in Chinese.
 
 ## License
 
@@ -306,10 +306,10 @@ The enhanced reader uses `site.title` and `site.logo`, which defaults to the sit
 The [Chinese living guide](repo-docs/README.md) follows one real workflow and states what it leaves uncovered. Build or serve it with its separate Node.js dependencies:
 
 ```sh
-npm --prefix docs-site ci
-npm --prefix docs-site run docs:dev -- --host 127.0.0.1
-npm --prefix docs-site run docs:build
-npm run test:docs  # Real build, page links, and local search index regression; also included in npm test
+pnpm --dir docs-site install --frozen-lockfile
+pnpm --dir docs-site run docs:dev -- --host 127.0.0.1
+pnpm --dir docs-site run docs:build
+pnpm run test:docs  # Real build, page links, and local search index regression; also included in pnpm test
 ```
 
 The documentation site uses the default VitePress theme, with dependencies installed separately from the application. Output defaults to `docs-site/.vitepress/dist/`; append `-- --outDir <external-absolute-directory>` for an isolated build. Markdown remains in `repo-docs/` and is included by the site. Repository source links are shown as exact paths; source files and local resources are not published.

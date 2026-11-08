@@ -139,13 +139,13 @@ export function planUploads({ version, config, manifest, files }) {
     if (manifest.db.chunks !== chunksKey) problems.push(`manifest.json 的 db.chunks 是 ${manifest.db.chunks}，本次应为 ${chunksKey}`);
     // 名字对得上不等于是同一份：manifest 记了 size，一次比对就能抓住「manifest 与库来自不同次构建」
     if (typeof files.dbSize === 'number' && typeof manifest.db.size === 'number' && files.dbSize !== manifest.db.size) {
-      problems.push(`manifest.json 记的库大小是 ${manifest.db.size} 字节，out/db 里的 ${names.db} 实际 ${files.dbSize} 字节（manifest 与库来自不同次构建？重新 npm run build）`);
+      problems.push(`manifest.json 记的库大小是 ${manifest.db.size} 字节，out/db 里的 ${names.db} 实际 ${files.dbSize} 字节（manifest 与库来自不同次构建？重新 pnpm run build）`);
     }
   }
 
   const dbFiles = new Map((files.db ?? []).map((p) => [basename(p), p]));
   for (const want of [names.db, names.chunks]) {
-    if (!dbFiles.has(want)) problems.push(`out/db 里没有 ${want}（先 npm run build:db）`);
+    if (!dbFiles.has(want)) problems.push(`out/db 里没有 ${want}（先 pnpm run build:db）`);
   }
   for (const have of dbFiles.keys()) {
     if (have !== names.db && have !== names.chunks) problems.push(`out/db 里有不属于本版本的文件 ${have}（out/db 只该有当前版本这一对；重新 build:db）`);

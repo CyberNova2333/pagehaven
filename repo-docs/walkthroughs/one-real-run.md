@@ -64,11 +64,11 @@ CLI 成功后，脚本从所配 HTTPS 根地址读取本次随机文件，拒绝
 ## 检查这条解释
 
 ```sh
-npm ci
-npm --prefix docs-site ci
-npm run check
-npm test
-npm run build
+pnpm install --frozen-lockfile
+pnpm --dir docs-site install --frozen-lockfile
+pnpm run check
+pnpm test
+pnpm run build
 ```
 
 构建与测试可能写入共享生成目录，执行前需保护已有工作。各轮实际命令结果见[同步记录](../change-log.md)，源码静态确认、本地测试和云端部署分别记账。平台适配仍需按根规则另做真实预览部署；本地通过不表示站点已经上线。

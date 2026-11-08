@@ -7,7 +7,7 @@
 #   · web_trigger_archive → 归档：打 archive/<分支> tag、核对，然后才删分支
 #
 # 发布与部署只能手动（web_trigger），不许 push 触发，不许 crontab。
-# `npm run check` 的第 4 节会解析本文件，把这两条变成硬拦截（铁律 6）。
+# `pnpm run check` 的第 4 节会解析本文件，把这两条变成硬拦截（铁律 6）。
 #
 # 凭据只从密钥仓库来（铁律 7），文件地址由手动发布参数提供，不绑定特定组织或仓库：
 #   publish_secrets_url —— 对象存储写凭据（verify:manifest / publish:r2 / status），必填
@@ -31,15 +31,15 @@ main:
         cancel-in-progress: true
       stages:
         - name: 安装依赖
-          script: npm ci
+          script: pnpm install --frozen-lockfile
           timeout: 15m
 
         - name: 安装文档依赖
-          script: npm --prefix docs-site ci
+          script: pnpm --dir docs-site install --frozen-lockfile
           timeout: 15m
 
         - name: 文档依赖安全审计
-          script: cd docs-site && npm audit --include=dev --audit-level=moderate
+          script: pnpm --dir docs-site audit --audit-level=moderate
 
         # 只查本次推送新增的提交，与 pre-push 钩子同一个语义：历史不翻旧账。
         # 拿不到 before（新建分支、手动触发、历史不可达）就跳过——护栏坏了让路。
@@ -60,17 +60,17 @@ main:
             fi
             python3 tools/check-commit-messages.py "$before..$CNB_COMMIT"
 
-        - name: npm run check（预算守卫 + 配置同步 + lint）
-          script: npm run check
+        - name: pnpm run check（预算守卫 + 配置同步 + lint）
+          script: pnpm run check
 
-        - name: npm test
-          script: npm test
+        - name: pnpm test
+          script: pnpm test
 
-        - name: npm run build（全量静态构建，dry-run）
-          script: npm run build
+        - name: pnpm run build（全量静态构建，dry-run）
+          script: pnpm run build
 
         - name: 产物再过一遍守卫
-          script: npm run check
+          script: pnpm run check
 
         # 仓库 data/ 可能是空的（0 话时上面两步守不到「每话恰好一个 HTML」这类条目），
         # 所以再拿测试样本跑一遍整条流水线：manifest → db → 站点 → 索引 → sitemap → check。
@@ -79,7 +79,7 @@ main:
             export DATA_DIR=packages/core/test/fixtures/data
             export DIST_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-dist"
             export OUT_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-out"
-            npm run build && npm run check
+            pnpm run build && pnpm run check
 
         # CI 能替代的只有前两级；platform / 流水线 / schema 的改动要人真跑过（CONTRIBUTING §二.3）。
         # 放在最后：只有前面的检查全过才走到这里（CNB 的 stages 失败会直接跳 failStages，
@@ -136,34 +136,34 @@ main:
             python3 tools/check-commit-messages.py "$before..$CNB_COMMIT"
 
         - name: 安装依赖
-          script: npm ci
+          script: pnpm install --frozen-lockfile
           timeout: 15m
 
         - name: 安装文档依赖
-          script: npm --prefix docs-site ci
+          script: pnpm --dir docs-site install --frozen-lockfile
           timeout: 15m
 
         - name: 文档依赖安全审计
-          script: cd docs-site && npm audit --include=dev --audit-level=moderate
+          script: pnpm --dir docs-site audit --audit-level=moderate
 
-        - name: npm run check（预算守卫 + 配置同步 + lint）
-          script: npm run check
+        - name: pnpm run check（预算守卫 + 配置同步 + lint）
+          script: pnpm run check
 
-        - name: npm test
-          script: npm test
+        - name: pnpm test
+          script: pnpm test
 
-        - name: npm run build（全量静态构建，dry-run）
-          script: npm run build
+        - name: pnpm run build（全量静态构建，dry-run）
+          script: pnpm run build
 
         - name: 产物再过一遍守卫
-          script: npm run check
+          script: pnpm run check
 
         - name: 用测试样本全量空跑
           script: |
             export DATA_DIR=packages/core/test/fixtures/data
             export DIST_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-dist"
             export OUT_DIR="${CNB_BUILD_WORKSPACE:-$PWD}/fixture-out"
-            npm run build && npm run check
+            pnpm run build && pnpm run check
       failStages:
         - name: 记录失败详情
           script: |
@@ -180,7 +180,7 @@ main:
         wait: true
       stages:
         - name: 安装依赖
-          script: npm ci
+          script: pnpm install --frozen-lockfile
           timeout: 15m
 
         # 版本号进文件名与对象 key（gallery-<v>.sqlite、site-<v>.tar.zst），且带一年 immutable 缓存，
@@ -191,7 +191,7 @@ main:
             export DEPLOY_TARGET="${target:-none}"
             export DEPLOY_ENV="${deploy_env:-production}"
             v="${version:-$(date -u +%Y-%m-%d).$CNB_BUILD_ID}"
-            RELEASE_VERSION="$v" npm run release:check -- --require-secret-imports
+            RELEASE_VERSION="$v" pnpm run release:check -- --require-secret-imports
             started="$(date -u +%FT%TZ)"
             echo "版本 $v"
             echo "##[set-output version=$v]"
@@ -208,7 +208,7 @@ main:
           if: '[ -n "${chapters:-}" ]'
           script: |
             export CHAPTERS="$chapters"
-            npm run ingest:labelplus
+            pnpm run ingest:labelplus
 
         - name: ingest:ocr（只补缺稿）
           if: '[ "${ocr:-false}" = "true" ]'
@@ -219,7 +219,7 @@ main:
             DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng
             export CHAPTERS="$chapters"
             ocr_result=0
-            npm run ingest:ocr || ocr_result=$?
+            pnpm run ingest:ocr || ocr_result=$?
             mkdir -p out/ocr-review
             tar -czf "out/ocr-review-${RELEASE_VERSION}.tar.gz" -C out ocr-review
             echo "##[set-output exit_code=$ocr_result]"
@@ -238,10 +238,10 @@ main:
           script: 'test "$OCR_EXIT_CODE" = "0"'
 
         - name: build（config → manifest → db → site → index → sitemap）
-          script: npm run build
+          script: pnpm run build
 
         - name: check（预算守卫）
-          script: npm run check
+          script: pnpm run check
 
         - name: dist 文件数（给 STATUS.md）
           script: echo "##[set-output dist_files=$(find dist -type f | wc -l)]"
@@ -262,21 +262,21 @@ main:
         # 缺图在这里就拦住，manifest.json 的当前版本指针不会指向引用了不存在图片的站点。
         - name: 核对对象存储里的图片清单
           imports: &publish_secrets ${publish_secrets_url}
-          script: npm run verify:manifest
+          script: pnpm run verify:manifest
 
         - name: 准备发布基线
           imports: *publish_secrets
-          script: npm run release:prepare
+          script: pnpm run release:prepare
 
         # 写凭据只在这里出现，且只来自密钥仓库（铁律 7）。读永远走 CDN 域名。
         - name: publish:r2
           imports: *publish_secrets
-          script: npm run publish:r2
+          script: pnpm run publish:r2
 
         - name: deploy:cloudflare
           if: '[ "$DEPLOY_TARGET" = "cloudflare" ]'
           imports: &deploy_secrets ${deploy_secrets_url}
-          script: npm run deploy:cloudflare
+          script: pnpm run deploy:cloudflare
 
         # EdgeOne 用 ID 定位：EDGEONE_PROJECT_ID 填项目 ID（makers-…），EDGEONE_PROJECT_NAME 只作
         # CLI 的 -n 参数；部署前会按 ID 核对名字与同名唯一性（EdgeOne 允许多个同名项目）。
@@ -284,17 +284,17 @@ main:
         - name: deploy:edgeone
           if: '[ "$DEPLOY_TARGET" = "edgeone" ] || [ "$DEPLOY_TARGET" = "all" ]'
           imports: *deploy_secrets
-          script: npm run deploy:edgeone
+          script: pnpm run deploy:edgeone
 
         - name: deploy:esa
           if: '[ "$DEPLOY_TARGET" = "esa" ] || [ "$DEPLOY_TARGET" = "all" ]'
           imports: *deploy_secrets
-          script: npm run deploy:esa
+          script: pnpm run deploy:esa
 
         - name: deploy:workers
           if: '[ "$DEPLOY_TARGET" = "workers" ] || [ "$DEPLOY_TARGET" = "all" ]'
           imports: *deploy_secrets
-          script: npm run deploy:workers
+          script: pnpm run deploy:workers
 
         # GitHub Pages 没有响应头、没有重定向、没有函数，是站点完整性的最小公分母（铁律 2）。
         # 流水线在这里校验 dist 基线，并用密钥仓库里的 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN
@@ -302,18 +302,18 @@ main:
         - name: deploy:github（校验基线 → 推 gh-pages）
           if: '[ "$DEPLOY_TARGET" = "github" ] || [ "$DEPLOY_TARGET" = "all" ]'
           imports: *deploy_secrets
-          script: npm run deploy:github
+          script: pnpm run deploy:github
 
         - name: 启用生产版本
           if: '[ "$DEPLOY_ENV" = "production" ] && [ "$DEPLOY_TARGET" != "none" ]'
           imports: *publish_secrets
-          script: npm run release:activate
+          script: pnpm run release:activate
 
         - name: 写 STATUS.md
           if: '[ "$DEPLOY_ENV" = "production" ] && [ "$DEPLOY_TARGET" != "none" ]'
           imports: *publish_secrets
           # 版本、目标与环境统一由参数检查步骤经 exports 传入。
-          script: npm run status
+          script: pnpm run status
 
         # 页面已经上线（部署步骤全部在前）才通知搜索引擎：只推本次新增的页面
         # （release:prepare 存下的线上旧 manifest 与新 manifest 的差集）。只走 IndexNow：
@@ -325,9 +325,9 @@ main:
           allowFailure: true
           script: |
             if [ "${push_all:-false}" = "true" ]; then
-              npm run push:search -- --all
+              pnpm run push:search -- --all
             else
-              npm run push:search
+              pnpm run push:search
             fi
 
         # 这是唯一允许由 CI 身份提交的东西（AGENTS.md §1 三）：ingest 写回的 data/text 与 STATUS.md。

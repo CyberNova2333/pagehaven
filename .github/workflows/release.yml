@@ -69,7 +69,7 @@ jobs:
         run: |
           set -eu
           v="${INPUT_VERSION:-$(date -u +%Y-%m-%d).$GITHUB_RUN_ID}"
-          RELEASE_VERSION="$v" npm run release:check
+          RELEASE_VERSION="$v" pnpm run release:check
           echo "版本 $v"
           {
             echo "RELEASE_VERSION=$v"
@@ -81,7 +81,7 @@ jobs:
         if: ${{ inputs.chapters != '' }}
         env:
           CHAPTERS: ${{ inputs.chapters }}
-        run: npm run ingest:labelplus
+        run: pnpm run ingest:labelplus
       - name: ingest:ocr（只补缺稿）
         id: ocr
         if: ${{ inputs.ocr }}
@@ -94,7 +94,7 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng
           ocr_result=0
-          npm run ingest:ocr || ocr_result=$?
+          pnpm run ingest:ocr || ocr_result=$?
           mkdir -p out/ocr-review
           tar -czf "out/ocr-review-${RELEASE_VERSION}.tar.gz" -C out ocr-review
           exit "$ocr_result"
@@ -110,9 +110,9 @@ jobs:
         if: ${{ inputs.ocr }}
         run: test "${{ steps.ocr.outcome }}" = "success"
       - name: build（config → manifest → db → site → index → sitemap）
-        run: npm run build
+        run: pnpm run build
       - name: check（预算守卫）
-        run: npm run check
+        run: pnpm run check
       - name: dist 文件数（给 STATUS.md）
         run: echo "DIST_FILES=$(find dist -type f | wc -l)" >> "$GITHUB_ENV"
       - name: 归档工具（tar --zstd）
@@ -126,58 +126,58 @@ jobs:
       - name: 核对对象存储里的图片清单
         env:
           PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
-        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML npm run verify:manifest
+        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML pnpm run verify:manifest
       - name: 准备发布基线
         env:
           PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
-        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML npm run release:prepare
+        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML pnpm run release:prepare
       - name: publish:r2
         env:
           PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
-        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML npm run publish:r2
+        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML pnpm run publish:r2
       - name: deploy:cloudflare
         if: ${{ env.DEPLOY_TARGET == 'cloudflare' }}
         env:
           DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
-        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML npm run deploy:cloudflare
+        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML pnpm run deploy:cloudflare
       - name: deploy:edgeone
         if: ${{ env.DEPLOY_TARGET == 'edgeone' || env.DEPLOY_TARGET == 'all' }}
         env:
           DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
-        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML npm run deploy:edgeone
+        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML pnpm run deploy:edgeone
       - name: deploy:esa
         if: ${{ env.DEPLOY_TARGET == 'esa' || env.DEPLOY_TARGET == 'all' }}
         env:
           DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
-        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML npm run deploy:esa
+        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML pnpm run deploy:esa
       - name: deploy:workers
         if: ${{ env.DEPLOY_TARGET == 'workers' || env.DEPLOY_TARGET == 'all' }}
         env:
           DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
-        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML npm run deploy:workers
+        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML pnpm run deploy:workers
       - name: deploy:github（校验基线 → 推 gh-pages）
         if: ${{ env.DEPLOY_TARGET == 'github' || env.DEPLOY_TARGET == 'all' }}
         env:
           DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
-        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML npm run deploy:github
+        run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML pnpm run deploy:github
       - name: 启用生产版本
         if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
         env:
           PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
-        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML npm run release:activate
+        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML pnpm run release:activate
       - name: 写 STATUS.md
         if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
         env:
           PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
-        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML npm run status
+        run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML pnpm run status
       - name: 推送新页面给搜索引擎
         if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
         continue-on-error: true
         run: |
           if [ "${{ inputs.push_all }}" = "true" ]; then
-            npm run push:search -- --all
+            pnpm run push:search -- --all
           else
-            npm run push:search
+            pnpm run push:search
           fi
       - name: 提交 data/ 与 STATUS.md
         if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}

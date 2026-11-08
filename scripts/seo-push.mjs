@@ -152,7 +152,7 @@ const dryRun = args.has('--dry-run') || process.env.SEO_PUSH_DRY_RUN === '1';
 try {
   const config = await loadSiteConfig();
   const manifest = await readManifest(OUT_DIR);
-  if (!manifest) bail(`${show(join(OUT_DIR, MANIFEST_FILE))} 不存在：先 npm run build（或下载 release-out 产物）`);
+  if (!manifest) bail(`${show(join(OUT_DIR, MANIFEST_FILE))} 不存在：先 pnpm run build（或下载 release-out 产物）`);
   const domain = config.site.domain;
   const origin = `https://${domain}`;
 

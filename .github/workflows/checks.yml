@@ -54,20 +54,20 @@ jobs:
             exit 0
           fi
           python3 tools/check-commit-messages.py "$before..$GITHUB_SHA"
-      - name: npm run check（预算守卫 + 配置同步 + lint）
-        run: npm run check
-      - name: npm test
-        run: npm test
-      - name: npm run build（全量静态构建，dry-run）
-        run: npm run build
+      - name: pnpm run check（预算守卫 + 配置同步 + lint）
+        run: pnpm run check
+      - name: pnpm test
+        run: pnpm test
+      - name: pnpm run build（全量静态构建，dry-run）
+        run: pnpm run build
       - name: 产物再过一遍守卫
-        run: npm run check
+        run: pnpm run check
       - name: 用测试样本全量空跑
         run: |
           export DATA_DIR=packages/core/test/fixtures/data
           export DIST_DIR="$GITHUB_WORKSPACE/fixture-dist"
           export OUT_DIR="$GITHUB_WORKSPACE/fixture-out"
-          npm run build && npm run check
+          pnpm run build && pnpm run check
       - name: 分层验证提示
         run: python3 tools/verification-tier.py "${{ github.event.before || '' }}" "$GITHUB_SHA" || true
       - name: 移动 last-green
