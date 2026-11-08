@@ -23,15 +23,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: docs-site/package-lock.json
+          cache: pnpm
+          cache-dependency-path: docs-site/pnpm-lock.yaml
       - name: 安装文档依赖
         run: npm --prefix docs-site ci --no-audit --no-fund
       - name: 构建文档站
-        run: npm --prefix docs-site run docs:build
+        run: pnpm --dir docs-site run docs:build
       - uses: actions/configure-pages@v5
       - name: 核对并补充 Pages 文件
         run: |

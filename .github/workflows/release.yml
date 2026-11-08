@@ -53,12 +53,15 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
       - name: 安装依赖
-        run: npm ci
+        run: pnpm install --frozen-lockfile
         timeout-minutes: 15
       - name: 发布参数与版本号
         env:
