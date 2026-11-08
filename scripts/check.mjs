@@ -26,7 +26,7 @@ import { builtinModules } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import yaml from 'js-yaml';
 import { generateAll, DEPLOY_TARGETS, DEFAULT_RELEASE_TARGETS, DEPLOY_CONFIG_FILES } from '@gallery/platform';
-import { hasDeploymentCommand } from './lib/pipeline-policy.mjs';
+import { hasDeploymentCommand, checkDocumentationPipelines } from './lib/pipeline-policy.mjs';
 import { inspectDeploymentFiles, validateDeploymentBudget } from './lib/deploy-budget.mjs';
 import { isDeploymentProofPath } from './lib/deploy-proof.mjs';
 import { loadSiteConfig } from './lib/config.mjs';
@@ -227,6 +227,7 @@ await section('流水线：main 的 push 只跑检查，发布只手动，没有
   }
   if (pushPipelines === 0) problems.push('没有 main 的 push 检查流水线：推上去就没人复验');
   if (manualEvents.size === 0) problems.push('没有 web_trigger 手动流水线：页面上没有发布入口');
+  problems.push(...checkDocumentationPipelines(doc));
 
   // 按钮 → 事件必须有对应流水线；配错了平台只会让按钮点了没反应
   const triggerFile = join(CNB_DIR, 'web_trigger.yml');

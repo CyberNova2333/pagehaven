@@ -6,7 +6,7 @@
 
 | 任务 | 命令 |
 | --- | --- |
-| 安装 | `npm ci` |
+| 安装 | `npm ci`；完整测试还需 `npm --prefix docs-site ci` |
 | 必须通过的守卫 | `npm run check` |
 | 业务测试 | `npm test` |
 | 完整静态构建 | `npm run build`（会替换生成目录与 dist） |

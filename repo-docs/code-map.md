@@ -37,7 +37,7 @@
 | [部署随机证明](../scripts/lib/deploy-proof.mjs) | 生成只交给本次目标的随机验证文件，绑定目标、版本、指纹和环境 | `createDeploymentProof / deploymentProofFile / matchesDeploymentProof` | 临时上传副本与线上核对 |
 | [目标上线核对](../scripts/lib/deploy-ready.mjs) | 有界重试匹配本次随机证明；ESA staging 使用同包请求与连接器覆盖 DNS，保留证书校验 | `deploymentRoot / waitForDeployment / createStagingVerifier` | Workers 与 ESA 部署后确认 |
 | [生产指针启用](../scripts/lib/release.mjs) | 展开发布目标并核对全部回执，以条件写入启用版本 | `releasePlan / activateRelease` | 发布流水线的准备与启用步骤 |
-| [自动发布守卫](../scripts/lib/pipeline-policy.mjs) | 检出部署命令，不依赖逐个平台名称的白名单 | `hasDeploymentCommand` | 检查入口；回归见 `scripts/test/pipeline-policy.test.mjs` |
+| [流水线守卫](../scripts/lib/pipeline-policy.mjs) | 检出自动部署命令，并保证自动、手动检查按序安装和审计文档依赖后再测试 | `hasDeploymentCommand / checkDocumentationPipelines` | 检查入口；回归见 `scripts/test/pipeline-policy.test.mjs` |
 
 相关验证：`scripts/test/build-manifest.test.mjs`、`scripts/test/deploy-plan.test.mjs`、`scripts/test/deploy-static.test.mjs`、`scripts/test/deploy-transport.test.mjs`、`scripts/test/release.test.mjs`。部署连接回归使用真实本地 HTTP 请求；实际执行结果见[同步记录](change-log.md)。
 
@@ -91,6 +91,10 @@
 | [部署模板生成](../packages/platform/src/generators/deploy.js) | 生成静态资源目录及 404 规则，不引入函数入口 | `renderWorkersDeployConfig / renderEsaDeployConfig` | 配置生成与部署临时目录 |
 
 相关验证：`packages/platform/test/site-config.test.js`、`packages/platform/test/deployment-config.test.js`。实际执行结果见[同步记录](change-log.md)。
+
+## 文档构建回归
+
+[文档站集成测试](../scripts/test/docs-site.test.mjs)由 `npm test` 自动发现，也可通过 `npm run test:docs` 单独运行。它调用已安装的 VitePress，在系统临时目录构建现有指南，读取最终 HTML 校验页面与链接，再加载同次产物的 MiniSearch 索引执行真实查询。依赖缺失直接报安装命令，不跳过；不模拟浏览器交互，也不覆盖默认文档产物。CNB 与 GitHub Actions 的检查流水线负责独立依赖安装与联网审计，业务发布入口保持原有职责。
 
 ## 覆盖范围
 

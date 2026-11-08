@@ -34,6 +34,13 @@ main:
           script: npm ci
           timeout: 15m
 
+        - name: 安装文档依赖
+          script: npm --prefix docs-site ci
+          timeout: 15m
+
+        - name: 文档依赖安全审计
+          script: cd docs-site && npm audit --include=dev --audit-level=moderate
+
         # 只查本次推送新增的提交，与 pre-push 钩子同一个语义：历史不翻旧账。
         # 拿不到 before（新建分支、手动触发、历史不可达）就跳过——护栏坏了让路。
         - name: 本次推送新增的提交信息
@@ -131,6 +138,13 @@ main:
         - name: 安装依赖
           script: npm ci
           timeout: 15m
+
+        - name: 安装文档依赖
+          script: npm --prefix docs-site ci
+          timeout: 15m
+
+        - name: 文档依赖安全审计
+          script: cd docs-site && npm audit --include=dev --audit-level=moderate
 
         - name: npm run check（预算守卫 + 配置同步 + lint）
           script: npm run check

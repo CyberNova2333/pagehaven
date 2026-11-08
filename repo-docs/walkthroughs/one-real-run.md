@@ -64,6 +64,8 @@ CLI 成功后，脚本从所配 HTTPS 根地址读取本次随机文件，拒绝
 ## 检查这条解释
 
 ```sh
+npm ci
+npm --prefix docs-site ci
 npm run check
 npm test
 npm run build
