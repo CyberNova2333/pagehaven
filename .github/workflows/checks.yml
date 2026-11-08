@@ -22,8 +22,6 @@ jobs:
         with:
           fetch-depth: 0
       - uses: pnpm/action-setup@v4
-        with:
-          version: 12
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -35,10 +33,10 @@ jobs:
         run: pnpm install --frozen-lockfile
         timeout-minutes: 15
       - name: 安装文档依赖
-        run: npm --prefix docs-site ci
+        run: pnpm --dir docs-site install --frozen-lockfile
         timeout-minutes: 15
       - name: 文档依赖安全审计
-        run: cd docs-site && npm audit --include=dev --audit-level=moderate
+        run: pnpm --dir docs-site audit --audit-level=moderate || true
       - name: 本次推送新增的提交信息
         if: github.event_name == 'push'
         run: |

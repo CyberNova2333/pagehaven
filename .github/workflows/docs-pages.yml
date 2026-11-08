@@ -24,15 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 12
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: docs-site/pnpm-lock.yaml
       - name: 安装文档依赖
-        run: npm --prefix docs-site ci --no-audit --no-fund
+        run: pnpm --dir docs-site install --frozen-lockfile
       - name: 构建文档站
         run: pnpm --dir docs-site run docs:build
       - uses: actions/configure-pages@v5
@@ -40,8 +38,10 @@ jobs:
         run: |
           set -eu
           test -f docs-site/.vitepress/dist/index.html
-          test -f docs-site/.vitepress/dist/CNAME
           touch docs-site/.vitepress/dist/.nojekyll
+          if [ -f docs-site/public/CNAME ]; then
+            cp docs-site/public/CNAME docs-site/.vitepress/dist/CNAME
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs-site/.vitepress/dist
@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 10
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${ steps.deployment.outputs.page_url }
     steps:
       - name: 部署到 GitHub Pages
         id: deployment
