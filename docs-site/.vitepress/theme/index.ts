@@ -1,5 +1,21 @@
-// 文档站使用 VitePress 默认主题，保持原生样式与交互。
-// 同目录的自定义主题源码暂不加载，也不进入构建产物。
 import DefaultTheme from 'vitepress/theme'
+import type { Theme } from 'vitepress'
+import Layout from './Layout.vue'
+import './style.css'
 
-export default DefaultTheme
+const theme: Theme = {
+  extends: DefaultTheme,
+  Layout,
+  enhanceApp({ router }) {
+    if (typeof window === 'undefined') return
+    // 动效加载失败时仍保留完整的阅读与外观切换功能。
+    void import('./toggle')
+      .then(({ setupAppearanceToggle }) => setupAppearanceToggle())
+      .catch(() => undefined)
+    void Promise.all([import('./vendor/animejs/anime.esm.min.js'), import('./motion')])
+      .then(([anime, { setupDocsMotion }]) => setupDocsMotion(router, anime))
+      .catch(() => undefined)
+  },
+}
+
+export default theme
