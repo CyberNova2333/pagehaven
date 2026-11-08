@@ -1,5 +1,6 @@
 // VitePress default theme; content lives in repo-docs.
 import { guideLinks } from './guide-links.mts'
+import { guideSearchRefresh } from './guide-search-refresh.mjs'
 
 const pages = {
   "change-log.md": "change-log",
@@ -14,6 +15,7 @@ export default {
   lang: 'zh-CN',
   title: "页间 · Pagehaven 源码指南",
   cleanUrls: true,
+  vite: { plugins: [guideSearchRefresh()] },
   // guideLinks 已按正文来源处理链接，避免 include 再次重定位。
   markdown: { include: { rebaseRelativeUrls: false }, config: guideLinks(pages) },
   themeConfig: {

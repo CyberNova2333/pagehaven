@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "docs:dev": "vitepress dev",
+    "docs:dev": "node ../scripts/docs-dev.mjs",
     "docs:build": "vitepress build",
     "docs:preview": "vitepress preview"
   },
