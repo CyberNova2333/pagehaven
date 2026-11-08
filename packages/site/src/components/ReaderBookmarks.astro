@@ -26,16 +26,16 @@
 </script>
 
 <style is:global>
-  .reader-bookmarks { padding: 16px; margin: 8px 0 16px; border: 0; border-radius: 8px; background: var(--surface); color: var(--ink); }
+  .reader-bookmarks { padding: 14px 16px; margin: 8px 0 16px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--canvas-subtle); color: var(--fg-default); }
   .reader-bookmarks[hidden], .reader-bookmarks [hidden] { display: none; }
-  .bookmark-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
-  .reader-bookmarks .btn { padding: 0.45rem 0.8rem; font-size: 14px; }
-  .reader-bookmarks a, .reader-bookmarks p { font-size: 14px; }
-  .reader-bookmarks p { margin: 0.6rem 0 0; }
+  .bookmark-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .reader-bookmarks .btn { padding: 4px 12px; font-size: 13px; }
+  .reader-bookmarks a, .reader-bookmarks p { font-size: 13px; }
+  .reader-bookmarks p { margin: 8px 0 0; }
   .reader-bookmarks p:empty { display: none; }
   .bookmark-note { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .bookmark-editor { margin-top: 0.9rem; }
-  .bookmark-editor label { display: block; font-size: 14px; }
-  .bookmark-editor textarea { display: block; box-sizing: border-box; width: 100%; resize: vertical; padding: 0.7rem; margin: 0.5rem 0; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+  .bookmark-editor { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-muted); }
+  .bookmark-editor label { display: block; font-size: 13px; font-weight: 600; }
+  .bookmark-editor textarea { display: block; box-sizing: border-box; width: 100%; resize: vertical; padding: 8px 12px; margin: 6px 0; font: 13px/1.5 var(--font-sans); color: var(--fg-default); background: var(--canvas-default); border: 1px solid var(--border-default); border-radius: 6px; }
   .reader.mode-double .reader-bookmarks { grid-column: 1 / -1; }
 </style>

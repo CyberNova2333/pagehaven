@@ -10,8 +10,7 @@ export function mountDayNightControl(win, doc) {
     if (view || !select || !control || !win.DayNightSwitch) return;
     slot = doc.createElement('span');
     slot.className = 'day-night-control';
-    slot.style.cssText = 'display:inline-flex;align-items:center;vertical-align:middle';
-    // 三态入口一直可见；场景开关只是相邻的快捷操作，不取代“跟随系统”。
+    slot.style.cssText = 'display:inline-flex;align-items:center;vertical-align:middle;width:90px;height:35px;flex-shrink:0;';
     control.parentNode.insertBefore(slot, control);
     view = win.DayNightSwitch.mount(slot, {
       isDark,
