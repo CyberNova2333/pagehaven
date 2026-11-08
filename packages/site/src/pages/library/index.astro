@@ -207,25 +207,49 @@ const catalog = gallery.series.map((series) => ({
   .library-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin-bottom: 1rem; }
   .library-toolbar label { display: grid; gap: 0.35rem; font-size: 14px; }
   .library-toolbar input, .library-toolbar select, .library-item select {
-    padding: 0.65rem 0.8rem; border: 1px solid var(--line); border-radius: 4px;
-    background: var(--surface); color: var(--ink); font: inherit; min-height: 2.7rem;
+    padding: 5px 12px; border: 1px solid var(--border-default); border-radius: 6px;
+    background: var(--canvas-inset); color: var(--fg-default); font: 14px/20px var(--font-sans); min-height: 32px;
   }
   .library-search { flex: 1; min-width: min(100%, 12rem); }
   .library-toolbar input { width: 100%; min-width: 0; }
-  .library-toolbar p { margin: 0 0 0.6rem; font-size: 14px; }
-  .library-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-  .library-item { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; padding: 1.1rem; }
-  .library-cover { display: block; aspect-ratio: 600 / 879; background: var(--cover-bg); border-radius: 4px; overflow: hidden; color: var(--accent-alt); }
+  .library-toolbar p { margin: 0 0 0.6rem; font-size: 13px; }
+  .library-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .library-item { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 14px; padding: 16px; }
+  .library-cover {
+    display: block;
+    aspect-ratio: 600 / 879;
+    background: var(--canvas-subtle);
+    border-radius: 6px;
+    overflow: hidden;
+    color: var(--accent-fg);
+    position: relative;
+    box-shadow:
+      inset 3px 0 5px -1px rgba(0, 0, 0, 0.3),
+      0 2px 6px rgba(31, 35, 40, 0.1);
+  }
+  .library-cover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.22) 0%,
+      transparent 8%,
+      transparent 95%,
+      rgba(0, 0, 0, 0.08) 100%
+    );
+  }
   .library-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  .library-cover span { display: grid; place-items: center; height: 100%; font-family: var(--font-serif); font-size: 24px; }
-  .library-item h2 { margin: 0 0 0.35rem; font-size: 20px; overflow-wrap: anywhere; }
-  .library-item p { margin: 0.3rem 0; font-size: 14px; overflow-wrap: anywhere; }
+  .library-cover span { display: grid; place-items: center; height: 100%; font-family: var(--font-sans); font-size: 20px; font-weight: 600; }
+  .library-item h2 { margin: 0 0 4px; font-size: 16px; overflow-wrap: anywhere; }
+  .library-item p { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; }
   .library-item-body { min-width: 0; }
-  .library-item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.7rem; }
-  .library-item-actions .btn { padding: 0.5rem 0.8rem; font-size: 14px; }
-  .library-item-status { display: grid; gap: 0.3rem; font-size: 12px; color: var(--text-dim); }
-  .library-item select { max-width: 100%; font-size: 14px; }
-  .library-notice { border-left: 3px solid var(--highlight); padding: 0.7rem 1rem; background: var(--surface-soft); border-radius: 4px; font-size: 14px; }
+  .library-item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  .library-item-actions .btn { padding: 4px 12px; font-size: 13px; }
+  .library-item-status { display: grid; gap: 4px; font-size: 12px; color: var(--fg-muted); }
+  .library-item select { max-width: 100%; font-size: 13px; }
+  .library-notice { border: 1px solid var(--attention-muted); padding: 12px 16px; background: var(--attention-subtle); color: var(--fg-default); border-radius: 6px; font-size: 13px; }
   .library-back { margin-top: 1.4rem; }
   .reading-backup { margin-top: 2.3rem; scroll-margin-top: 8rem; }
   .backup-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; }
