@@ -65,6 +65,8 @@ CLI 成功后，脚本从所配 HTTPS 根地址读取本次随机文件，拒绝
 
 ## 检查这条解释
 
+根安装使用 `pnpm-workspace.yaml` 登记的四个业务包，根脚本和包间依赖显式使用 `workspace:*`，不依赖旧 `node_modules` 的提升链接。文档项目有自己的工作区和锁文件，仍须单独安装；站点构建从站点包内解析 Astro。
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm --dir docs-site install --frozen-lockfile

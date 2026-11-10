@@ -28,6 +28,8 @@
 
 ## 1. 架构
 
+构建依赖由 `pnpm-workspace.yaml` 登记 `packages/*`，根脚本与包间引用通过 `workspace:*` 显式链接；`docs-site/` 保持独立工作区与锁文件。构建入口从站点包自身解析 Astro，不依赖根目录提升的间接依赖。当前保留 Astro 7.3.3；依赖覆盖同样维护在工作区配置中，移除不用的 `astro>sharp` 可选依赖，并沿用既有兼容版本覆盖。干净环境须分别冻结安装业务与文档依赖后验证。
+
 ```
 原始稿 (LabelPlus txt / 人工校对的 OCR JSON)
         │  ingest（LabelPlus 可在发布流水线里导入；OCR 草稿须校对并显式接受）

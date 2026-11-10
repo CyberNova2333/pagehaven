@@ -39,7 +39,7 @@ await rm(DIST_DIR, { recursive: true, force: true });
 
 // 不经 npx，直接用 node 跑 astro 包自己声明的 bin：在 CNB / Codespaces / 任何本地环境
 // 行为一致，也不依赖 PATH 里有没有 node_modules/.bin。
-const require = createRequire(import.meta.url);
+const require = createRequire(join(SITE_DIR, 'package.json'));
 const astroPkgPath = require.resolve('astro/package.json');
 const astro = join(dirname(astroPkgPath), require(astroPkgPath).bin.astro);
 const r = spawnSync(process.execPath, [astro, 'build', '--outDir', DIST_DIR], {

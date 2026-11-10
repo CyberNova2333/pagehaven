@@ -7,7 +7,7 @@
     ".": "./src/index.js"
   },
   "dependencies": {
-    "@gallery/core": "*",
+    "@gallery/core": "workspace:*",
     "js-yaml": "^4.1.0",
     "zod": "^4.6.7"
   }

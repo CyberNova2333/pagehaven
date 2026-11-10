@@ -51,7 +51,7 @@ async function configSnapshot(dir) {
 
 // 跳过 build-site.mjs、直接跑 astro build：用来验证「生成物与 gallery.json 对不上」这类只有绕过流水线
 // 才会出现的状态。astro 的 bin 与 build-site.mjs 同样从包自己的声明取，不依赖 PATH。
-const require = createRequire(import.meta.url);
+const require = createRequire(join(SITE_DIR, 'package.json'));
 const astroPkg = require.resolve('astro/package.json');
 const ASTRO_BIN = join(dirname(astroPkg), require(astroPkg).bin.astro);
 function astroBuild(outDir) {
@@ -206,7 +206,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
 
   await t.test('静态产物保留增强分页组件的许可证', async () => {
     const license = await readFile(join(SITE_DIR, 'public', 'licenses', 'comimi.txt'), 'utf8');
-    const originalLicense = await readFile(join(ROOT, 'node_modules', '@yui540', 'comimi', 'LICENSE'), 'utf8');
+    const originalLicense = await readFile(join(SITE_DIR, 'node_modules', '@yui540', 'comimi', 'LICENSE'), 'utf8');
     assert.equal(license.replace(/\r\n/g, '\n'), originalLicense.replace(/\r\n/g, '\n'),
       '随站点分发的许可证必须保留依赖的完整版权与许可声明');
     assert.equal(
