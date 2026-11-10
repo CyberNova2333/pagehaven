@@ -1,11 +1,6 @@
 name: 文档站 GitHub Pages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - docs-site/**
-      - .github/workflows/docs-pages.yml
   workflow_dispatch:
 
 permissions:
@@ -54,7 +49,7 @@ jobs:
     timeout-minutes: 10
     environment:
       name: github-pages
-      url: ${ steps.deployment.outputs.page_url }
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: 部署到 GitHub Pages
         id: deployment

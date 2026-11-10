@@ -315,3 +315,5 @@ pnpm run test:docs  # Static build and bilingual development search regression; 
 ```
 
 The documentation site builds on the VitePress theme, with dependencies installed separately from the application. Output defaults to `docs-site/.vitepress/dist/`; append `--outDir <external-absolute-directory>` for an isolated build. Saving Markdown during development briefly restarts the server and reloads the page. Reopen search to find updated content; deleted or renamed headings disappear. Reloading closes the search box. The launcher keeps a fixed port and fails if it is occupied. Static builds still generate the complete index.
+
+To publish the documentation site, manually run the “文档站 GitHub Pages” workflow in GitHub Actions. Normal pushes run checks without publishing.

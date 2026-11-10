@@ -38,7 +38,7 @@ pnpm test
 
 文档站独立安装依赖；根目录的依赖审计不覆盖它。更新后运行 `pnpm --dir docs-site install --frozen-lockfile`，执行 `pnpm --dir docs-site audit --audit-level=moderate`，再从根目录运行 `pnpm run test:docs`。该入口在临时目录验证当前中英文十个页面、内部链接与锚点、静态索引，并启动真实开发服务验证双语搜索刷新；它也包含在 `pnpm test` 中，不会覆盖默认文档构建输出。浏览器交互另行复验。
 
-持续集成的 main push 与手动检查都会安装并审计文档依赖，再运行统一测试；审计不可用或发现 moderate 及以上告警时检查失败。`pnpm run check` 离线核对流水线未漏掉或条件跳过这些步骤，不会自己联网审计，也不会发布文档站。
+持续集成的 main push 与手动检查都会安装并审计文档依赖，再运行统一测试；审计不可用或发现 moderate 及以上告警时检查失败。`pnpm test` 中的真实工作流回归核对 GitHub 检查未漏掉、条件跳过或吞掉这些步骤的失败；该回归离线读取 YAML，不会自己联网审计。文档站发布仅由 GitHub Actions 的“文档站 GitHub Pages”手动入口触发，普通推送不会发布。
 
 当前在[文档依赖配置](../docs-site/package.json)中精确锁定 VitePress **2.0.0-alpha.21（预发布版）**，由其原生依赖 Vite 8；锁文件固定实际安装版本，不使用跨主要版本的传递依赖覆盖。原稳定版 1.6.4 的 Vite 5 / esbuild 链仍有已知告警；选择预发布版意味着后续升级仍须重跑文档验证，不自动跟随 `next` 标签。已验证项目现有默认主题、静态指南和本地搜索，不据此承诺其他扩展兼容。
 
