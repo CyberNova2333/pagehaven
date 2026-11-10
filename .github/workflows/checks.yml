@@ -36,7 +36,7 @@ jobs:
         run: pnpm --dir docs-site install --frozen-lockfile
         timeout-minutes: 15
       - name: 文档依赖安全审计
-        run: pnpm --dir docs-site audit --audit-level=moderate || true
+        run: pnpm --dir docs-site audit --audit-level=moderate
       - name: 本次推送新增的提交信息
         if: github.event_name == 'push'
         run: |
