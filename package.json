@@ -6,9 +6,6 @@
     "node": ">=22.19.0",
     "pnpm": ">=10.0.0"
   },
-  "workspaces": [
-    "packages/*"
-  ],
   "scripts": {
     "init": "node scripts/init-site.mjs",
     "customize": "node scripts/customize.mjs",
@@ -41,21 +38,14 @@
     "status": "node scripts/write-status.mjs"
   },
   "devDependencies": {
+    "@gallery/core": "workspace:*",
+    "@gallery/platform": "workspace:*",
     "@eslint/js": "^10.0.0",
     "eslint": "^10.0.0",
     "globals": "^17.0.0",
     "js-yaml": "^4.1.0",
     "undici": "8.12.2",
     "yaml": "2.9.1"
-  },
-  "overrides": {
-    "source-map-js": "1.2.2",
-    "eslint": {
-      "minimatch": "11.0.1",
-      "@eslint/config-array": {
-        "minimatch": "11.0.1"
-      }
-    }
   },
   "packageManager": "pnpm@12.6.0"
 }

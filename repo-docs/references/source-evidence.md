@@ -33,6 +33,8 @@
 
 ## 反证与后续问题
 
+工作区安装边界由 [pnpm 工作区配置](../../pnpm-workspace.yaml)、各包依赖声明和[锁文件回归](../../scripts/test/workspace.test.mjs)共同确认。旧本机依赖目录中的链接不证明干净安装可用；实际冻结安装和完整验证记录另见同步记录。
+
 反证检查（Falsifying check）：若不匹配的内容仍能进入已绑定数据库的页面，或关闭平台配置后站点依赖函数才能阅读，当前静态构建模型需要修订。
 
 下一位读者可能问（Next reader question）：浏览器如何按块读取检索库？packages/search 与 core/chunkfetch 暂缓展开；总体约束见原架构文档。

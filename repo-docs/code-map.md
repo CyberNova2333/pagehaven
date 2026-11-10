@@ -93,6 +93,10 @@
 
 相关验证：`packages/platform/test/site-config.test.js`、`packages/platform/test/deployment-config.test.js`。实际执行结果见[同步记录](change-log.md)。
 
+## 工作区安装
+
+[工作区配置](../pnpm-workspace.yaml)登记业务包与依赖覆盖，根和各包的 `package.json` 声明本地引用。[工作区回归](../scripts/test/workspace.test.mjs)核对实际声明与业务锁文件中的本地链接，防止仅凭旧依赖目录通过检查；[站点构建](../scripts/build-site.mjs)从站点包解析其 Astro 入口。
+
 ## 文档构建与开发搜索
 
 [文档站集成测试](../scripts/test/docs-site.test.mjs)由 `pnpm test` 自动发现，也可通过 `pnpm run test:docs` 单独运行。它调用已安装的 VitePress，在系统临时目录构建当前双语官网文档，读取最终 HTML 校验页面与链接，再加载同次产物的 MiniSearch 索引执行真实查询。依赖缺失直接报安装命令，不跳过；不模拟浏览器交互，也不覆盖默认文档产物。GitHub Actions 的检查流水线负责独立依赖安装与联网审计，业务发布入口保持原有职责。

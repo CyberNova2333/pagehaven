@@ -9,9 +9,10 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "@gallery/core": "*",
+    "@gallery/core": "workspace:*",
+    "@gallery/search": "workspace:*",
     "@yui540/comimi": "0.26.0",
     "animejs": "4.5.0",
-    "astro": "^7.3.3"
+    "astro": "7.3.3"
   }
 }

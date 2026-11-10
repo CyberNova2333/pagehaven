@@ -132,7 +132,7 @@ await section('packages/{core,site,search} 无 Node 内置模块 / 原生依赖'
         problems.push(`packages/${pkg} 依赖了原生模块 ${dep}（铁律 1：sqlite 一律 sql.js，不引原生依赖）`);
         continue;
       }
-      const depDir = join(ROOT, 'node_modules', dep);
+      const depDir = join(ROOT, 'packages', pkg, 'node_modules', dep);
       if (!existsSync(depDir)) continue; // 没装（pnpm install --frozen-lockfile 之前）就不查；CI 一定装了
       let depPkg = {};
       try {
