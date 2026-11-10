@@ -5,7 +5,7 @@
 // 那在 CI 里只会挂住。命令行本身是文档约定（ARCHITECTURE §3 三平台矩阵），抽成纯函数是为了
 // 能逐个参数单测，而不用真跑一次部署。
 //
-// 两个 CLI 都通过 `pnpm exec --yes -- <包>@<大版本>` 临时拉取：它们只在发布时用一次，不值得
+// 部署 CLI 通过 `pnpm --package=<包>@<版本> dlx <命令>` 临时拉取：它们只在发布时用一次，不值得
 // 进 package.json 常驻；钉大版本是让「哪个 CLI」成为可复现的事实，而不是碰上什么装什么。
 //
 // 三个目标的差别（§3）：
@@ -62,7 +62,7 @@ export function requiredEnv(target) {
 /**
  * @typedef {object} DeployCommand
  * @property {true} ok
- * @property {string[]} npmArgs   传给 npm 的参数（脚本决定怎么起 npm）
+ * @property {string[]} pnpmArgs   传给 pnpm 的参数（启动器区分脚本与原生程序）
  * @property {string} display     给日志看的命令行，凭据已打码
  * @property {Record<string, string>} env  执行时额外注入的环境变量
  * @property {string[]} unsetEnv  执行前要从继承的环境里删掉的变量：只经我们选定的通道交给 CLI，
@@ -110,11 +110,11 @@ export function planDeployCommand({ target, config, env, distDir }) {
       if (target === 'esa' && preview && !isIP(env.ESA_PREVIEW_IP || '')) throw new Error('ESA_PREVIEW_IP 必须是控制台提供的测试环境 IP');
     } catch (e) { return { ok: false, problems: [e.message] }; }
     const configFile = target === 'workers' ? 'wrangler.jsonc' : 'esa.jsonc';
-    const npmArgs = target === 'workers'
-      ? ['exec', '--yes', '--', WRANGLER_SPEC, 'deploy', '--config', configFile]
-      : ['exec', '--yes', '--package', ESA_CLI_SPEC, '--', 'esa-cli', 'deploy', '--environment', preview ? 'staging' : 'production', '--no-preview'];
+    const pnpmArgs = target === 'workers'
+      ? [`--package=${WRANGLER_SPEC}`, 'dlx', 'wrangler', 'deploy', '--config', configFile]
+      : [`--package=${ESA_CLI_SPEC}`, 'dlx', 'esa-cli', 'deploy', '--environment', preview ? 'staging' : 'production', '--no-preview'];
     return {
-      ok: true, npmArgs, display: `npm ${npmArgs.join(' ')}`, env: { CI: 'true' },
+      ok: true, pnpmArgs, display: `pnpm ${pnpmArgs.join(' ')}`, env: { CI: 'true' },
       unsetEnv: target === 'esa' ? ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET', 'ALIBABA_CLOUD_SECURITY_TOKEN'] : [],
       configFile, configName: name, verifyUrl, ...(target === 'esa' && preview ? { verifyAddress: env.ESA_PREVIEW_IP } : {}),
     };
@@ -123,19 +123,19 @@ export function planDeployCommand({ target, config, env, distDir }) {
   if (target === 'cloudflare') {
     // --commit-dirty=true 让 wrangler 别因工作区脏而问（CI 里 STATUS.md 会先写）
     const branch = deployEnv === 'production' ? CLOUDFLARE_PRODUCTION_BRANCH : CLOUDFLARE_PREVIEW_BRANCH;
-    const npmArgs = ['exec', '--yes', '--', WRANGLER_SPEC, 'pages', 'deploy', distDir, '--project-name', config.deploy.cloudflare.project, '--branch', branch, '--commit-dirty=true'];
-    return { ok: true, npmArgs, display: `npm ${npmArgs.join(' ')}`, env: {}, unsetEnv: [] };
+    const pnpmArgs = [`--package=${WRANGLER_SPEC}`, 'dlx', 'wrangler', 'pages', 'deploy', distDir, '--project-name', config.deploy.cloudflare.project, '--branch', branch, '--commit-dirty=true'];
+    return { ok: true, pnpmArgs, display: `pnpm ${pnpmArgs.join(' ')}`, env: {}, unsetEnv: [] };
   }
 
   // edgeone：CLI 的 -n 只认项目名（源码里按 Name 过滤取第一个，同名项目并存时会发错）。
   // 所以名字不是凭据、只是参数；项目 ID 由 deploy.mjs 在部署前用 Pages API 校验，
   // 校验不过就一个字节都不传。project ID 不能进 -n：CLI 会把它当名字，静默新建同名项目。
-  const npmArgs = ['exec', '--yes', '--', EDGEONE_CLI_SPEC, 'makers', 'deploy', distDir, '-n', env.EDGEONE_PROJECT_NAME, '-e', deployEnv];
-  const shown = npmArgs.map((a, i) => (npmArgs[i - 1] === '-n' ? '***' : a));
+  const pnpmArgs = [`--package=${EDGEONE_CLI_SPEC}`, 'dlx', 'edgeone', 'makers', 'deploy', distDir, '-n', env.EDGEONE_PROJECT_NAME, '-e', deployEnv];
+  const shown = pnpmArgs.map((a, i) => (pnpmArgs[i - 1] === '-n' ? '***' : a));
   return {
     ok: true,
-    npmArgs,
-    display: `npm ${shown.join(' ')}`,
+    pnpmArgs,
+    display: `pnpm ${shown.join(' ')}`,
     env: {
       // CLI 在 CI=true 时已是非交互；再显式声明一次，避免任何提示把流水线挂住（CLI 包里查到的开关）
       EDGEONE_NON_INTERACTIVE: '1',

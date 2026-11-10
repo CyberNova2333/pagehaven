@@ -2,7 +2,7 @@
 //
 // 纯函数部分逐个参数比对：命令行是文档约定（ARCHITECTURE §3），改一个参数都该有测试红。
 // 脚本部分验「凭据缺失退 1、DEPLOY_DRY_RUN 只打印、日志里不出现 token」，再用一个假的 npm_execpath
-// 真起一次 npm：看交给 CLI 的参数与环境（token 只经 EDGEONE_PAGES_API_TOKEN 给、原始 secrets 不透传）
+// 启动本地 pnpm 替身：看交给 CLI 的参数与环境（token 只经 EDGEONE_PAGES_API_TOKEN 给、原始 secrets 不透传）
 // 与退出码的透传——真跑 CLI 要连外部服务，那是首次真实部署时人做的事。github 那条路在 deploy-github.test.mjs。
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -52,12 +52,12 @@ test('planDeployCommand cloudflare：wrangler@4 pages deploy，项目名取配�
   const env = { CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' };
   const plan = planDeployCommand({ target: 'cloudflare', config, env, distDir: DIST });
   assert.equal(plan.ok, true);
-  assert.deepEqual(plan.npmArgs, ['exec', '--yes', '--', WRANGLER_SPEC, 'pages', 'deploy', DIST, '--project-name', config.deploy.cloudflare.project, '--branch', 'main', '--commit-dirty=true']);
+  assert.deepEqual(plan.pnpmArgs, [`--package=${WRANGLER_SPEC}`, 'dlx', 'wrangler', 'pages', 'deploy', DIST, '--project-name', config.deploy.cloudflare.project, '--branch', 'main', '--commit-dirty=true']);
   assert.equal(WRANGLER_SPEC, 'wrangler@4');
-  assert.equal(plan.display, `pnpm exec --yes -- wrangler@4 pages deploy ${DIST} --project-name ${config.deploy.cloudflare.project} --branch main --commit-dirty=true`);
+  assert.equal(plan.display, `pnpm --package=wrangler@4 dlx wrangler pages deploy ${DIST} --project-name ${config.deploy.cloudflare.project} --branch main --commit-dirty=true`);
   assert.deepEqual(plan.env, {});
   assert.deepEqual(plan.unsetEnv, [], 'wrangler 要从环境读 CLOUDFLARE_*，什么都不删');
-  assert.ok(!plan.npmArgs.includes('tok') && !plan.npmArgs.includes('acc'), 'token 与账号不进命令行');
+  assert.ok(!plan.pnpmArgs.includes('tok') && !plan.pnpmArgs.includes('acc'), 'token 与账号不进命令行');
   assert.equal(CLOUDFLARE_PRODUCTION_BRANCH, 'main');
 });
 
@@ -69,11 +69,11 @@ test('planDeployCommand edgeone：-n 只取项目名（不是项目 ID）；toke
   };
   const plan = planDeployCommand({ target: 'edgeone', config, env, distDir: DIST });
   assert.equal(plan.ok, true);
-  assert.deepEqual(plan.npmArgs, ['exec', '--yes', '--', EDGEONE_CLI_SPEC, 'makers', 'deploy', DIST, '-n', 'proj-name', '-e', 'production']);
-  assert.ok(!plan.npmArgs.includes('makers-abc123'), '项目 ID 不能进 -n：CLI 会把它当名字，静默新建同名项目');
+  assert.deepEqual(plan.pnpmArgs, [`--package=${EDGEONE_CLI_SPEC}`, 'dlx', 'edgeone', 'makers', 'deploy', DIST, '-n', 'proj-name', '-e', 'production']);
+  assert.ok(!plan.pnpmArgs.includes('makers-abc123'), '项目 ID 不能进 -n：CLI 会把它当名字，静默新建同名项目');
   assert.equal(EDGEONE_CLI_SPEC, 'edgeone@1');
-  assert.equal(plan.display, `pnpm exec --yes -- edgeone@1 makers deploy ${DIST} -n *** -e production`);
-  assert.ok(!plan.npmArgs.includes('-t') && !plan.npmArgs.includes('secret-token-xyz'), 'token 不进命令行');
+  assert.equal(plan.display, `pnpm --package=edgeone@1 dlx edgeone makers deploy ${DIST} -n *** -e production`);
+  assert.ok(!plan.pnpmArgs.includes('-t') && !plan.pnpmArgs.includes('secret-token-xyz'), 'token 不进命令行');
   assert.deepEqual(plan.env, { EDGEONE_NON_INTERACTIVE: '1', EDGEONE_PAGES_API_TOKEN: 'secret-token-xyz' });
   assert.deepEqual(plan.unsetEnv, ['EDGEONE_API_TOKEN', 'EDGEONE_PROJECT_ID', 'EDGEONE_PROJECT_NAME', 'EDGEONE_API_REGION', 'EDGEONE_API_BASE_URL']);
 });
@@ -82,15 +82,15 @@ test('planDeployCommand：DEPLOY_ENV=preview → cloudflare --branch preview、e
   assert.deepEqual(DEPLOY_ENVS, ['production', 'preview']);
   const cf = planDeployCommand({ target: 'cloudflare', config, env: { CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc', DEPLOY_ENV: 'preview' }, distDir: DIST });
   assert.equal(cf.ok, true);
-  assert.deepEqual(cf.npmArgs.slice(-3), ['--branch', 'preview', '--commit-dirty=true']);
+  assert.deepEqual(cf.pnpmArgs.slice(-3), ['--branch', 'preview', '--commit-dirty=true']);
   const eo = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: 't', EDGEONE_PROJECT_ID: 'makers-p', EDGEONE_PROJECT_NAME: 'p', DEPLOY_ENV: 'preview' }, distDir: DIST });
   assert.equal(eo.ok, true);
-  assert.deepEqual(eo.npmArgs.slice(-2), ['-e', 'preview']);
+  assert.deepEqual(eo.pnpmArgs.slice(-2), ['-e', 'preview']);
   const bad = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: 't', EDGEONE_PROJECT_ID: 'makers-p', EDGEONE_PROJECT_NAME: 'p', DEPLOY_ENV: 'staging' }, distDir: DIST });
   assert.equal(bad.ok, false);
   assert.match(bad.problems[0], /DEPLOY_ENV 只能是 production \| preview，现在是 "staging"/);
   const empty = planDeployCommand({ target: 'edgeone', config, env: { EDGEONE_API_TOKEN: 't', EDGEONE_PROJECT_ID: 'makers-p', EDGEONE_PROJECT_NAME: 'p', DEPLOY_ENV: '' }, distDir: DIST });
-  assert.deepEqual(empty.npmArgs.slice(-2), ['-e', 'production']);
+  assert.deepEqual(empty.pnpmArgs.slice(-2), ['-e', 'production']);
 });
 
 test('planDeployCommand：缺凭据逐个点名；github 不由命令部署；未知目标', () => {
@@ -253,14 +253,14 @@ test('deploy 脚本：未知目标退 2；dist 不存在退 1；缺凭据退 1�
   const cf = run(['cloudflare'], { DIST_DIR: dist, CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc', DEPLOY_DRY_RUN: '1' });
   assert.equal(cf.status, 0, cf.out);
   assert.ok(
-    cf.out.includes(`pnpm exec --yes -- wrangler@4 pages deploy ${dist} --project-name ${config.deploy.cloudflare.project} --branch main --commit-dirty=true`),
+    cf.out.includes(`pnpm --package=wrangler@4 dlx wrangler pages deploy ${dist} --project-name ${config.deploy.cloudflare.project} --branch main --commit-dirty=true`),
     cf.out,
   );
   assert.match(cf.out, /DEPLOY_DRY_RUN=1：只打印命令，不执行/);
 
   const eo = run(['edgeone'], { DIST_DIR: dist, EDGEONE_API_TOKEN: 'secret-token-xyz', EDGEONE_PROJECT_ID: 'makers-abc123', EDGEONE_PROJECT_NAME: 'proj-name', DEPLOY_DRY_RUN: '1' });
   assert.equal(eo.status, 0, eo.out);
-  assert.match(eo.out, /edgeone@1 makers deploy .+ -n \*\*\* -e production/);
+  assert.match(eo.out, /edgeone@1 dlx edgeone makers deploy .+ -n \*\*\* -e production/);
   assert.doesNotMatch(eo.out, /secret-token-xyz|makers-abc123|proj-name| -t /, '日志里不出现凭据，命令行没有 -t');
 
   const preview = run(['edgeone'], { DIST_DIR: dist, EDGEONE_API_TOKEN: 'x', EDGEONE_PROJECT_ID: 'makers-p', EDGEONE_PROJECT_NAME: 'p', DEPLOY_DRY_RUN: '1', DEPLOY_ENV: 'preview' });
@@ -273,7 +273,7 @@ test('deploy 脚本：未知目标退 2；dist 不存在退 1；缺凭据退 1�
   assert.match(eoMissing.out, /缺少 EDGEONE_PROJECT_ID、EDGEONE_PROJECT_NAME/);
 });
 
-test('deploy 脚本：真起 npm（假的 npm_execpath）——交给 CLI 的参数与环境；token 只经环境变量给；退出码原样透传', { timeout: 30_000 }, async (t) => {
+test('deploy 脚本：通过 pnpm JavaScript 入口启动本地替身——交给 CLI 的参数与环境；token 只经环境变量给；退出码原样透传', { timeout: 30_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-deploy-'));
   t.after(() => rm(tmp, { recursive: true, force: true }));
   const apiBase = await edgeoneApiServer(t);
@@ -282,9 +282,9 @@ test('deploy 脚本：真起 npm（假的 npm_execpath）——交给 CLI 的参
   await writeFile(join(dist, 'index.html'), '<!doctype html>');
   const outDir = join(tmp, 'out');
   const manifest = await releaseInput(dist, outDir);
-  // 假 npm：把收到的参数与我们关心的环境变量打成一行 JSON；退出码由 FAKE_NPM_EXIT 决定。
-  // deploy.mjs 在 npm_execpath 存在时用 node 起它，所以这里能拦住整条真实的 spawn 路径
-  const fakeNpm = join(tmp, 'fake-npm.mjs');
+  // 本地 pnpm 替身：把收到的参数与我们关心的环境变量打成一行 JSON；退出码由 FAKE_NPM_EXIT 决定。
+  // 这里采用 JavaScript 入口覆盖 Node 启动路径；原生程序另由运行器回归验证。
+  const fakeNpm = join(tmp, 'pnpm.mjs');
   await writeFile(
     fakeNpm,
     [
@@ -309,14 +309,14 @@ test('deploy 脚本：真起 npm（假的 npm_execpath）——交给 CLI 的参
   assert.equal(eo.status, 0, eo.out);
   assert.match(eo.out, /deploy:edgeone 完成/);
   const e = seen(eo.out);
-  assert.deepEqual(e.argv, ['exec', '--yes', '--', 'edgeone@1', 'makers', 'deploy', dist, '-n', 'proj-name', '-e', 'production']);
+  assert.deepEqual(e.argv, ['--package=edgeone@1', 'dlx', 'edgeone', 'makers', 'deploy', dist, '-n', 'proj-name', '-e', 'production']);
   assert.deepEqual(e.env, { EDGEONE_PAGES_API_TOKEN: 'secret-token-xyz', EDGEONE_NON_INTERACTIVE: '1' }, 'ID / 名字 / 区域 / 原始 token 都不透传给 CLI');
   assert.deepEqual(JSON.parse(await readFile(join(outDir, 'deployed-edgeone.json'), 'utf8')), deploymentReceipt(manifest, 'edgeone', 'production'));
 
   const cf = await runAsync(['cloudflare'], { DIST_DIR: dist, OUT_DIR: outDir, npm_execpath: fakeNpm, CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' });
   assert.equal(cf.status, 0, cf.out);
   const c = seen(cf.out);
-  assert.deepEqual(c.argv, ['exec', '--yes', '--', 'wrangler@4', 'pages', 'deploy', dist, '--project-name', config.deploy.cloudflare.project, '--branch', 'main', '--commit-dirty=true']);
+  assert.deepEqual(c.argv, ['--package=wrangler@4', 'dlx', 'wrangler', 'pages', 'deploy', dist, '--project-name', config.deploy.cloudflare.project, '--branch', 'main', '--commit-dirty=true']);
   assert.deepEqual(c.env, { CLOUDFLARE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acc' }, 'wrangler 从环境读凭据，必须原样在');
   assert.deepEqual(JSON.parse(await readFile(join(outDir, 'deployed-cloudflare.json'), 'utf8')), deploymentReceipt(manifest, 'cloudflare', 'production'));
 

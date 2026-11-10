@@ -33,6 +33,7 @@
 | [README 章节链接校验](../scripts/lib/readme-links.mjs) | 校验双语导航是否指向标题生成的有效锚点 | `checkReadmeLinks` | `scripts/check.mjs`；回归见 `scripts/test/readme-links.test.mjs` |
 | [静态跳转输出边界](../scripts/lib/static-output.mjs) | 预检重定向的规范路径及输出根边界，转义跳转页属性 | `redirectOutputPaths / metaRefresh` | `scripts/build-site.mjs`；回归见 `scripts/test/static-output.test.mjs` |
 | [部署计划](../scripts/lib/deploy-plan.mjs) | 将目标、环境和 secrets 变成 CLI 参数，隔离预览名称与地址 | `planDeployCommand` | 部署入口 |
+| [部署工具启动](../scripts/lib/pnpm-runner.mjs) | 解析 pnpm 的 JavaScript 或原生入口，保持参数数组，不经 shell 拼接；缺失时明确失败 | `resolvePnpmCommand` | 部署入口；回归见 `scripts/test/pnpm-runner.test.mjs` |
 | [平台预算](../scripts/lib/deploy-budget.mjs) | 遍历普通文件，为新目标预留部署证明容量，拒绝链接、保留路径及超预算产物 | `inspectDeploymentFiles / validateDeploymentBudget` | 检查入口与部署入口共用 |
 | [部署随机证明](../scripts/lib/deploy-proof.mjs) | 生成只交给本次目标的随机验证文件，绑定目标、版本、指纹和环境 | `createDeploymentProof / deploymentProofFile / matchesDeploymentProof` | 临时上传副本与线上核对 |
 | [目标上线核对](../scripts/lib/deploy-ready.mjs) | 有界重试匹配本次随机证明；ESA staging 使用同包请求与连接器覆盖 DNS，保留证书校验 | `deploymentRoot / waitForDeployment / createStagingVerifier` | Workers 与 ESA 部署后确认 |

@@ -29,6 +29,7 @@
 | 文档构建与搜索产物通过现有测试入口验证，CI 检查不能跳过文档安装和审计 | [文档集成测试](../../scripts/test/docs-site.test.mjs)；[检查完整性](../../scripts/lib/pipeline-policy.mjs)：`checkDocumentationPipelines` | Confirmed | 本地测试执行真实构建和索引查询；联网审计由 CI 独立执行，未因此宣称浏览器或云端部署验收 | [阅读与验证入口](../README.md)、[代码地图](../code-map.md) |
 | 开发模式重建双语索引并更换浏览器缓存版本 | [启动器](../../scripts/docs-dev.mjs)：`startDocsDev`；[刷新插件](../../docs-site/.vitepress/guide-search-refresh.mjs)：`guideSearchRefresh`；[真实配置回归](../../scripts/test/docs-dev.test.mjs) | Confirmed | 保存 Markdown 会重启并刷新整页，搜索框关闭；生产构建不启用插件 | [阅读与验证入口](../README.md)、[代码地图](../code-map.md) |
 | 昼夜场景开关与三态选择共用原有配色状态，页面外观继续使用语义变量 | [配色接线](../../packages/site/src/lib/day-night-control.js)：`mountDayNightControl`；[偏好状态](../../packages/site/src/lib/color-scheme.js)：`initializeColorScheme`；[布局](../../packages/site/src/layouts/Base.astro) | Confirmed | 仅覆盖配色接线；实际测试与浏览器验证结果另记同步记录，不扩大为所有阅读偏好已验收 | [代码地图](../code-map.md) |
+| pnpm 部署运行器区分 JavaScript 与原生入口，并使用 dlx 的显式包与命令契约 | [命令计划](../../scripts/lib/deploy-plan.mjs)：`pnpmArgs`；[运行器](../../scripts/lib/pnpm-runner.mjs)：`resolvePnpmCommand`；[真实进程回归](../../scripts/test/pnpm-runner.test.mjs) | Confirmed | 本地包执行、CLI 版本检查和打包空跑不代替云端预览验收 | [主流程](../walkthroughs/one-real-run.md)、[代码地图](../code-map.md) |
 
 ## 反证与后续问题
 
