@@ -29,7 +29,7 @@ const esa = {
 const plan = (target, env) => planDeployCommand({ target, config, env, distDir: '/tmp/site' });
 
 test('新增目标命令明确选择静态部署和环境，预览不得复用生产名称或地址', () => {
-  assert.deepEqual(plan('workers', workers).npmArgs, ['exec', '--yes', '--', 'wrangler@4', 'deploy', '--config', 'wrangler.jsonc']);
+  assert.deepEqual(plan('workers', workers).pnpmArgs, ['--package=wrangler@4', 'dlx', 'wrangler', 'deploy', '--config', 'wrangler.jsonc']);
   const preview = plan('workers', { ...workers, DEPLOY_ENV: 'preview' });
   assert.equal(preview.configName, workers.CLOUDFLARE_PREVIEW_WORKER_NAME);
   assert.equal(preview.verifyUrl, workers.WORKERS_PREVIEW_DEPLOY_URL);
@@ -40,8 +40,8 @@ test('新增目标命令明确选择静态部署和环境，预览不得复用�
   assert.equal(plan('esa', { ...esa, DEPLOY_ENV: 'preview', ESA_PREVIEW_IP: '' }).ok, false);
   assert.equal(plan('esa', { ...esa, DEPLOY_ENV: 'preview' }).verifyAddress, esa.ESA_PREVIEW_IP);
   assert.equal(plan('esa', { ...esa, ESA_PREVIEW_IP: 'invalid-in-production' }).verifyAddress, undefined);
-  assert.deepEqual(plan('esa', { ...esa, DEPLOY_ENV: 'preview' }).npmArgs,
-    ['exec', '--yes', '--package', 'esa-cli@1.0.13', '--', 'esa-cli', 'deploy', '--environment', 'staging', '--no-preview']);
+  assert.deepEqual(plan('esa', { ...esa, DEPLOY_ENV: 'preview' }).pnpmArgs,
+    ['--package=esa-cli@1.0.13', 'dlx', 'esa-cli', 'deploy', '--environment', 'staging', '--no-preview']);
   for (const [target, env] of [['workers', workers], ['esa', esa]]) {
     assert.ok(!plan(target, env).display.includes('secret'));
     assert.equal(plan(target, {}).ok, false);
@@ -153,7 +153,7 @@ async function fixture(t) {
   await writeFile(join(out, 'manifest.json'), JSON.stringify(manifest));
   const configFile = join(dir, 'config.yaml');
   await writeFile(configFile, yaml.dump(config));
-  const fakeNpm = join(dir, 'fake-npm.mjs');
+  const fakeNpm = join(dir, 'pnpm.mjs');
   await writeFile(fakeNpm, `import {readFileSync,writeFileSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
 const filename=process.argv.includes('esa-cli')?'esa.jsonc':'wrangler.jsonc';

@@ -83,6 +83,13 @@ GitHub 项目站的 `/仓库名/` 子路径仍不在本轮支持范围；使用�
 | 预览 | 独立 preview | staging；CI 按控制台测试 IP 连接，保留正式域名的 Host 与 TLS 校验 | 未配置，继续拒绝 | 独立预览 Worker，禁止覆盖生产 |
 | 发布入口 | GitHub Actions 手动工作流 | 同左 | 同左 | 同左 |
 
+部署工具运行契约（2026-11-10）：Makers、ESA、Workers 与旧 Pages 目标统一使用
+`pnpm --package=<固定版本范围> dlx <明确的可执行名>` 临时运行 CLI，分别选择
+`edgeone@1` / `edgeone`、`esa-cli@1.0.13` / `esa-cli`、`wrangler@4` / `wrangler`。
+GitHub Pages 继续直接校验并发布静态目录，不经包管理器下载部署 CLI。
+启动器区分 pnpm 的 JavaScript 入口与原生可执行文件，不调用 shell；包管理器不可用时明确失败。
+本地执行测试不代替真实平台预览验收。
+
 内部审查后的修复契约：Workers 与 ESA 每次部署在隔离的上传副本中增加一个随机命名的
 验证文件，绑定本次随机值、目标、版本、指纹与环境；共享 `dist` 和归档不包含该文件。
 线上确认必须读取本次验证文件，不能用其他目标共用的 `release.json` 代替。两端预算均为

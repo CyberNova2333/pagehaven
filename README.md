@@ -210,6 +210,8 @@ JSON 报告包含 `ok`、`dataDir`、`totals`、`coverage`、`missingText`、`em
 | `workers` | `pnpm run deploy:workers` | 独立预览 Worker，不能与生产同名；使用 Static Assets |
 | `cloudflare` | `pnpm run deploy:cloudflare` | 原有 Cloudflare Pages 入口，仍按分支区分预览 |
 
+部署命令使用已安装的 pnpm，通过 `--package=<包>@<版本> dlx <命令>` 临时运行对应 CLI。启动器支持 pnpm 的 JavaScript 与原生入口；找不到可用入口时明确失败，不回退到另一套包管理器。GitHub Pages 仍由脚本直接处理静态目录。以上 CLI 执行与本地测试均不能代替真实预览验收。
+
 `all` 发布到 Makers、ESA、GitHub Pages、Workers 四个目标，**不包含旧的 Cloudflare Pages**；需要 Pages 时单独选择 `cloudflare`。`preview` 配合 `github` 或 `all` 会在上传前拒绝。站点使用自定义域名或用户站的根目录；GitHub 项目站的 `/仓库名/` 子路径尚未适配。
 
 仓库仍限制最多 18,000 个文件、单文件 20 MiB。Workers 与 ESA 在上传前另预留 1 个文件和 4,096 字节供本次部署验证：默认预算下，业务产物最多分别为 17,999 和 1,999 文件；ESA 总大小检查也包含这 4,096 字节。超额即拒绝，不自动拆站或引入函数取数，实际部署包仍受 CLI 限额约束。同一业务产物要发布四端就必须满足最严格目标的预算。ESA Pages 流量使用站点套餐额度，维护者需核对账户资格与费用；适配器不自动开通付费服务。[ESA 限额](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/what-is-functions-and-pages/)、[ESA 计费](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/functions-and-pages-billing)

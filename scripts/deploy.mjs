@@ -21,6 +21,7 @@
 // 首次真实部署要人验证的点：给一个已 build 好的目录时 CLI 是否只上传不再自行 build；
 // dist 里的 edgeone.json 是否被识别；EDGEONE_API_REGION 与 token 的签发区域是否一致。
 import { spawnSync } from 'node:child_process';
+import { resolvePnpmCommand } from './lib/pnpm-runner.mjs';
 import { readFile, readdir, mkdtemp, mkdir, cp, rm, writeFile } from 'node:fs/promises';
 import { existsSync, constants } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -215,8 +216,8 @@ try {
       if (/^(CLOUDFLARE_|WORKERS_|ESA_|ALIBABA_CLOUD_|EDGEONE_|GITHUB_)/.test(key) && !credentials.includes(key)) delete childEnv[key];
     }
   }
-  // 在 pnpm run 下用 package manager 自己的入口（npm_execpath，通用环境变量）起，行为与 PATH 无关；直接 node 跑脚本时退回 PATH 里的 npm
-  const npmCli = process.env.npm_execpath;
+  // 先解析运行器；原生 pnpm 直接执行，JavaScript 入口才交给 Node。
+  const runner = resolvePnpmCommand(plan.pnpmArgs);
   let temp;
   let proof;
   try {
@@ -237,7 +238,7 @@ try {
       await writeFile(join(temp, plan.configFile), render(config, { directory: assets, name: plan.configName }), { mode: 0o600 });
     }
     const opts = { cwd: temp || ROOT, env: childEnv, ...(temp ? { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 } : { stdio: 'inherit' }) };
-    const r = npmCli ? spawnSync(process.execPath, [npmCli, ...plan.npmArgs], opts) : spawnSync('npm', plan.npmArgs, opts);
+    const r = spawnSync(runner.command, runner.args, opts);
     if (temp) {
       const secrets = Object.entries(process.env).filter(([key, value]) => value && /^(CLOUDFLARE_|WORKERS_|ESA_|ALIBABA_CLOUD_)/.test(key)).map(([, value]) => value).sort((a, b) => b.length - a.length);
       let output = `${r.stdout || ''}${r.stderr || ''}`;
