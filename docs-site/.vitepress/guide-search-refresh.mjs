@@ -1,13 +1,22 @@
 import process from 'node:process';
+import { randomUUID } from 'node:crypto';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 // VitePress 2.0.0-alpha.21 的增量索引不会删除旧章节，也不重建外部 include。
 // 复用 Vite 的监听器，只通知 docs:dev 启动器；全新进程负责清除索引及渲染缓存。
 export function guideSearchRefresh() {
+  const generation = randomUUID();
   let dispose;
   return {
     name: 'pagehaven:guide-search-refresh',
     apply: 'serve',
+    // 上游每次启动都从 ?v=1 开始，而 Vite 将此 URL 标记为 immutable。
+    // 给每次启动独立的版本，防止浏览器在自动重载后继续命中旧语言索引。
+    transform(code, id) {
+      if (id === '/@localSearchIndex') {
+        return { code: code.replaceAll('?v=', `?v=${generation}-`), map: null };
+      }
+    },
     configureServer(server) {
       if (process.env.PAGEHAVEN_DOCS_DEV !== '1' || !process.send) return;
       // 可能在配置加载完成之前，启动器就已退出。

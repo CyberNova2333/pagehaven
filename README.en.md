@@ -303,13 +303,13 @@ The enhanced reader uses `site.title` and `site.logo`, which defaults to the sit
 
 ## Documentation site
 
-The [Chinese living guide](repo-docs/README.md) follows one real workflow and states what it leaves uncovered. Build or serve it with its separate Node.js dependencies:
+The [Chinese living guide](repo-docs/README.md) explains the source workflow. The separate `docs-site/` project contains the homepage and Chinese/English usage documentation:
 
 ```sh
 pnpm --dir docs-site install --frozen-lockfile
-pnpm --dir docs-site run docs:dev -- --host 127.0.0.1
+pnpm --dir docs-site run docs:dev --host 127.0.0.1
 pnpm --dir docs-site run docs:build
-pnpm run test:docs  # Real build, page links, and local search index regression; also included in pnpm test
+pnpm run test:docs  # Static build and bilingual development search regression; also included in pnpm test
 ```
 
-The documentation site uses the default VitePress theme, with dependencies installed separately from the application. Output defaults to `docs-site/.vitepress/dist/`; append `-- --outDir <external-absolute-directory>` for an isolated build. Markdown remains in `repo-docs/` and is included by the site. Repository source links are shown as exact paths; source files and local resources are not published.
+The documentation site builds on the VitePress theme, with dependencies installed separately from the application. Output defaults to `docs-site/.vitepress/dist/`; append `--outDir <external-absolute-directory>` for an isolated build. Saving Markdown during development briefly restarts the server and reloads the page. Reopen search to find updated content; deleted or renamed headings disappear. Reloading closes the search box. The launcher keeps a fixed port and fails if it is occupied. Static builds still generate the complete index.

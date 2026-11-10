@@ -36,20 +36,20 @@ pnpm test
 
 ## 文档构建依赖
 
-文档站独立安装依赖；根目录的依赖审计不覆盖它。更新后运行 `pnpm --dir docs-site install --frozen-lockfile`，执行 `pnpm --dir docs-site audit --audit-level=moderate`，再从根目录运行 `pnpm run test:docs`。文档回归会在临时目录真实构建，验证六个页面、内部链接与锚点、源码路径显示，以及生成的搜索索引能查到部署流程；它也包含在 `pnpm test` 中，不会覆盖默认文档构建输出。浏览器交互与开发模式热更新仍需单独复验。
+文档站独立安装依赖；根目录的依赖审计不覆盖它。更新后运行 `pnpm --dir docs-site install --frozen-lockfile`，执行 `pnpm --dir docs-site audit --audit-level=moderate`，再从根目录运行 `pnpm run test:docs`。该入口在临时目录验证当前中英文十个页面、内部链接与锚点、静态索引，并启动真实开发服务验证双语搜索刷新；它也包含在 `pnpm test` 中，不会覆盖默认文档构建输出。浏览器交互另行复验。
 
 持续集成的 main push 与手动检查都会安装并审计文档依赖，再运行统一测试；审计不可用或发现 moderate 及以上告警时检查失败。`pnpm run check` 离线核对流水线未漏掉或条件跳过这些步骤，不会自己联网审计，也不会发布文档站。
 
 当前在[文档依赖配置](../docs-site/package.json)中精确锁定 VitePress **2.0.0-alpha.21（预发布版）**，由其原生依赖 Vite 8；锁文件固定实际安装版本，不使用跨主要版本的传递依赖覆盖。原稳定版 1.6.4 的 Vite 5 / esbuild 链仍有已知告警；选择预发布版意味着后续升级仍须重跑文档验证，不自动跟随 `next` 标签。已验证项目现有默认主题、静态指南和本地搜索，不据此承诺其他扩展兼容。
 
-新版默认会重定位被引用 Markdown 的相对链接；[文档配置](../docs-site/.vitepress/config.mts)显式关闭 `markdown.include.rebaseRelativeUrls`，继续由现有 `guideLinks` 按正文来源转换，避免同一链接被处理两次。[官方迁移记录](https://github.com/vuejs/vitepress/blob/v2.0.0-alpha.21/CHANGELOG.md)
+官网与使用文档现已独立维护在 `docs-site/` 和其 `en/` 目录，源码指南继续维护在 `repo-docs/`。当前[文档配置](../docs-site/.vitepress/config.mts)不再包含本指南，也没有启用旧的 `guideLinks` 链接转换；修改本指南不会自动改写官网说明。
 
-开发模式下正文可热更新，但已打开的搜索框可能继续使用旧索引；编辑后刷新页面再检查搜索，被引用正文仍未更新时重启 `docs:dev`。这不是已验证的实时搜索能力；正式静态构建会重新生成完整索引。
+通过 `pnpm --dir docs-site run docs:dev` 启动时，保存两处文档目录内的 Markdown 会自动重启服务并刷新页面。重新打开搜索框可查到新内容；删掉或改名的标题不再残留。每次启动给语言索引分配独立缓存版本，避免浏览器复用旧结果；刷新会关闭搜索框，不保留弹窗状态。启动器固定端口，占用即报错。正式静态构建独立生成索引。
 
 ## 既有专题
 
 - [数据模型与平台约束](../docs/ARCHITECTURE.md)
 
-独立网页构建会把文档目录之外的仓库链接显示为精确文件路径，避免产生失效跳转；原始 Markdown 仍保留可核对的源码链接。站点只发布指南，源码和本机资源不会随文档打包。
+本指南的源码链接用于仓库内阅读；官网发布的是 `docs-site/` 的内容及静态资源，不会自动发布本指南或仓库源码。
 
 证据状态：除特别标注外，本页基于当前源码已确认。

@@ -1,8 +1,10 @@
 // VitePress 官方文档配置 (Coolify 架构风格 + 中英双语支持)
 import { defineConfig } from 'vitepress'
+import { guideSearchRefresh } from './guide-search-refresh.mjs'
 
 export default defineConfig({
   cleanUrls: true,
+  vite: { plugins: [guideSearchRefresh()] },
   locales: {
     root: {
       label: '简体中文',
