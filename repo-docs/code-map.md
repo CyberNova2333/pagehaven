@@ -92,9 +92,13 @@
 
 相关验证：`packages/platform/test/site-config.test.js`、`packages/platform/test/deployment-config.test.js`。实际执行结果见[同步记录](change-log.md)。
 
-## 文档构建回归
+## 文档构建与开发搜索
 
-[文档站集成测试](../scripts/test/docs-site.test.mjs)由 `pnpm test` 自动发现，也可通过 `pnpm run test:docs` 单独运行。它调用已安装的 VitePress，在系统临时目录构建现有指南，读取最终 HTML 校验页面与链接，再加载同次产物的 MiniSearch 索引执行真实查询。依赖缺失直接报安装命令，不跳过；不模拟浏览器交互，也不覆盖默认文档产物。GitHub Actions 的检查流水线负责独立依赖安装与联网审计，业务发布入口保持原有职责。
+[文档站集成测试](../scripts/test/docs-site.test.mjs)由 `pnpm test` 自动发现，也可通过 `pnpm run test:docs` 单独运行。它调用已安装的 VitePress，在系统临时目录构建当前双语官网文档，读取最终 HTML 校验页面与链接，再加载同次产物的 MiniSearch 索引执行真实查询。依赖缺失直接报安装命令，不跳过；不模拟浏览器交互，也不覆盖默认文档产物。GitHub Actions 的检查流水线负责独立依赖安装与联网审计，业务发布入口保持原有职责。
+
+[开发启动器](../scripts/docs-dev.mjs)管理单个 VitePress 子进程；[刷新插件](../docs-site/.vitepress/guide-search-refresh.mjs)复用文件监听器，在 Markdown 增删改后请求串行重启，并为语言索引生成每次启动独立的缓存版本。插件只在开发服务运行，构建输出不含它。当前[站点配置](../docs-site/.vitepress/config.mts)负责双语路由及插件接线，官网内容已与源码指南分开维护。
+
+[开发搜索回归](../scripts/test/docs-dev.test.mjs)复制真实站点配置，启动隔离服务，查询真实语言索引并模拟浏览器的长期缓存。覆盖尚未访问的引用正文、直接页面、中英文隔离、连续保存、页面增删与标题改名，以及关闭后释放端口；因此漏接插件或复用旧版本 URL 都会失败。
 
 ## 覆盖范围
 

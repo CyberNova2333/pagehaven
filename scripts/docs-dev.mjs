@@ -3,8 +3,9 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// 保留原 CLI 参数；不以 shell 启动 npm，确保 Windows/Linux 都只管理一个子进程。
+// 保留原 CLI 参数；直接启动 Node，确保 Windows/Linux 都只管理一个子进程。
 export function startDocsDev(root, args = [], { stdio = 'inherit' } = {}) {
+  const cliArgs = args[0] === '--' ? args.slice(1) : args;
   const require = createRequire(join(root, 'package.json'));
   const manifest = require.resolve('vitepress/package.json');
   const bin = join(dirname(manifest), require(manifest).bin.vitepress);
@@ -12,7 +13,7 @@ export function startDocsDev(root, args = [], { stdio = 'inherit' } = {}) {
   let finish;
   const closed = new Promise((resolve) => { finish = resolve; });
   const launch = () => {
-    child = spawn(process.execPath, [bin, 'dev', root, '--strictPort', ...args], {
+    child = spawn(process.execPath, [bin, 'dev', root, '--strictPort', ...cliArgs], {
       cwd: root,
       env: { ...process.env, PAGEHAVEN_DOCS_DEV: '1' },
       stdio: [stdio, stdio, stdio, 'ipc'],

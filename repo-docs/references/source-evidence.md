@@ -27,6 +27,7 @@
 | ESA staging 用同一 Undici 包的请求和连接器保留指定 IP、Host 与证书校验 | [预览连接](../../scripts/lib/deploy-ready.mjs)：`createStagingVerifier` | Confirmed | 账户的测试 IP、证书和云端连通性仍需真实预览验证 | [主流程](../walkthroughs/one-real-run.md) |
 | 新目标同样禁止 push 自动部署 | [流水线守卫](../../scripts/lib/pipeline-policy.mjs)：`hasDeploymentCommand` | Confirmed | 只允许现有手动发布入口，未实际触发远端流水线 | [代码地图](../code-map.md) |
 | 文档构建与搜索产物通过现有测试入口验证，CI 检查不能跳过文档安装和审计 | [文档集成测试](../../scripts/test/docs-site.test.mjs)；[检查完整性](../../scripts/lib/pipeline-policy.mjs)：`checkDocumentationPipelines` | Confirmed | 本地测试执行真实构建和索引查询；联网审计由 CI 独立执行，未因此宣称浏览器或云端部署验收 | [阅读与验证入口](../README.md)、[代码地图](../code-map.md) |
+| 开发模式重建双语索引并更换浏览器缓存版本 | [启动器](../../scripts/docs-dev.mjs)：`startDocsDev`；[刷新插件](../../docs-site/.vitepress/guide-search-refresh.mjs)：`guideSearchRefresh`；[真实配置回归](../../scripts/test/docs-dev.test.mjs) | Confirmed | 保存 Markdown 会重启并刷新整页，搜索框关闭；生产构建不启用插件 | [阅读与验证入口](../README.md)、[代码地图](../code-map.md) |
 | 昼夜场景开关与三态选择共用原有配色状态，页面外观继续使用语义变量 | [配色接线](../../packages/site/src/lib/day-night-control.js)：`mountDayNightControl`；[偏好状态](../../packages/site/src/lib/color-scheme.js)：`initializeColorScheme`；[布局](../../packages/site/src/layouts/Base.astro) | Confirmed | 仅覆盖配色接线；实际测试与浏览器验证结果另记同步记录，不扩大为所有阅读偏好已验收 | [代码地图](../code-map.md) |
 
 ## 反证与后续问题
@@ -41,4 +42,4 @@
 
 表中的源码确认描述初次调查依据，不代表后续测试结果。各轮实际执行记录见[同步记录](../change-log.md)；完整构建与集成测试可能写入共享生成目录，执行前需保护已有工作。平台适配仍须另做真实预览部署。
 
-本轮文档结构校验与站点构建结果记在[同步记录](../change-log.md)。源码链接在仓库阅读时指向真实文件；独立站点只发布指南；文档目录之外的仓库源码链接在网页中显示为精确路径，源码不随站点打包。原始 Markdown 保留本地可核对链接。已有 VitePress 使用原文包含，正文只维护一份。
+本轮文档结构校验与站点构建结果记在[同步记录](../change-log.md)。源码链接在仓库阅读时指向真实文件；源码指南与 `docs-site/` 内的双语官网文档已独立维护，当前站点配置不再包含本指南，也不自动复制仓库源码。

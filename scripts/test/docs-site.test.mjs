@@ -67,15 +67,20 @@ test('文档站：真实构建保留引用内容、静态链接与可查询的�
   assert.match(html.get('/docs/architecture'), /架构/, '架构页面应包含架构说明');
 
   const chunks = join(dist, 'assets', 'chunks');
-  const indexes = (await readdir(chunks)).filter((file) => /^@localSearchIndexroot\..+\.js$/.test(file));
-  assert.equal(indexes.length, 1, '应生成默认语言的本地搜索索引');
-  const { default: serialized } = await import(pathToFileURL(join(chunks, indexes[0])).href);
-  const MiniSearch = docsRequire('minisearch');
-  const search = MiniSearch.loadJSON(serialized, { fields: ['title', 'titles', 'text'], storeFields: ['title', 'titles'] });
-  const results = search.search('架构', { prefix: true });
-  assert.ok(results.some((hit) => hit.id.startsWith('/docs/architecture#')), '搜索应能找到架构说明');
-  for (const result of results) resolveLink(result.id, '/');
-  const zhRoutes = ['/', '/docs/', '/docs/architecture', '/docs/configuration', '/docs/faq'];
-  const indexedRoutes = new Set(Object.values(JSON.parse(serialized).documentIds).map((id) => id.split('#')[0]));
-  for (const route of zhRoutes) assert.ok(indexedRoutes.has(route), `${route} 未进入本地搜索索引`);
+  // MiniSearch 属于 VitePress，不能依赖包管理器把传递依赖提升到文档项目根目录。
+  const MiniSearch = createRequire(manifest)('minisearch');
+  const files = await readdir(chunks);
+  for (const [locale, query] of [['root', '架构'], ['en', 'architecture']]) {
+    const indexes = files.filter((file) => new RegExp(`^@localSearchIndex${locale}\\..+\\.js$`).test(file));
+    assert.equal(indexes.length, 1, `应生成 ${locale} 语言的本地搜索索引`);
+    const { default: serialized } = await import(pathToFileURL(join(chunks, indexes[0])).href);
+    const search = MiniSearch.loadJSON(serialized, { fields: ['title', 'titles', 'text'], storeFields: ['title', 'titles'] });
+    const prefix = locale === 'en' ? '/en' : '';
+    const results = search.search(query, { prefix: true });
+    assert.ok(results.some((hit) => hit.id.startsWith(`${prefix}/docs/architecture#`)), `${locale} 搜索应能找到对应语言的架构说明`);
+    for (const result of results) resolveLink(result.id, `${prefix}/`);
+    const indexedRoutes = new Set(Object.values(JSON.parse(serialized).documentIds).map((id) => id.split('#')[0]));
+    const localeRoutes = routes.filter((route) => route.startsWith('/en/') === (locale === 'en'));
+    assert.deepEqual([...indexedRoutes].sort(), [...localeRoutes].sort(), `${locale} 索引应恰好覆盖该语言的五页，不混入另一语言`);
+  }
 });
