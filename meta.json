@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/CyberNova2333/cybernova-homepage/main/public/schemas/repo-meta.v1.json",
+  "schemaVersion": 1,
+  "slug": "pagehaven",
+  "name": "Pagehaven · 页间",
+  "title": {
+    "zh": "Pagehaven · 页间 — 纯静态漫画阅读器与台词搜索工具",
+    "en": "Pagehaven · Static Manga Reader with Client-Side Dialogue Search"
+  },
+  "visibility": "public",
+  "status": "active",
+  "category": "media-engine",
+  "featured": true,
+  "order": 3,
+  "repository": "https://github.com/CyberNova2333/pagehaven",
+  "homepage": "https://pagehaven.cbnv.me",
+  "docsUrl": "https://pagehaven.cbnv.me/docs/",
+  "license": "GPL-3.0-only",
+  "primaryLanguage": "TypeScript",
+  "techStack": [
+    "Astro",
+    "SQLite Wasm",
+    "TypeScript",
+    "WebAssembly",
+    "Cloudflare Workers",
+    "GitHub Pages"
+  ],
+  "tags": [
+    "manga-reader",
+    "static-site",
+    "sqlite-wasm",
+    "full-text-search"
+  ],
+  "summary": {
+    "zh": "纯静态部署的漫画书库与阅读器，支持单页、双页和长条阅读模式，并用 SQLite Wasm 在浏览器端直接搜索台词定位页码。",
+    "en": "Static manga library and reader supporting single-page, double-page, and vertical scroll modes, using client-side SQLite Wasm to search dialogue and jump to pages."
+  },
+  "highlights": {
+    "zh": [
+      "在浏览器端通过 SQLite Wasm + HTTP Range 按需读取索引分块，输入台词即可跳转到对应章节和页码",
+      "支持单页、双页、长条滚动切换，带本地书架状态、页码书签备注以及 JSON 进度导入导出",
+      "通过一份 site.config.yaml 配置文件即可构建部署到 GitHub Pages 或 Cloudflare Workers 等静态托管平台"
+    ],
+    "en": [
+      "Client-side SQLite Wasm with HTTP Range requests for searching dialogue without a backend server",
+      "Single, double, and vertical-scroll reading modes with local bookmarks and JSON progress backup/restore",
+      "Single site.config.yaml configuration targeting GitHub Pages, Cloudflare Workers, and other static hosts"
+    ]
+  },
+  "quickStart": [
+    "pnpm install --frozen-lockfile",
+    "pnpm run check",
+    "pnpm test"
+  ],
+  "roadmap": {
+    "stage": "日常维护",
+    "stageEn": "Maintained",
+    "milestone": {
+      "zh": "静态构建、SQLite Wasm 台词检索与三套配色主题均已可用。",
+      "en": "Static builds, SQLite Wasm dialogue search, and color themes are complete."
+    }
+  },
+  "updatedAt": "2026-11-11"
+}

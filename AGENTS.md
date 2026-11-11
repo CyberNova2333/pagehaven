@@ -61,3 +61,10 @@ Choose `none`, `answer-only`, `foreground patch`, or `background sync`. Patch th
 Update the walkthrough for input/output or boundary changes and the code map for responsibility changes. Record meaningful guide changes and actual verification in `repo-docs/change-log.md` with `Synced through <sha>`; do not imply unrun tests passed.
 
 文档站统一使用 VitePress 默认主题；样式与动效遵循原生主题，构建输出独立于业务界面。
+
+## 项目简介与主页元数据 (meta.json)
+
+- **项目名称**：Pagehaven · 页间 — 纯静态漫画阅读器与台词搜索工具
+- **项目简介**：纯静态部署的漫画书库与阅读器，支持单页、双页和长条阅读模式，并用 SQLite Wasm 在浏览器端直接搜索台词定位页码。
+- **公开状态**：已公开 (public) · 分类：`media-engine` · 主语言：`TypeScript`
+- **元数据说明**：仓库根目录的 [`meta.json`](meta.json) 供个人主页（[`cybernova-homepage`](https://github.com/CyberNova2333/cybernova-homepage)）读取项目简介、功能说明、技术栈和常用命令。修改项目主要功能、技术栈或文档站链接时请同步更新 `meta.json`。
