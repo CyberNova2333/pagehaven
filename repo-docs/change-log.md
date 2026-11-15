@@ -332,3 +332,21 @@ Windows 全新快照先冻结安装业务与文档依赖。首次完整测试为
 Linux Node 22.23.4 / pnpm 12.6.0 的新快照初始无 node_modules，业务和文档冻结安装、工作区专项 2/2、完整构建、四端 check 均退出 0，链接只指向该副本。另在隔离副本的搜索包依赖目录注入原生构建标记：检查明确拒绝并退出 1；恢复原始 manifest 和移除夹具后恢复退出 0。本轮未在该 Linux 环境重跑完整开发服务测试，云端结果须另记。
 
 Synced through bd859083ee37b293e7c56d735095e9fa1f7b0c85；本节记录该提交之后的工作区安装修复，未执行真实平台部署。
+
+## Tier A 文档体系重置与 Standard 源码指南升级（2026-11-15 20:55 CST）
+
+在隔离工作树 `docs/reset-wave1` 上完成全套文档重置与源码校准：
+
+- **双语入口 (`README.md` / `README.en.md`)**：精简为严格的 6 段式导览门户（各 82 行），补充真实架构数据流图、`pnpm --filter @gallery/site run preview`（4321 端口）可运行快速开始、多场景导航表与选型边界 FAQ，保持中英文 `#fragment` 锚点通过 `checkReadmeLinks`。
+- **双语官网文档站 (`docs-site/`)**：彻底清除偏离仓库实现的旧占位文案，按 Tier A 四阶段渐进式架构（1. 起步与部署 / 2. 契约与扩展 / 3. 架构与内核原理 / 4. 版本变更与迁移）重构中英文 1:1 映射共 22 个页面，增加首页“按身份/目标快速入口”表、真实拓扑图以及保留已有 `pagehaven-pipeline.html` 交互管线视图（同时诚实标明既有 `pagehaven-architecture.html` 为历史草图保留资产）；同步更新 `scripts/test/docs-site.test.mjs` 路由断言并保持双语 MiniSearch 索引严格隔离及 `guideSearchRefresh` 热重载兼容。
+- **Standard 级源码指南 (`repo-docs/`)**：从 `Lite + 代码地图` 升级为完整 **Standard 模式**，补齐 [术语表](glossary.md) 与 5 篇领域专题模块（`modules/site-config-and-targets.md`、`modules/data-model-and-normalization.md`、`modules/search-db-and-chunkfetch.md`、`modules/static-reader-and-bookmarks.md`、`modules/release-pipeline-and-proofs.md`），扩展 [代码地图](code-map.md)、[源码证据](references/source-evidence.md) 与 [质量复核](references/quality-review.md)。
+- **权威专题校准**：保留仓库硬引用的 `docs/ARCHITECTURE.md`（校准正文 Astro 版本至 `7.4.12`），并按 `Base.astro` 与 `site-appearance.js` 真实实现重写 `DESIGN.md`（Enterprise 品牌蓝 `paper/ocean/plum` 与本地 `IBM Plex Sans` 零阴影规范）。
+
+验证（于隔离工作树 `/home/cybernova/Projects/CyberNova2333/temp/wt-pagehaven-docs` 执行）：
+- `pnpm install --frozen-lockfile` 与 `pnpm --dir docs-site install --frozen-lockfile` 均退出 0；
+- `pnpm --dir docs-site audit --audit-level=moderate` 退出 0（No known vulnerabilities found）；
+- `pnpm run build`、`DEPLOY_TARGET=all pnpm run check`、`pnpm --dir docs-site run docs:build` 均退出 0；
+- `pnpm test` 退出 0：768 项中 768 通过、0 失败、0 跳过（含 `docs-site.test.mjs` 22 路静态与 MiniSearch 隔离校验、`docs-dev.test.mjs`、`docs-workflow.test.mjs` 与 `readme-links.test.mjs`）。
+- 未执行真实 Cloudflare R2 / EdgeOne / ESA / Workers / GitHub Pages 云端发布或部署。
+
+Synced through 07bbc3e8dfc8da4d5c316e66ac242d737633d812；此锚点标识基础主干 HEAD，后续工作树提交仅覆盖上述文档与文档测试文件。

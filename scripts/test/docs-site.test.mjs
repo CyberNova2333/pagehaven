@@ -14,14 +14,26 @@ const docsRequire = createRequire(join(DOCS, 'package.json'));
 const routes = [
   '/',
   '/docs/',
-  '/docs/architecture',
-  '/docs/configuration',
+  '/docs/deployment',
   '/docs/faq',
+  '/docs/boundaries',
+  '/docs/configuration',
+  '/docs/interactions',
+  '/docs/walkthrough',
+  '/docs/architecture',
+  '/docs/code-map',
+  '/docs/changelog',
   '/en/',
   '/en/docs/',
-  '/en/docs/architecture',
-  '/en/docs/configuration',
+  '/en/docs/deployment',
   '/en/docs/faq',
+  '/en/docs/boundaries',
+  '/en/docs/configuration',
+  '/en/docs/interactions',
+  '/en/docs/walkthrough',
+  '/en/docs/architecture',
+  '/en/docs/code-map',
+  '/en/docs/changelog',
 ];
 
 test('文档站：真实构建保留引用内容、静态链接与可查询的本地搜索索引', { timeout: 120_000 }, async (t) => {
@@ -81,6 +93,6 @@ test('文档站：真实构建保留引用内容、静态链接与可查询的�
     for (const result of results) resolveLink(result.id, `${prefix}/`);
     const indexedRoutes = new Set(Object.values(JSON.parse(serialized).documentIds).map((id) => id.split('#')[0]));
     const localeRoutes = routes.filter((route) => route.startsWith('/en/') === (locale === 'en'));
-    assert.deepEqual([...indexedRoutes].sort(), [...localeRoutes].sort(), `${locale} 索引应恰好覆盖该语言的五页，不混入另一语言`);
+    assert.deepEqual([...indexedRoutes].sort(), [...localeRoutes].sort(), `${locale} 索引应恰好覆盖该语言的全部 ${localeRoutes.length} 页，不混入另一语言`);
   }
 });

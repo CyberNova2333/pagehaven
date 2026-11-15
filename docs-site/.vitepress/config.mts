@@ -1,4 +1,4 @@
-// VitePress 官方文档配置 (Coolify 架构风格 + 中英双语支持)
+// VitePress 双语文档配置（Tier A 四阶段渐进式信息架构 + 本地搜索隔离）
 import { defineConfig } from 'vitepress'
 import { guideSearchRefresh } from './guide-search-refresh.mjs'
 
@@ -9,96 +9,108 @@ export default defineConfig({
     root: {
       label: '简体中文',
       lang: 'zh-CN',
-      title: "PageHaven 官方文档",
-      description: "PageHaven 是极速、沉浸式离线阅读器与分布式数字藏书馆。",
+      title: '页间 · Pagehaven 官方文档',
+      description: '纯静态漫画库、多模式渐进阅读器与浏览器端 SQLite Wasm 台词检索引擎。',
       themeConfig: {
-        siteTitle: "PageHaven 现代书库",
+        siteTitle: '页间 · Pagehaven',
         nav: [
-          { text: '官网首页', link: '/' },
-          { text: '快速入门', link: '/docs/' },
-          { text: '系统架构', link: '/docs/architecture' },
-          { text: '配置指南', link: '/docs/configuration' },
-          { text: '常见问题', link: '/docs/faq' },
+          { text: '首页', link: '/' },
+          { text: '1. 起步与部署', link: '/docs/' },
+          { text: '2. 契约与扩展', link: '/docs/boundaries' },
+          { text: '3. 架构原理', link: '/docs/architecture' },
+          { text: '4. 变更与迁移', link: '/docs/changelog' },
           { text: 'GitHub', link: 'https://github.com/CyberNova2333/pagehaven' },
         ],
         sidebar: [
           {
-            text: '快速入门',
+            text: '1. 起步与部署',
             items: [
-              { text: '项目概览与上手', link: '/docs/' },
-            ]
+              { text: '项目概览与快速上手', link: '/docs/' },
+              { text: '多模式运行与多平台部署', link: '/docs/deployment' },
+              { text: '部署与运行排错 FAQ', link: '/docs/faq' },
+            ],
           },
           {
-            text: '系统架构',
+            text: '2. 契约与扩展',
             items: [
-              { text: '架构设计与全景图', link: '/docs/architecture' },
-            ]
+              { text: '能力边界与安全假设', link: '/docs/boundaries' },
+              { text: '配置、数据与前端契约', link: '/docs/configuration' },
+              { text: '跨模块交互与扩展 FAQ', link: '/docs/interactions' },
+            ],
           },
           {
-            text: '配置与实践',
+            text: '3. 架构与内核原理',
             items: [
-              { text: '配置与使用指南', link: '/docs/configuration' },
-            ]
+              { text: '一次真实构建与发布演练', link: '/docs/walkthrough' },
+              { text: '核心子系统与架构全景', link: '/docs/architecture' },
+              { text: '源码地图与贡献工作流', link: '/docs/code-map' },
+            ],
           },
           {
-            text: '运维与支持',
+            text: '4. 版本变更与迁移',
             items: [
-              { text: '常见问题与排错', link: '/docs/faq' },
-            ]
-          }
+              { text: '版本变更、迁移与决策记录', link: '/docs/changelog' },
+            ],
+          },
         ],
         outline: { level: [2, 3], label: '本页目录' },
         docFooter: { prev: '上一页', next: '下一页' },
-      }
+      },
     },
     en: {
       label: 'English',
       lang: 'en-US',
       link: '/en/',
-      title: "PageHaven Documentation",
-      description: "PageHaven is a modern, high-performance digital library and responsive document reader built for speed and immersion.",
+      title: 'Pagehaven Documentation',
+      description: 'Pure-static comic archive, progressive multi-mode reader, and browser-side SQLite Wasm dialogue search engine.',
       themeConfig: {
-        siteTitle: "PageHaven Library",
+        siteTitle: 'Pagehaven',
         nav: [
           { text: 'Home', link: '/en/' },
-          { text: 'Quick Start', link: '/en/docs/' },
-          { text: 'Architecture', link: '/en/docs/architecture' },
-          { text: 'Configuration', link: '/en/docs/configuration' },
-          { text: 'FAQ', link: '/en/docs/faq' },
+          { text: '1. Start & Deploy', link: '/en/docs/' },
+          { text: '2. Contracts', link: '/en/docs/boundaries' },
+          { text: '3. Architecture', link: '/en/docs/architecture' },
+          { text: '4. Changelog', link: '/en/docs/changelog' },
           { text: 'GitHub', link: 'https://github.com/CyberNova2333/pagehaven' },
         ],
         sidebar: [
           {
-            text: 'Quick Start',
+            text: '1. Getting Started & Deployment',
             items: [
-              { text: 'Overview & Getting Started', link: '/en/docs/' },
-            ]
+              { text: 'Overview & Quick Start', link: '/en/docs/' },
+              { text: 'Modes, Platforms & Env Matrix', link: '/en/docs/deployment' },
+              { text: 'Troubleshooting FAQ', link: '/en/docs/faq' },
+            ],
           },
           {
-            text: 'Architecture',
+            text: '2. Contracts & Extension',
             items: [
-              { text: 'Architecture Design', link: '/en/docs/architecture' },
-            ]
+              { text: 'Boundaries & Security Model', link: '/en/docs/boundaries' },
+              { text: 'Config, Data & Client Contracts', link: '/en/docs/configuration' },
+              { text: 'Interactions & Extension FAQ', link: '/en/docs/interactions' },
+            ],
           },
           {
-            text: 'Configuration & Practice',
+            text: '3. Architecture & Internals',
             items: [
-              { text: 'Configuration Guide', link: '/en/docs/configuration' },
-            ]
+              { text: 'One Real Run Walkthrough', link: '/en/docs/walkthrough' },
+              { text: 'Subsystems & Architecture', link: '/en/docs/architecture' },
+              { text: 'Code Map & Contribution Flow', link: '/en/docs/code-map' },
+            ],
           },
           {
-            text: 'Operations & Support',
+            text: '4. Releases & Migrations',
             items: [
-              { text: 'FAQ & Diagnostics', link: '/en/docs/faq' },
-            ]
-          }
+              { text: 'Changelog, Migrations & ADRs', link: '/en/docs/changelog' },
+            ],
+          },
         ],
         outline: { level: [2, 3], label: 'On this page' },
         docFooter: { prev: 'Previous page', next: 'Next page' },
-      }
-    }
+      },
+    },
   },
   themeConfig: {
     search: { provider: 'local' },
-  }
+  },
 })

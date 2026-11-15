@@ -79,6 +79,6 @@ pnpm run build
 
 只修改官网文档时，可用 `pnpm run test:docs` 运行静态构建与双语开发搜索回归。开发服务保存 Markdown 后会短暂重启并刷新页面，重新打开搜索框核对新内容和已删除标题；这是文档工具的行为，不改变阅读站的浏览器检索流程。
 
-理解这条交接后，用[代码地图定位下一次修改](../code-map.md)；需要反查依据时查看[源码调查与边界证据](../references/source-evidence.md)。
+理解这条交接后，用[代码地图](../code-map.md)定位下一次修改，或按专题深入[配置与目标](../modules/site-config-and-targets.md)、[数据模型与归一化](../modules/data-model-and-normalization.md)、[检索与分块](../modules/search-db-and-chunkfetch.md)、[阅读器与书架](../modules/static-reader-and-bookmarks.md)、[发布流水线](../modules/release-pipeline-and-proofs.md)与[术语表](../glossary.md)；需要反查依据时查看[源码调查与边界证据](../references/source-evidence.md)。
 
 证据状态：除特别标注外，本页基于当前源码已确认。

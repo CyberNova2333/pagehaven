@@ -1,116 +1,104 @@
 # 页间 · Pagehaven 代码地图
 
-先读[主流程的输入与交接](walkthroughs/one-real-run.md)，再按责任定位修改。本页只覆盖已声明主流程，不把目录出现过当作完整模块调查。
+先读[一次真实主流程](walkthroughs/one-real-run.md)建立端到端模型，再按职责定位模块入口、符号与验证脚本。
 
 | 路径 | 职责 | 关键代码 | 与主流程的关系 |
 | --- | --- | --- | --- |
-| `scripts/` | 串联构建、检查与目标部署 | `scripts/build-site.mjs`、`scripts/deploy.mjs` | 根 package 的构建与部署命令 |
-| `scripts/lib/` | 加载内容，核对清单、预算和部署回执 | `scripts/lib/manifest.mjs`、`scripts/lib/release.mjs` | 构建与发布交接 |
-| `packages/core/src/` | 统一进入 CDN URL 的安全对象路径契约 | `packages/core/src/object-path.js` | 配置、发布和浏览器检索共享；仅覆盖此辅助文件 |
-| `packages/core/src/db/` | 构造浏览器可用检索库与分块描述 | `packages/core/src/db/build.js` | build:db 的库构造入口 |
-| `packages/site/` | 生成静态页面，接入布局、配色状态及公开场景脚本 | `packages/site/src/pages/index.astro`、`packages/site/src/layouts/Base.astro`、`packages/site/src/lib/day-night-control.js`、`packages/site/public/day-night-switch.js` | 仅覆盖页面入口及配色接线；其余页面行为与公开资源未展开 |
-| `packages/platform/src/` | 集中验证配置、声明目标并生成平台文件 | `packages/platform/src/site-config.js`、`packages/platform/src/targets.js` | 构建响应配置及部署控制模板 |
-
-## `scripts/`
-
-串联配置、清单、库、页面、索引、sitemap 和目标部署。范围仅为下表入口及主流程直接使用的契约，其余文件没有逐一审核。
-
-| 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
-| --- | --- | --- | --- |
-| [职责入口](../scripts/build-site.mjs) | 串联配置、清单、库、页面、索引与 sitemap | `站点步骤；build-manifest.mjs / build-db.mjs` | 根 package 的 build 顺序 |
-| [部署入口](../scripts/deploy.mjs) | 检查产物，创建临时部署配置，执行 CLI 并记录成功回执 | `deploymentInput / recordDeployment` | 手动发布流水线 |
-| [验收与发布检查](../scripts/check.mjs) | 检查生成配置、静态产物及所选目标预算，禁止自动发布 | `inspectDeploymentFiles / validateDeploymentBudget` | 本地检查与 GitHub Actions 发布前检查 |
-
-相关验证：`scripts/test/site-build.test.mjs`、`scripts/test/deploy-plan.test.mjs`、`scripts/test/deploy-static.test.mjs`。实际执行结果见[同步记录](change-log.md)。
-
-## `scripts/lib/`
-
-加载内容并定义跨步骤清单、部署预算和版本回执契约。范围仅为下表入口及主流程直接使用的契约，其余文件没有逐一审核。
-
-| 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
-| --- | --- | --- | --- |
-| [职责入口](../scripts/lib/manifest.mjs) | 加载内容并定义跨步骤清单契约 | `buildManifest / galleryFingerprint` | 清单、建库与站点步骤共享 |
-| [README 章节链接校验](../scripts/lib/readme-links.mjs) | 校验双语导航是否指向标题生成的有效锚点 | `checkReadmeLinks` | `scripts/check.mjs`；回归见 `scripts/test/readme-links.test.mjs` |
-| [静态跳转输出边界](../scripts/lib/static-output.mjs) | 预检重定向的规范路径及输出根边界，转义跳转页属性 | `redirectOutputPaths / metaRefresh` | `scripts/build-site.mjs`；回归见 `scripts/test/static-output.test.mjs` |
-| [部署计划](../scripts/lib/deploy-plan.mjs) | 将目标、环境和 secrets 变成 CLI 参数，隔离预览名称与地址 | `planDeployCommand` | 部署入口 |
-| [部署工具启动](../scripts/lib/pnpm-runner.mjs) | 解析 pnpm 的 JavaScript 或原生入口，保持参数数组，不经 shell 拼接；缺失时明确失败 | `resolvePnpmCommand` | 部署入口；回归见 `scripts/test/pnpm-runner.test.mjs` |
-| [平台预算](../scripts/lib/deploy-budget.mjs) | 遍历普通文件，为新目标预留部署证明容量，拒绝链接、保留路径及超预算产物 | `inspectDeploymentFiles / validateDeploymentBudget` | 检查入口与部署入口共用 |
-| [部署随机证明](../scripts/lib/deploy-proof.mjs) | 生成只交给本次目标的随机验证文件，绑定目标、版本、指纹和环境 | `createDeploymentProof / deploymentProofFile / matchesDeploymentProof` | 临时上传副本与线上核对 |
-| [目标上线核对](../scripts/lib/deploy-ready.mjs) | 有界重试匹配本次随机证明；ESA staging 使用同包请求与连接器覆盖 DNS，保留证书校验 | `deploymentRoot / waitForDeployment / createStagingVerifier` | Workers 与 ESA 部署后确认 |
-| [生产指针启用](../scripts/lib/release.mjs) | 展开发布目标并核对全部回执，以条件写入启用版本 | `releasePlan / activateRelease` | 发布流水线的准备与启用步骤 |
-| [流水线守卫](../scripts/lib/pipeline-policy.mjs) | 检出自动部署命令，并保证自动、手动检查按序安装和审计文档依赖后再测试 | `hasDeploymentCommand / checkDocumentationPipelines` | 检查入口；回归见 `scripts/test/pipeline-policy.test.mjs` |
-
-相关验证：`scripts/test/build-manifest.test.mjs`、`scripts/test/deploy-plan.test.mjs`、`scripts/test/deploy-static.test.mjs`、`scripts/test/deploy-transport.test.mjs`、`scripts/test/release.test.mjs`。部署连接回归使用真实本地 HTTP 请求；实际执行结果见[同步记录](change-log.md)。
+| `packages/core/src/` | 数据 schema、文本归一化、LabelPlus 解析、SQLite Wasm 建库与 Range 取块 | `packages/core/src/schema.js`、`packages/core/src/normalize.js`、`packages/core/src/db/build.js`、`packages/core/src/chunkfetch/chunked-file.js` | 执行格式校验、归一化并构造检索库 |
+| `packages/platform/src/` | 配置源 Zod 校验、五目标注册与公共/部署模板生成 | `packages/platform/src/site-config.js`、`packages/platform/src/targets.js`、`packages/platform/src/index.js` | 生成平台规则、部署控制模板并检查同步 |
+| `packages/search/src/` | 浏览器端检索库懒加载、流式 SHA-256 校验、MATCH/LIKE 查询与页面挂载 | `packages/search/src/load.js`、`packages/search/src/query.js`、`packages/search/src/mount.js` | 读取固定构建库并在浏览器执行查询 |
+| `packages/site/src/` | Astro 7.4 静态编译、外观变量、阅读器、目录分页与书架备份 | `packages/site/src/layouts/Base.astro`、`packages/site/src/lib/site-appearance.js`、`packages/site/src/lib/reading-backup.js` | 编译每话静态阅读页、搜索页、书架页与索引入口 |
+| `scripts/` | 初始化、台词导入、构建串联、静态检查、R2 上传、部署与秘密注入（含 `scripts/lib/`、`scripts/ci/`、`tools/`） | `scripts/build-site.mjs`、`scripts/check.mjs`、`scripts/deploy.mjs`、`scripts/lib/manifest.mjs`、`scripts/ci/run-with-secrets.mjs` | 根命令构建编排、预算证明检查与发布入口 |
+| `docs-site/` | 独立锁定 VitePress 双语文档站与本地搜索刷新插件 | `docs-site/.vitepress/config.mts`、`docs-site/.vitepress/guide-search-refresh.mjs` | 面向读者与维护者的双语使用文档与交互管线图 |
 
 ## `packages/core/src/`
 
-配置、上传计划和检索加载器共用安全对象路径，不让各层接受不同的目录语法。本节只覆盖这一共享辅助文件，不扩大到其余 core 模块。
+源码禁止导入 `node:*` 模块，确保构建期与浏览器端运行同一套校验、归一化与检索库逻辑；机制详见[数据模型与归一化模块](modules/data-model-and-normalization.md)与[检索与分块模块](modules/search-db-and-chunkfetch.md)。
 
 | 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
 | --- | --- | --- | --- |
-| [共享对象路径校验](../packages/core/src/object-path.js) | 约束无需 URL 转义的相对对象 key 与目录前缀 | `isSafeObjectPrefix / isSafeObjectKey` | 平台配置、上传计划、浏览器检索加载器 |
+| [数据结构与模型](../packages/core/src/schema.js) | 校验 Series / Issue / Chapter / Page / ChapterText（0–1 坐标框） | `SeriesSchema / IssueSchema / parseChapterText` | 数据检查、台词导入、清单构建 |
+| [台词归一化](../packages/core/src/normalize.js) | 五步幂等归一化，剔除空白标点并透传 `Cn` | `normalizeText / STRIP_RE` | 检索建库与 `@gallery/search` |
+| [LabelPlus 解析](../packages/core/src/labelplus.js) | 精确分隔符解析与 1 起行号可疑行告警 | `parseLabelPlus / labelPlusToChapterText` | LabelPlus 导入入口 |
+| [路径校验](../packages/core/src/object-path.js) | 约束纯 ASCII 相对前缀与对象 key | `isSafeObjectPrefix / isSafeObjectKey` | 平台配置、发布计划、浏览器加载器 |
+| [检索库构建](../packages/core/src/db/build.js) | 建表、事务插入、`lines_fts rebuild`、`journal_mode=DELETE` 与 `VACUUM` | `buildGalleryDb / openGalleryDb / SCHEMA_SQL` | 检索建库与搜索单测 |
+| [分块摘要](../packages/core/src/db/chunks.js) | 调用 `crypto.subtle` 计算整库与 64 KiB 分块 SHA-256 | `computeChunkManifest / sha256Hex` | 检索建库与取块校验 |
+| [Range 分块](../packages/core/src/chunkfetch/chunked-file.js) | Range 探测、并发去重、EMA 选源、块校验与 `needs-whole` 信号 | `ChunkedFile / DEFAULT_RETRY` | 独立单测（暂未接入在线 SQLite VFS） |
 
-相关验证 `scripts/test/object-prefix.test.mjs` 使用真实 SQLite，依次检查配置、发布计划、摘要及浏览器查询。
-
-## `packages/core/src/db/`
-
-构造浏览器可用检索库与分块描述。范围仅为下表入口及主流程直接使用的契约，其余文件没有逐一审核。
-
-| 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
-| --- | --- | --- | --- |
-| [职责入口](../packages/core/src/db/build.js) | 构造浏览器可用检索库与分块描述 | `buildGalleryDb / openGalleryDb` | build:db 的库构造入口 |
-
-相关验证：`scripts/test/build-db.test.mjs`。实际执行结果见[同步记录](change-log.md)。
-
-## `packages/site/`
-
-页面入口把生成内容映射为静态 HTML，共享布局接入主题变量和浏览器配色控件。读者选择“跟随系统”时，页面和昼夜场景一起跟随系统外观；点击场景开关改成固定的浅色或深色后，仍可从旁边的三态选项恢复跟随系统。两种控件共用原有偏好状态，不各自读写存储。场景脚本没有载入时，三态选项仍可使用。
-
-纸页装饰从既有表面变量取色，按钮从主色与对比色变量取色，避免新增样式改掉维护者的配色配置。本节仅覆盖下列页面入口及配色接线，其余页面行为与公开资源没有逐一审核。
-
-| 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
-| --- | --- | --- | --- |
-| [页面入口](../packages/site/src/pages/index.astro) | 将生成内容映射为静态页面 | `首页与动态章节路由` | build:site 调用 Astro |
-| [共享布局](../packages/site/src/layouts/Base.astro) | 挂载控件，以 `--surface`、`--accent`、`--on-accent` 等变量绘制页面 | `mountDayNightControl` | 构建输出的各页面 |
-| [偏好状态](../packages/site/src/lib/color-scheme.js) | 恢复三态选择、持久化及系统与跨标签同步，通知解析后的配色 | `initializeColorScheme` | 页面首屏与两种配色控件 |
-| [场景接线](../packages/site/src/lib/day-night-control.js) | 保留三态选择，把快捷操作交给原状态源并同步场景显示 | `mountDayNightControl` | 共享布局 |
-| [语义配色](../packages/site/src/lib/site-appearance.js) | 从主题和主色计算表面、文字及按钮对比色 | `appearanceVariables` | 共享布局与维护者编辑器 |
-| [场景组件](../packages/site/public/day-night-switch.js) | 昼夜外观、快捷切换和无障碍状态 | `DayNightSwitch.mount / apply / destroy` | 场景接线 |
-
-相关验证：`scripts/test/site-build.test.mjs`、`packages/site/test/day-night-control.test.js`、`packages/site/test/color-scheme.test.js`、`packages/site/test/site-appearance.test.js`。实际执行结果见[同步记录](change-log.md)。
+验证入口：`packages/core/test/`（`schema`、`model`、`normalize`、`labelplus`、`db`、`chunkfetch`）与 `scripts/test/object-prefix.test.mjs`。
 
 ## `packages/platform/src/`
 
-集中验证配置、声明部署目标及能力，生成可公开响应配置和独立部署控制模板。范围仅为下表入口及主流程直接使用的契约，其余文件没有逐一审核。
+负责解析 `site.config.yaml`、声明五目标能力以及区分公开产物与部署控制模板；详见[配置与目标模块](modules/site-config-and-targets.md)。
 
 | 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
 | --- | --- | --- | --- |
-| [职责入口](../packages/platform/src/site-config.js) | 集中验证配置并生成托管平台文件 | `站点配置契约` | build:config 之后进入站点输出 |
-| [目标注册](../packages/platform/src/targets.js) | 区分旧 Pages 与 Workers，定义 `all` 四端集合及容量 | `DEPLOY_TARGETS / DEFAULT_RELEASE_TARGETS / TARGET_CAPABILITIES` | 初始化、发布计划、预算检查 |
-| [部署名称约束](../packages/platform/src/deploy-name.js) | 共用 Workers 与 ESA 名称校验，拒绝 Workers 名称首尾连字符 | `isDeploymentName` | 部署计划与配置生成器 |
-| [生成物分类](../packages/platform/src/index.js) | 区分公开响应配置和不得进入 `dist` 的部署控制模板 | `GENERATED_FILES / DEPLOY_CONFIG_FILES / generateAll` | 配置生成、同步检查与站点构建 |
-| [部署模板生成](../packages/platform/src/generators/deploy.js) | 生成静态资源目录及 404 规则，不引入函数入口 | `renderWorkersDeployConfig / renderEsaDeployConfig` | 配置生成与部署临时目录 |
+| [配置校验](../packages/platform/src/site-config.js) | 校验站点、外观、图源、DB、搜索、功能开关与部署配置 | `parseSiteConfig` | 配置生成、初始化与静态检查 |
+| [目标能力注册](../packages/platform/src/targets.js) | 区分四端默认集合与 `cloudflare`，声明文件/字节上限 | `DEPLOY_TARGETS / DEFAULT_RELEASE_TARGETS / TARGET_CAPABILITIES` | 发布计划、预算检查、初始化 |
+| [部署名校验](../packages/platform/src/deploy-name.js) | 约束 Workers 与 ESA 项目名称格式 | `isDeploymentName` | 部署计划与配置生成器 |
+| [生成物入口与模板](../packages/platform/src/index.js) | 区分进 `dist` 的 `GENERATED_FILES` 与不进 `dist` 的 `DEPLOY_CONFIG_FILES` | `GENERATED_FILES / DEPLOY_CONFIG_FILES / generateAll` | 配置生成、站点构建与静态检查 |
 
-相关验证：`packages/platform/test/site-config.test.js`、`packages/platform/test/deployment-config.test.js`。实际执行结果见[同步记录](change-log.md)。
+验证入口：`packages/platform/test/site-config.test.js`、`packages/platform/test/deployment-config.test.js`、`packages/platform/test/deploy-name.test.js`。
 
-## 工作区安装
+## `packages/search/src/`
 
-[工作区配置](../pnpm-workspace.yaml)登记业务包与依赖覆盖，根和各包的 `package.json` 声明本地引用。[工作区回归](../scripts/test/workspace.test.mjs)核对实际声明与业务锁文件中的本地链接，防止仅凭旧依赖目录通过检查；[站点构建](../scripts/build-site.mjs)从站点包解析其 Astro 入口。
+负责在浏览器端懒加载固定构建版本的检索数据库、校验流长度与摘要并执行混合查询；详见[检索与分块模块](modules/search-db-and-chunkfetch.md)。
 
-## 文档构建与开发搜索
+| 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
+| --- | --- | --- | --- |
+| [检索库加载](../packages/search/src/load.js) | 读取 `db.release`、按字节上限中止流并核对 SHA-256 | `loadGalleryDb / FETCH_TIMEOUT_MS / DEFAULT_WHOLE_DOWNLOAD_MAX_BYTES` | 搜索挂载入口 |
+| [查询调度](../packages/search/src/query.js) | `<2` 拒绝、`===2` LIKE 降级、`>=3` FTS5 短语 `MATCH` 与 `#p<n>b<i>` 结果拼装 | `prepareQuery / queryLines / RESULT_LIMIT` | 搜索挂载入口 |
+| [页面挂载](../packages/search/src/mount.js) | 检查 `coverage` 与 DOM 节点，无文本时零网络请求 | `mountSearch` | 站点搜索页脚本 |
 
-[文档站集成测试](../scripts/test/docs-site.test.mjs)由 `pnpm test` 自动发现，也可通过 `pnpm run test:docs` 单独运行。它调用已安装的 VitePress，在系统临时目录构建当前双语官网文档，读取最终 HTML 校验页面与链接，再加载同次产物的 MiniSearch 索引执行真实查询。依赖缺失直接报安装命令，不跳过；不模拟浏览器交互，也不覆盖默认文档产物。GitHub Actions 的检查流水线负责独立依赖安装与联网审计，业务发布入口保持原有职责。
+验证入口：`packages/search/test/search.test.js`、`packages/search/test/empty-state.test.js`、`packages/site/test/search-page.test.js`。
 
-[开发启动器](../scripts/docs-dev.mjs)管理单个 VitePress 子进程；[刷新插件](../docs-site/.vitepress/guide-search-refresh.mjs)复用文件监听器，在 Markdown 增删改后请求串行重启，并为语言索引生成每次启动独立的缓存版本。插件只在开发服务运行，构建输出不含它。当前[站点配置](../docs-site/.vitepress/config.mts)负责双语路由及插件接线，官网内容已与源码指南分开维护。
+## `packages/site/src/`
 
-[开发搜索回归](../scripts/test/docs-dev.test.mjs)复制真实站点配置，启动隔离服务，查询真实语言索引并模拟浏览器的长期缓存。覆盖尚未访问的引用正文、直接页面、中英文隔离、连续保存、页面增删与标题改名，以及关闭后释放端口；因此漏接插件或复用旧版本 URL 都会失败。
+使用 Astro 7.4.12 输出纯静态页面、内联外观与渐进交互；详见[阅读器与书架模块](modules/static-reader-and-bookmarks.md)。
 
-[工作流回归](../scripts/test/docs-workflow.test.mjs)读取实际 GitHub YAML，核对检查仅允许 main push 或手动触发，文档安装、审计和统一测试不能漏掉、跳过或吞错，并保证文档站仅手动发布且部署依赖构建产物。它由 `pnpm test` 自动发现，不触发云端发布。
+| 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
+| --- | --- | --- | --- |
+| [Astro 构建配置](../packages/site/astro.config.mjs) | 静态输出、内联样式与 noop 图像服务（剔除 `sharp`） | `defineConfig` | 站点构建脚本 |
+| [共享外壳布局](../packages/site/src/layouts/Base.astro) | 内联首屏配色、本地 `IBM Plex Sans` 字体、`noindex` 与动效接入 | `paletteCSS / colorSchemeScript` | 站内各页面 |
+| [外观与三态配色](../packages/site/src/lib/site-appearance.js) | 计算 `paper/ocean/plum` 变量与对比度；[color-scheme.js](../packages/site/src/lib/color-scheme.js) 同步三态切换 | `appearanceVariables / initializeColorScheme` | 共享布局与昼夜场景接线 |
+| [每话单 HTML 阅读器](../packages/site/src/pages/[series]/[issue]/[chapter]/index.astro) | 无 JS 静态流 + 内联核心切换阅读模式与 `#p<n>b<i>` 高亮；配合 [chapter-toc.js](../packages/site/src/lib/chapter-toc.js) 与 [enhanced-reader.js](../packages/site/src/lib/enhanced-reader.js) | `getStaticPaths / mountChapterToc / mountEnhancedReader` | 站点构建与检索直达跳转 |
+| [书架与备份迁移](../packages/site/src/lib/reading-backup.js) | `pagehaven-reading-backup` v1 导出与 5 MiB / 20k 条上限校验导入 | `parseReadingBackup / MAX_BACKUP_BYTES / MAX_BACKUP_RECORDS` | 书架页与阅读状态迁移 |
+
+验证入口：`packages/site/test/` 与 `scripts/test/site-build.test.mjs`。
+
+## `scripts/`
+
+串联维护者命令行入口、构建步骤、台词导入、静态检查与发布编排（含 `scripts/lib/`、`scripts/ci/` 与 `tools/` 维护脚本）。
+
+| 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
+| --- | --- | --- | --- |
+| [初始化与可视化改色](../scripts/init-site.mjs) | 命令行双语改配置；[customize.mjs](../scripts/customize.mjs) 启动令牌保护配置器 | `main / parseInitArgs` | 维护者本地初始化与调色 |
+| [台词导入入口](../scripts/ingest-labelplus.mjs) | 导入 LabelPlus 原稿；[ingest-ocr.mjs](../scripts/ingest-ocr.mjs) 输出 OCR 草稿与 `--accept-reviewed` 导入 | `ingestLabelPlus / ingestOcr` | 内容编辑与发布流水线 |
+| [清单、建库与站点构建](../scripts/build-manifest.mjs) | 清单（[build-manifest.mjs](../scripts/build-manifest.mjs)）→ 建库（[build-db.mjs](../scripts/build-db.mjs)）→ 站点（[build-site.mjs](../scripts/build-site.mjs)）→ 索引与 sitemap | `buildManifest / resolveVersion / galleryFingerprint` | `pnpm run build` 主流程 |
+| [静态检查入口](../scripts/check.mjs) | 核对配置同步、Web 标准边界、无 `sharp`、README 锚点、CI 策略与四端预算 | `checkDocumentationPipelines / checkReadmeLinks` | 维护验证与 CI 检查 |
+| [部署、发布与证明](../scripts/deploy.mjs) | 隔离证明副本部署；联合 [publish-r2.mjs](../scripts/publish-r2.mjs)、[release.mjs](../scripts/lib/release.mjs)、[deploy-budget.mjs](../scripts/lib/deploy-budget.mjs) 与 [deploy-ready.mjs](../scripts/lib/deploy-ready.mjs) 执行条件启用 | `recordDeployment / prepareRelease / activateRelease` | 手动发布流水线 |
+| [子进程秘密与 Git 钩子](../scripts/ci/run-with-secrets.mjs) | 仅向子进程注入标量 CI Secret；配合 [commit_msg.py](../tools/githooks/commit_msg.py) 与 [repo_maintenance_guard.py](../tools/repo_maintenance_guard.py) 守卫提交及推送 | `runWithSecrets / validate_commit_message / check_staged_changes` | 发布作业与 Git 本地钩子 |
+
+- `scripts/lib/` 另包含 [deploy-plan.mjs](../scripts/lib/deploy-plan.mjs)、[pnpm-runner.mjs](../scripts/lib/pnpm-runner.mjs)、[deploy-proof.mjs](../scripts/lib/deploy-proof.mjs)、[static-output.mjs](../scripts/lib/static-output.mjs)、[readme-links.mjs](../scripts/lib/readme-links.mjs)、[seo-push.mjs](../scripts/lib/seo-push.mjs) 与 [pipeline-policy.mjs](../scripts/lib/pipeline-policy.mjs)，覆盖清单见[发布流水线与部署证明模块](modules/release-pipeline-and-proofs.md)。
+- `tools/` 另包含 [_msgrules.py](../tools/githooks/_msgrules.py)、[pre_push.py](../tools/githooks/pre_push.py) 与 [verification-tier.py](../tools/verification-tier.py)，测试入口为 `tools/test/test_pre_push.py`。
+
+验证入口：`scripts/test/`（含 `docs-site.test.mjs`、`docs-workflow.test.mjs`、`docs-dev.test.mjs`、`run-with-secrets.test.mjs`、`seo-push.test.mjs`、`pipeline-policy.test.mjs` 等）。
+
+## `docs-site/`
+
+独立锁定 VitePress `2.0.0-alpha.21` 与 Vite 8 的双语官方文档站，隔离文档依赖以免影响业务依赖审计。
+
+| 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
+| --- | --- | --- | --- |
+| [双语文档配置](../docs-site/.vitepress/config.mts) | 定义 Tier A 四阶段中文与同步英文导航、本地搜索隔离及刷新插件接线 | `defineConfig / guideSearchRefresh` | 文档站静态构建与开发服务 |
+| [开发搜索刷新插件](../docs-site/.vitepress/guide-search-refresh.mjs) | 协同 [开发启动器](../scripts/docs-dev.mjs) 在 Markdown 保存后重启服务并轮换索引缓存版本 | `guideSearchRefresh / startDocsDev` | 文档开发模式与热更新测试 |
+
+验证入口：`scripts/test/docs-site.test.mjs`、`scripts/test/docs-dev.test.mjs`、`scripts/test/docs-workflow.test.mjs`。
 
 ## 覆盖范围
 
-覆盖构建命令编排、清单与检索库交接、站点生成、目标预算及部署回执边界；另记录配色控件与主题变量的兼容接线。其余浏览器阅读偏好、备份恢复、在线检索细节、OCR 导入与平台真实部署验收未展开。当前工作区实现不等于已发布版本。
+本代码地图与 Standard 级模块指南已覆盖仓库第一方业务包、构建发布脚本、独立文档站与 Git 维护工具：`packages/core/src/`、`packages/platform/src/`、`packages/search/src/`、`packages/site/src/`、`scripts/`（含 `scripts/lib/`、`scripts/ci/`）、`docs-site/`、`docs/ARCHITECTURE.md`、`DESIGN.md` 与 `tools/`。
 
-生成物、依赖安装目录、临时日志及第三方供应商源码不作为本次第一方模块地图。修改范围外机制前应重新调查，不能从本页推断兼容性。
+下列目录属于生成产物、运行缓存、外部依赖、占位示例或本地护栏配置，明确排除在逐模块拆解之外：`node_modules/`、`dist/`、`out/`、`packages/site/src/generated/`、`data/` 占位说明与测试夹具二进制资产、`.claude/`、`.codex/` 与 `guardrails/`。工作区安装链接与 `astro>sharp: '-'` 覆盖另由 [pnpm 工作区配置](../pnpm-workspace.yaml) 与 [workspace.test.mjs](../scripts/test/workspace.test.mjs) 守护。
 
 证据状态：除特别标注外，本页基于当前源码已确认。

@@ -1,44 +1,62 @@
----
-title: Quick Start
-description: Organize, sync, and enjoy your digital book collection with zero loading latency and full offline support.
----
+# Overview & Quick Start
 
-::: warning AI Translation Notice
-This document was translated by an AI language model. In case of any discrepancies or ambiguities, please refer to the [original Chinese documentation](/docs/) as the authoritative reference.
-:::
+Pagehaven is a **pure-static comic library, multi-mode reader, and browser-side dialogue search engine** engineered to survive without a backend server, database VM, or ongoing maintenance.
 
-# Quick Start
+## Scope & Non-Goals
 
-Organize, sync, and enjoy your digital book collection with zero loading latency and full offline support.
-
-## Core Problems Solved
-
-- **Pain Point 1**: Heavy web readers requiring constant online connectivity and slow page turns.
-- **Pain Point 2**: Inconsistent formatting and visual clutter across diverse e-book formats.
-- **Pain Point 3**: Poor mobile and desktop responsive layout continuity.
-
----
+| Supported in Core | Explicitly Out of Scope |
+| --- | --- |
+| Series / issue / chapter archive with multi-host CDN WebP images | User accounts, comments, login sessions, or server-side rendering |
+| Single-page, long-strip, double-page reader, RTL/LTR, and JSON library backups | Web-based media upload admin panels or VPS runtimes |
+| Client-side SQLite Wasm (`FTS5 trigram` + `LIKE`) search jumping to `#p<n>b<i>` | Auto-publishing unreviewed raw OCR transcripts into search |
+| Single `dist/` output portable across EdgeOne, ESA, GitHub Pages, and Workers | Requiring cloud functions for basic reading or search |
 
 ## Prerequisites
 
-Node.js 20+, pnpm 12.6.0, Modern evergreen browser (Chrome, Edge, Firefox, Safari).
+- **Node.js**: `>=22.19.0` (matches `.nvmrc`)
+- **pnpm**: `>=10.0.0` (lockfile maintained with `pnpm@12.6.0` using explicit `workspace:*` links)
+- **Standalone docs dependencies**: `docs-site/` uses its own `package.json` and lockfile, isolated from production audits
 
----
+## First Local Build & Preview
 
-## Quick Installation & Launch
+### 1. Install Dependencies & Initialize Configuration
 
-```bash
-# 1. Install project dependencies
-pnpm install
-
-# 2. Run local tests and verification
-pnpm test
+```sh
+pnpm install --frozen-lockfile
+# Interactive YAML setup (updates site.config.yaml while preserving comments)
+pnpm run init
+# Non-interactive preview (--write persists changes)
+pnpm run init -- --ui-lang en --title "My Archive" --domain manga.example.com --image-host img.example.com --target edgeone --dry-run
 ```
 
----
+To adjust branding, logo, theme presets (`paper`, `ocean`, `plum`), or feature toggles in a local browser UI:
+
+```sh
+pnpm run customize
+# Listens on http://127.0.0.1:4318/#token=<session-token> (use -- --host 0.0.0.0 in Codespaces)
+```
+
+`customize` updates `site.config.yaml` and saves backups under `out/customize/`. Commit and run the manual release pipeline for changes to reach readers.
+
+### 2. Full Static Build, Verification & Preview
+
+```sh
+pnpm run build
+pnpm run check
+pnpm --filter @gallery/site run preview
+```
+
+Out of the box, `data/` contains only format READMEs, so `build` produces a valid empty-catalog site. To inspect a populated comic catalog locally without altering tracked data, point `DATA_DIR` to the core fixture dataset:
+
+```sh
+DATA_DIR=packages/core/test/fixtures/data DIST_DIR=/tmp/pagehaven-dist OUT_DIR=/tmp/pagehaven-out pnpm run build
+pnpm --filter @gallery/site run preview -- --port 4321
+```
+
+`pnpm --filter @gallery/site run preview` serves `dist/` at `http://localhost:4321`. For Astro component hot-reloading, first generate `packages/site/src/generated/` via `build:config` / `build:site` and run `pnpm --filter @gallery/site run dev`.
 
 ## Next Steps
 
-- Explore internal mechanics: [Architecture & Design](/en/docs/architecture)
-- Comprehensive configuration reference: [Configuration Guide](/en/docs/configuration)
-- Troubleshooting & FAQ: [FAQ & Diagnostics](/en/docs/faq)
+- Configure multi-target deployments, private R2, and CI secrets: [Modes, Platforms & Env Matrix](/en/docs/deployment)
+- Import LabelPlus scripts or OCR drafts: [Config, Data & Client Contracts](/en/docs/configuration)
+- Diagnose build or check errors: [Troubleshooting FAQ](/en/docs/faq)
