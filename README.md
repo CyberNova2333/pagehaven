@@ -15,6 +15,15 @@
 - **本地书架与可迁移备份**：作品收藏、阅读历史与页码备注（最多 200 字）纯浏览器存储，支持 5 MiB / 20,000 条记录上限的 `pagehaven-reading-backup` JSON 校验导入导出。
 - **多端便携与不可变发布**：同一份 `dist/` 兼容 EdgeOne、ESA、GitHub Pages、Workers 与 legacy Cloudflare Pages；图片（WebP）与检索库经 R2 私有桶 + CDN 域名分离读取，生产指针在全目标随机证明核对后条件切换。
 
+## 能力定位与明确不能做什么
+
+| 维度 | 能做到什么程度（已实现能力） | 明确不能做什么（非目标与硬限制） |
+| --- | --- | --- |
+| 归档与阅读 | Astro 每话单 HTML 渐进增强阅读，无 JS 可读图文，支持单页/条漫/双页、`#p<n>b<i>` 跳转与可选 Comimi 分页 | **不做**账号登录、评论系统、SSR 服务器或在线传图管理后台 |
+| 台词检索与分块 | `normalizeText` + SQLite Wasm（≥3 字 `MATCH` / 2 字 `LIKE`）；`@gallery/core/chunkfetch` 已实现 HTTP Range 取块原语 | 归一化 `<2` 字拒绝查询；整库下载限 `30 MiB`；`chunkfetch` **尚未接入**浏览器端 SQLite VFS；未校对 OCR 不自动进索引 |
+| 书架与备份迁移 | `localStorage` 持久化进度/书签/200 字笔记；`pagehaven-reading-backup` JSON 白名单校验迁入迁出 | 单份备份硬限 `5 MiB` / `20,000` 条记录；**不做**云端跨设备账号同步 |
+| 托管预算与发布 | 四端同源构建；R2 上传 + 随机 HTTPS 证明核对 + `If-Match` 条件激活线上 `manifest.json` | ESA 硬上限 `2,000` 文件（业务 ≤ `1,999`）；`github`/`all` 拒收预览部署；`site.config.yaml` 禁止写凭据与示例域 |
+
 ```mermaid
 flowchart LR
   A["data/meta YAML + 台词稿"] --> B["清单校验与 SQLite Wasm 建库"]
@@ -44,6 +53,7 @@ pnpm --filter @gallery/site run preview
 | 导入 LabelPlus / OCR 台词稿 | `pnpm run ingest:labelplus` / `pnpm run ingest:ocr` | [配置与数据契约](docs-site/docs/configuration.md) |
 | 四端静态部署与 R2 不可变发布 | `publish:r2` → `release:prepare` → `deploy:*` → `release:activate` | [多模式与多平台部署](docs-site/docs/deployment.md) |
 | 启动/构建独立 VitePress 文档站 | `pnpm --dir docs-site install --frozen-lockfile && pnpm --dir docs-site run docs:dev` | [源码地图与文档工作流](docs-site/docs/code-map.md) |
+| 交互式查阅 Schema / SDK / 发布 CLI | 查看 `site.config.yaml`、`@gallery/*` 契约与标准调用示例 | [API 与组件参考](docs-site/api-reference/index.md) |
 
 ## 选型与边界 FAQ
 

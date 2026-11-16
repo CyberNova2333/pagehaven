@@ -23,6 +23,7 @@ const routes = [
   '/docs/architecture',
   '/docs/code-map',
   '/docs/changelog',
+  '/api-reference/',
   '/en/',
   '/en/docs/',
   '/en/docs/deployment',
@@ -34,6 +35,7 @@ const routes = [
   '/en/docs/architecture',
   '/en/docs/code-map',
   '/en/docs/changelog',
+  '/en/api-reference/',
 ];
 
 test('文档站：真实构建保留引用内容、静态链接与可查询的本地搜索索引', { timeout: 120_000 }, async (t) => {

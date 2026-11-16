@@ -2,14 +2,16 @@
 
 Pagehaven is a **pure-static comic library, multi-mode reader, and browser-side dialogue search engine** engineered to survive without a backend server, database VM, or ongoing maintenance.
 
-## Scope & Non-Goals
+## Capabilities & Explicit Limits
 
-| Supported in Core | Explicitly Out of Scope |
-| --- | --- |
-| Series / issue / chapter archive with multi-host CDN WebP images | User accounts, comments, login sessions, or server-side rendering |
-| Single-page, long-strip, double-page reader, RTL/LTR, and JSON library backups | Web-based media upload admin panels or VPS runtimes |
-| Client-side SQLite Wasm (`FTS5 trigram` + `LIKE`) search jumping to `#p<n>b<i>` | Auto-publishing unreviewed raw OCR transcripts into search |
-| Single `dist/` output portable across EdgeOne, ESA, GitHub Pages, and Workers | Requiring cloud functions for basic reading or search |
+| Area | What Pagehaven Delivers | Explicit Non-Goals & Hard Bounds |
+| --- | --- | --- |
+| Archive & Reader | Series/issue/chapter catalogs, zero-JS fallback, single/long-strip/double/Comimi modes | No user accounts, login sessions, comments, SSR servers, or online media upload UI |
+| Dialogue Search | 5-step `normalizeText` + SQLite Wasm (`MATCH` >=3 / `LIKE` 2) jumping to `#p<n>b<i>` | Rejects `<2`-char normalized queries; `30 MiB` whole-DB cap; unreviewed OCR excluded |
+| Vault & Chunking | `pagehaven-reading-backup` JSON migration (<= `5 MiB` / `20,000` rows); verified `chunkfetch` SDK | No cloud account sync; `@gallery/core/chunkfetch` is not yet wired to browser SQLite VFS |
+| Static Delivery | Shared `dist/` for EdgeOne, ESA (<= `1,999` files), GitHub Pages, Workers + R2 ETag activation | Rejects `preview` on `github`/`all`; refuses placeholder hosts or embedded secrets |
+
+> Want interactive schemas, Web-standard SDK signatures, and release CLI examples in one view? Jump to the [API & Component Reference](/en/api-reference/).
 
 ## Prerequisites
 

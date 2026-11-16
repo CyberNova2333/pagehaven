@@ -15,6 +15,15 @@ Pagehaven is a **pure-static comic archive, multi-mode reader, and browser-side 
 - **Local Library & Validated JSON Backup**: Reading progress, shelf statuses, and 200-char page notes stay in browser `localStorage`, portable via schema-checked `pagehaven-reading-backup` JSON files (5 MiB / 20,000 records cap).
 - **Portable Multi-Target Immutable Releases**: A single `dist/` output targets EdgeOne, ESA, GitHub Pages, Workers, and legacy Cloudflare Pages, while WebP pages and SQLite artifacts are served from private Cloudflare R2 through CDN hosts with atomic pointer activation.
 
+## Capabilities & Explicit Non-Goals
+
+| Area | What Pagehaven Delivers | Explicit Non-Goals & Hard Bounds |
+| --- | --- | --- |
+| Archive & Reader | One static HTML per chapter readable without JS, single/long-strip/double/Comimi layouts, `#p<n>b<i>` deep links | **No** user accounts, comments, SSR server runtimes, or online media upload portals |
+| Search & Chunking | Deterministic `normalizeText` + SQLite Wasm (`MATCH` >=3 / `LIKE` 2); standalone HTTP Range `chunkfetch` SDK | Rejects `<2`-char normalized queries; `30 MiB` whole-DB cap; `chunkfetch` **not yet wired** to browser VFS; raw OCR drafts excluded |
+| Shelves & Backups | Browser-local progress, bookmarks, 200-char notes, and schema-checked `pagehaven-reading-backup` JSON migration | Enforces `5 MiB` / `20,000`-record backup ceiling; **no** cloud account sync |
+| Static Delivery | Portable single build; private R2 upload + randomized live HTTPS proofs + ETag `If-Match` `manifest.json` flip | ESA hard cap `2,000` files (`<=1,999` app files); rejects `preview` on `github`/`all`; refuses embedded secrets or placeholder domains |
+
 ```mermaid
 flowchart LR
   A["data/meta YAML + Transcripts"] --> B["Manifest + SQLite Wasm Build"]
@@ -44,6 +53,7 @@ This builds the static site and launches Astro preview on `http://localhost:4321
 | Ingest LabelPlus / OCR transcripts | `pnpm run ingest:labelplus` / `pnpm run ingest:ocr` | [Configuration & Data Contracts](docs-site/en/docs/configuration.md) |
 | Multi-target static deploy & R2 release | `publish:r2` → `release:prepare` → `deploy:*` → `release:activate` | [Deployment Matrix](docs-site/en/docs/deployment.md) |
 | Run or build standalone VitePress docs | `pnpm --dir docs-site install --frozen-lockfile && pnpm --dir docs-site run docs:dev` | [Code Map & Docs Workflow](docs-site/en/docs/code-map.md) |
+| Interactive Schema, SDK & Release CLI Reference | Browse `site.config.yaml`, `@gallery/*` contracts, and runnable samples | [API & Component Reference](docs-site/en/api-reference/index.md) |
 
 ## Pre-Adoption FAQ
 

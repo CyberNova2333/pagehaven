@@ -7,17 +7,17 @@ hero:
   tagline: Pure-static Astro manga reader, browser-side SQLite Wasm dialogue search, and portable multi-host delivery backed by private R2.
   actions:
     - theme: brand
-      text: 1. Start & Deploy
+      text: Start & Deploy
       link: /en/docs/
     - theme: alt
-      text: 2. Contracts
+      text: API & Components
+      link: /en/api-reference/
+    - theme: alt
+      text: Contracts & Limits
       link: /en/docs/boundaries
     - theme: alt
-      text: 3. Architecture
+      text: Architecture
       link: /en/docs/architecture
-    - theme: alt
-      text: GitHub Repo
-      link: https://github.com/CyberNova2333/pagehaven
 
 features:
   - title: One HTML per Chapter
@@ -28,14 +28,19 @@ features:
     details: Separates static HTML from CDN-proxied WebP and SQLite artifacts with random deployment proofs and ETag-guarded pointer activation.
 ---
 
-## Quick Entry by Role
+## Capabilities & Explicit Limits
 
-| Your Role & Goal | Recommended Docs Route | Repo Source Guide (`repo-docs/`) |
-| --- | --- | --- |
-| **Site Owner / Operator**: Configure, preview, and deploy to edge static hosts | [Overview & Quick Start](/en/docs/) → [Deployment Matrix](/en/docs/deployment) | `repo-docs/modules/release-pipeline-and-proofs.md` |
-| **Content & Localization Editor**: Author YAML metadata or ingest LabelPlus / OCR scripts | [Config, Data & Client Contracts](/en/docs/configuration) | `repo-docs/modules/data-model-and-normalization.md` |
-| **Frontend / Search Integrator**: Extend themes, reader modes, backups, or search mounts | [Boundaries & Security Model](/en/docs/boundaries) → [Interactions & Extension FAQ](/en/docs/interactions) | `repo-docs/modules/search-db-and-chunkfetch.md` |
-| **Contributor / Reviewer**: Trace a real build run and inspect CI/githook gates | [One Real Run Walkthrough](/en/docs/walkthrough) → [Code Map & Contribution Flow](/en/docs/code-map) | `repo-docs/walkthroughs/one-real-run.md` |
+::: info What Pagehaven Delivers
+- **Serverless Multi-Target Static Publishing**: One `site.config.yaml` SSOT drives Astro 7.4 to compile one static HTML page per chapter portable across EdgeOne, Alibaba Cloud ESA Pages (<=1,999 app files), GitHub Pages, and Cloudflare Workers, paired with private R2 uploads, live HTTPS proof checks, and ETag `If-Match` `manifest.json` activation.
+- **Browser SQLite Wasm Dialogue Search & Progressive Reader**: Deterministic 5-step `normalizeText` + `FTS5 trigram` / `LIKE` search resolves hits to `#p<n>b<i>` speech boxes; the progressive reader offers single-page, O(log N) binary-search long-strip, double-page, 100-chapter TOC shards, and optional Comimi enhancement.
+- **Local Library & Schema-Checked JSON Migration**: Progress, statuses, and 200-char notes live in browser `localStorage` and migrate cleanly via strict `pagehaven-reading-backup` JSON validation (up to 5 MiB / 20,000 records).
+:::
+
+::: warning Explicit Non-Goals & Hard Boundaries
+- **No User Accounts, Comments, or Dynamic Backend**: Never includes authentication, server-side sessions, web-based media uploads, or persistent VPS processes; personal shelves stay browser-local.
+- **Bounded Search Size & Minimum Query Length**: Browser search enforces `db.whole_download_max_bytes` (`30 MiB` default) and rejects queries normalizing to `< 2` characters before fetching SQLite; `@gallery/core/chunkfetch` implements verified HTTP Range primitives, not yet wired into browser SQLite VFS.
+- **Hard Hosting Budgets & Human-Reviewed Search Input**: ESA enforces `2,000` total files / `1,024,000,000 B`; raw `ingest:ocr` drafts never enter production search without `--accept-reviewed`; credentials never enter `site.config.yaml` or client bundles.
+:::
 
 ## Interactive Pipeline Overview
 
@@ -63,9 +68,11 @@ pnpm --filter @gallery/site run preview
 # Preview opens at http://localhost:4321 (pass DATA_DIR=packages/core/test/fixtures/data for sample chapters)
 ```
 
-## Four-Stage Documentation Map
+## Documentation Map
 
-1. **Getting Started & Deployment**: [Overview](/en/docs/) · [Deployment Matrix](/en/docs/deployment) · [Troubleshooting FAQ](/en/docs/faq)
-2. **Contracts & Extension**: [Boundaries & Security](/en/docs/boundaries) · [Config & Data Contracts](/en/docs/configuration) · [Interactions & FAQ](/en/docs/interactions)
-3. **Architecture & Internals**: [One Real Run](/en/docs/walkthrough) · [Subsystems & Architecture](/en/docs/architecture) · [Code Map & Workflow](/en/docs/code-map)
-4. **Releases & Migrations**: [Changelog, Migrations & ADRs](/en/docs/changelog)
+::: tip Jump by Reader Goal
+- **Site Operators & DevOps**: Start with [Overview & Quick Start](/en/docs/) → [Deployment Matrix](/en/docs/deployment), and check [Troubleshooting FAQ](/en/docs/faq);
+- **Schemas, SDKs & CLI Reference**: Open the interactive [API & Component Reference](/en/api-reference/) or inspect [Config & Data Contracts](/en/docs/configuration) and [Boundaries & Security Model](/en/docs/boundaries);
+- **Reader, Search & Internals**: Study [Subsystems & Architecture](/en/docs/architecture), [One Real Run Walkthrough](/en/docs/walkthrough), and [Code Map & Workflow](/en/docs/code-map);
+- **Migrations & Decisions**: Browse [Changelog, Migrations & ADRs](/en/docs/changelog) alongside in-repo `repo-docs/README.md`.
+:::
