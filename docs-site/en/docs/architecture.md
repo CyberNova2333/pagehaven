@@ -44,17 +44,12 @@ flowchart TB
 
 The interactive diagram below traces Pagehaven's four-stage data pipeline (**01 Raw Ingest** → **02 Normalized IR** → **03 Bundle** → **04 Reader Engine**, pan and zoom enabled):
 
-<div class="archify-diagram-card" style="margin: 1.5rem 0; border: 1px solid var(--vp-c-border); border-radius: 12px; overflow: hidden; background: var(--vp-c-bg-soft);">
-  <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; background: var(--vp-c-bg-elv); border-bottom: 1px solid var(--vp-c-border); font-size: 13px;">
-    <span style="font-weight: 600; color: var(--vp-c-text-1);">
-      Pagehaven Comic Pipeline Interactive Diagram
-    </span>
-    <a href="/diagrams/pagehaven-pipeline.html" target="_blank" rel="noreferrer" style="font-size: 12px; color: var(--vp-c-brand-1); text-decoration: none; font-weight: 500;">
-      Open fullscreen ↗
-    </a>
-  </div>
-  <iframe src="/diagrams/pagehaven-pipeline.html" width="100%" height="520px" frameborder="0" style="display: block; border: none;" allowfullscreen loading="lazy"></iframe>
-</div>
+<DiagramFrame
+  src="/diagrams/pagehaven-pipeline.html"
+  title="Pagehaven Comic Pipeline Interactive Diagram"
+  aspect="720 / 652"
+  new-tab-label="Open fullscreen ↗"
+/>
 
 > **Legacy Conceptual Diagram Note**: An earlier draft diagram remains preserved at [`/diagrams/pagehaven-architecture.html`](/diagrams/pagehaven-architecture.html) for legacy asset path continuity; its outdated labels (Vue / IndexedDB / EPUB) have been superseded by the **Astro + SQLite Wasm + R2 + Static Hosts** architecture documented here and in `docs/ARCHITECTURE.md`.
 

@@ -44,17 +44,12 @@ flowchart TB
 
 下方图表基于仓库内置的真实漫画管线交互视图，展示从 **01 原始稿件** 到 **02 规范化 IR**、**03 发布产物** 与 **04 阅读引擎** 的四段流转（支持拖拽平移与缩放）：
 
-<div class="archify-diagram-card" style="margin: 1.5rem 0; border: 1px solid var(--vp-c-border); border-radius: 12px; overflow: hidden; background: var(--vp-c-bg-soft);">
-  <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; background: var(--vp-c-bg-elv); border-bottom: 1px solid var(--vp-c-border); font-size: 13px;">
-    <span style="font-weight: 600; color: var(--vp-c-text-1);">
-      Pagehaven 漫画管线交互全景图
-    </span>
-    <a href="/diagrams/pagehaven-pipeline.html" target="_blank" rel="noreferrer" style="font-size: 12px; color: var(--vp-c-brand-1); text-decoration: none; font-weight: 500;">
-      在新窗口全屏打开 ↗
-    </a>
-  </div>
-  <iframe src="/diagrams/pagehaven-pipeline.html" width="100%" height="520px" frameborder="0" style="display: block; border: none;" allowfullscreen loading="lazy"></iframe>
-</div>
+<DiagramFrame
+  src="/diagrams/pagehaven-pipeline.html"
+  title="Pagehaven 漫画管线交互全景图"
+  aspect="720 / 652"
+  new-tab-label="在新窗口全屏打开 ↗"
+/>
 
 > **历史概念图说明**：仓库中另保留了一份早期概念交互草图 [`/diagrams/pagehaven-architecture.html`](/diagrams/pagehaven-architecture.html) 用于兼容既有静态路径测试，其旧标签（如 Vue / IndexedDB / EPUB）已被本页所述的 **Astro + SQLite Wasm + R2 + 四端静态托管** 架构替代，具体实现请以本页与 `docs/ARCHITECTURE.md` 为准。
 

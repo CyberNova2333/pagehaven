@@ -44,17 +44,12 @@ features:
 
 ## 核心管线交互全景图
 
-<div class="archify-diagram-card" style="margin: 1.5rem 0; border: 1px solid var(--vp-c-border); border-radius: 12px; overflow: hidden; background: var(--vp-c-bg-soft);">
-  <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; background: var(--vp-c-bg-elv); border-bottom: 1px solid var(--vp-c-border); font-size: 13px;">
-    <span style="font-weight: 600; color: var(--vp-c-text-1);">
-      Pagehaven 核心管线：01 原始稿件 → 02 规范化 IR → 03 发布产物 → 04 阅读引擎（支持缩放与平移探查）
-    </span>
-    <a href="/diagrams/pagehaven-pipeline.html" target="_blank" rel="noreferrer" style="font-size: 12px; color: var(--vp-c-brand-1); text-decoration: none; font-weight: 500;">
-      在新窗口全屏打开 ↗
-    </a>
-  </div>
-  <iframe src="/diagrams/pagehaven-pipeline.html" width="100%" height="520px" frameborder="0" style="display: block; border: none;" allowfullscreen loading="lazy"></iframe>
-</div>
+<DiagramFrame
+  src="/diagrams/pagehaven-pipeline.html"
+  title="Pagehaven 核心管线：01 原始稿件 → 02 规范化 IR → 03 发布产物 → 04 阅读引擎（支持缩放与平移探查）"
+  aspect="720 / 652"
+  new-tab-label="在新窗口全屏打开 ↗"
+/>
 
 ## 10 秒本地验证
 
