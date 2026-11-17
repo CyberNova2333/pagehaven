@@ -1,15 +1,15 @@
 <p align="center">
-  <a href="README.md"><img src="docs/assets/readme-zh.svg" alt="切换到简体中文" width="108" height="32" /></a>
-  <a href="README.en.md"><img src="docs/assets/readme-en.svg" alt="English (current)" width="108" height="32" /></a>
-</p>
-
-<p align="center">
   <img src="packages/site/public/favicon.svg" alt="Pagehaven open-book logo" width="72" height="72" />
 </p>
 
 <h1 align="center">Pagehaven · 页间</h1>
 
 <p align="center">Good stories, between the pages.</p>
+
+<p align="center">
+  <a href="README.md"><img src="docs/assets/readme-zh.svg" alt="切换到简体中文" width="108" height="32" /></a>
+  <a href="README.en.md"><img src="docs/assets/readme-en.svg" alt="English (current)" width="108" height="32" /></a>
+</p>
 
 <p align="center">
   <a href="https://pagehaven.cbnv.me/en/">Docs Site</a> · <a href="#quick-start">Quick Start</a> · <a href="#pre-adoption-faq">Pre-Adoption FAQ</a> · <a href="#reading-paths">Reading Paths</a> · <a href="#license--acknowledgements">License &amp; Acknowledgements</a>
