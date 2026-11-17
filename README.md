@@ -1,10 +1,19 @@
 <p align="center">
-  <img src="docs/assets/readme-zh.svg" alt="页间 · Pagehaven" width="420" />
+  <a href="README.md"><img src="docs/assets/readme-zh.svg" alt="简体中文（当前）" width="108" height="32" /></a>
+  <a href="README.en.md"><img src="docs/assets/readme-en.svg" alt="Switch to English" width="108" height="32" /></a>
 </p>
 
-# 页间 · Pagehaven
+<p align="center">
+  <img src="packages/site/public/favicon.svg" alt="页间书页标志" width="72" height="72" />
+</p>
 
-[简体中文](README.md) | [English](README.en.md) · [在线文档站](https://pagehaven.cbnv.me/) · [快速开始](#快速开始) · [选型与边界 FAQ](#选型与边界-faq) · [许可协议](#许可与致谢)
+<h1 align="center">页间 · Pagehaven</h1>
+
+<p align="center">在页间，遇见好故事。</p>
+
+<p align="center">
+  <a href="https://pagehaven.cbnv.me/">在线文档站</a> · <a href="#快速开始">快速开始</a> · <a href="#选型与边界-faq">选型与边界 FAQ</a> · <a href="#阅读路径导航">阅读路径</a> · <a href="#许可与致谢">许可协议</a>
+</p>
 
 页间（Pagehaven）是一套面向连载与归档的**纯静态漫画库、多模式阅读器与浏览器端台词检索引擎**（AGPL-3.0）；它以静态 HTML 产物、外部私有对象存储与边缘 CDN 协同运行，**明确不提供用户系统、评论区、服务端渲染或在线后台上传**。
 
