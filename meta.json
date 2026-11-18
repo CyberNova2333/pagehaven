@@ -60,5 +60,8 @@
       "en": "Static builds, SQLite Wasm dialogue search, and color themes are complete."
     }
   },
+  "additionalTermsConsent": {
+    "CyberNova": true
+  },
   "updatedAt": "2026-11-11"
 }
