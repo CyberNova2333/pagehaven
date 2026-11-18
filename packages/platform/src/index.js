@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // @gallery/platform —— 平台绑定层（CLAUDE.md 铁律 2）。
 //
 // 这里只有纯函数：配置 schema、部署目标与平台配置生成器。真正碰文件系统、跑部署命令的

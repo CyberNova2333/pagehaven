@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 台词检索库的构建与打开（ARCHITECTURE §4 gallery.sqlite）。
 //
 // 为什么放在 core 而不是 scripts：建库只依赖内存模型（Gallery）与 wasm 版 sqlite，没有一行文件

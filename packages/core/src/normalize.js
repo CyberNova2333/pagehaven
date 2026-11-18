@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 台词归一化：data/text 里的 tn 与检索页的查询串走的同一条路（ARCHITECTURE §4、§6）。
 //
 // 为什么是这几步、这个顺序：

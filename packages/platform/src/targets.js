@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 部署目标与静态产物预算的单一注册表。cloudflare 保留为旧 Pages 命令，
 // workers 明确指 Workers Static Assets；all 只包含当前四个主要目标。
 export const DEPLOY_TARGETS = Object.freeze(['cloudflare', 'edgeone', 'github', 'workers', 'esa']);

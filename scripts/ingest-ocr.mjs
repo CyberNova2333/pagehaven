@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 手动 OCR 只产待校对稿；只有显式接受已校对来源时才写 data/text。
 import { ingestOcr, requireOcrChapters } from './lib/ocr.mjs';
 import { loadSiteConfig } from './lib/config.mjs';

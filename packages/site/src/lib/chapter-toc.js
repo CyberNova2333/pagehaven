@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 完整目录只在打开时读取作品索引；HTML 保留静态目录链接，失败不妨碍继续阅读。
 import { createStorageRefresh } from './storage-refresh.js';
 const ID = /^[a-z0-9][a-z0-9-]{0,62}$/;

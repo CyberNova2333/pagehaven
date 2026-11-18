@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // ingest:labelplus —— data/raw/labelplus/<series>/<issue>/<chapter>.txt → data/text/<series>/<issue>/<chapter>.json
 // （ARCHITECTURE §4「LabelPlus 解析」、§5）。薄入口：实现在 lib/ingest-labelplus.mjs，便于测试直接 import。
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 取块层（ARCHITECTURE §6）的汇总导出。只用 fetch / AbortController / crypto.subtle / setTimeout 等
 // Web 标准，浏览器、Worker、Node 22 都能跑；由 packages/core/src/index.js 统一对外挂出。
 //

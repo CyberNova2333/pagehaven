@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 构建页面与维护者预览共用同一套受限外观设置，不接受任意 CSS。
 // 兼容既有配置 ID；三种密度都从 Enterprise 色板派生，不增加平台能力。
 export const THEMES = Object.freeze({

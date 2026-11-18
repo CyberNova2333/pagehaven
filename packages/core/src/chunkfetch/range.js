@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 取一个字节区间，且只在拿到的字节「恰好是请求的那些」时才返回（ARCHITECTURE §6「取块」）。
 //
 // 这里的每一条拒绝都对应一种 CDN 上真实发生过的静默损坏：

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 读 data/meta + data/text，校验，组装成内存模型。构建期唯一的数据入口。
 //
 // 一次把所有问题列全再抛：维护者在手机上看构建日志，来回改一条报一条太折磨。

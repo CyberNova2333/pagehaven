@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 界面使用宿主站点标识，第三方版权与许可始终随静态产物保留。
 export function readerBrandOptions(siteTitle, siteLogo = '/favicon.svg') {
   return {

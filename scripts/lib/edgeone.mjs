@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // EdgeOne Pages API 的只读校验（纯函数 + fetch，供 deploy.mjs 在部署前调用）。
 //
 // 为什么需要这一层：CLI 的 `makers deploy -n` 只按**项目名**解析（源码里 DescribePagesProjects

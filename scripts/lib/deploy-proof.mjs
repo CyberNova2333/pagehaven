@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 只交给本次目标上传的随机证明；不包含账号、项目名、地址或凭据。
 import { randomBytes } from 'node:crypto';
 import { TARGET_CAPABILITIES } from '@gallery/platform';

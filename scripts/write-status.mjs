@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // status —— 由发布流水线（.cnb.yml 的 web_trigger_release）在末尾调用，写 STATUS.md（铁律 10：不手改）。
 //
 // 只收集事实，渲染在 scripts/lib/status.mjs（纯函数）。收集的东西：

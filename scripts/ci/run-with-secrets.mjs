@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 把 GitHub Secret 中的 YAML/JSON 对象注入单个子进程，不打印或落盘秘密。
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';

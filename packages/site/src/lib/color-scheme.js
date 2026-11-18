@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 /**
  * 自包含以便构建为 head 中的同步脚本，在正文出现前恢复个人配色。
  * 不捕获模块变量；同一实现负责首屏、控件与系统变化，避免两套偏好规则漂移。

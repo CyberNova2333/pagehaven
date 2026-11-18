@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // CNB 的 README 章节参数与标题生成的锚点一致：小写、空白转连字符、去除标点。
 // 只检查本页的 HTML href 和 Markdown 内联链接，不把示例代码当成正文。
 export function checkReadmeLinks(markdown, file) {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // LabelPlus 翻译稿（.txt）解析器，以及从解析结果到 data/text 一话 JSON 的转换（ARCHITECTURE §4）。
 //
 // 文件长这样（版本 1,0）：

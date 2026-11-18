@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // data/meta 与 data/text 的 schema（ARCHITECTURE §4）。zod 是纯 JS，浏览器里也能跑。
 //
 // 这里的每条约束都对应站点或检索的一个假设：id 是 URL 段与图片 key 的一段，所以只许

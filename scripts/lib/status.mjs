@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // STATUS.md 的渲染（纯函数）。
 //
 // STATUS.md 是弃维护后别人接手的入口（铁律 10）：从它要能知道线上是哪个版本、部署在哪、

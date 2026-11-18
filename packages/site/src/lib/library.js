@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 个人书架只保存作品状态；现有阅读进度仍由阅读器独立维护。
 export const LIBRARY_PREFIX = 'gallery:library:';
 export const READING_STATUSES = [

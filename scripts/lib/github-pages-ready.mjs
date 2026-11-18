@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 推 gh-pages 只证明产物已接收；生产启用前还要核对该提交的 Pages 构建已完成。
 const API_ROOT = 'https://api.github.com';
 const API_VERSION = '2026-03-10';

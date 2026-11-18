@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // sitemap.xml / sitemap index / robots.txt / IndexNow key 文件的生成逻辑（纯函数为主）。
 //
 // 为什么抽出来：「站点有哪些 URL」这个答案有三个消费者——build:sitemap 写文件、向搜索引擎推送

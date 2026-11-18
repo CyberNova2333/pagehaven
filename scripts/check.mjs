@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // `pnpm run check` —— 提交前必过的守卫（CLAUDE.md 铁律 4）。
 //
 // 守的每一条都对应一条铁律或一个平台上限，数字的来历见 docs/ARCHITECTURE.md §2「预算」：

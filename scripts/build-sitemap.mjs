@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // build:sitemap —— dist/sitemap.xml（超过 45 000 条时拆成 sitemap index + sitemap-<n>.xml）、dist/robots.txt，
 // 以及 seo.indexnow_key 非空时的 dist/<key>.txt。
 //

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // push:search —— 页面上线之后，主动把本次新增的页面告诉搜索引擎（IndexNow）。
 //
 // 在发布流水线写 STATUS 的那一步之后跑（部署都完成之后）：推送只对已经能抓到的页面有意义，

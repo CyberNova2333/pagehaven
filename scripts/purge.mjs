@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // purge —— 清 CDN 缓存。救火工具，可选：修图走「新 key + 重建」，不靠它（ARCHITECTURE §7）。
 //
 // EdgeOne 走腾讯云 API 3.0 的 CreatePurgeTask（服务 teo，版本 2022-09-01），鉴权是

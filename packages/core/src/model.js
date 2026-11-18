@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 由校验过的 meta + text 组装成站点、索引、DB 构建共用的内存模型。
 //
 // 模型是「纯数据」：只有字符串、数字与数组，没有类、没有方法、没有循环引用，所以能直接

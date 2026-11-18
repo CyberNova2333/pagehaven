@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 import { createLibraryStore, readReadingProgress, LIBRARY_PREFIX, READING_STATUSES } from './library.js';
 import { createStorageRefresh } from './storage-refresh.js';
 

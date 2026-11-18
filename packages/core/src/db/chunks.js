@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 检索库的分块摘要清单（ARCHITECTURE §6 校验层）。
 //
 // 浏览器端按 chunkSize 对齐取块，每块取回来先比 sha256 再交给 sqlite；整份 sha256 给「整份下载」

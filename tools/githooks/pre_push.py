@@ -88,7 +88,7 @@ except ImportError:
 CUTOFF_EPOCH = 1788393600   # 2026-09-03，本仓库钩子上线时刻
 MAX_COMMITS = 200                 # 单次推送最多查这么多，超出的不查（护栏不是审计）
 
-ALLOW = (re.compile(r"^main$"), re.compile(r"^hotfix/"), re.compile(r"^surgery/"))
+ALLOW = (re.compile(r"^main$"), re.compile(r"^docs-site$"), re.compile(r"^hotfix/"), re.compile(r"^surgery/"))
 # 具名临时例外加在上表末尾，且必须同步加进 tools/check-branch-hygiene.py 的 ALLOW，
 # 注明批准人与到期日；合并删除后立刻移除。
 CI_SHAPED = (

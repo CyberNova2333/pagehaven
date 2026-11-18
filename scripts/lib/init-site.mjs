@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 初始化只编辑既有配置；平台 schema、发布目标和生成器继续各自负责原来的职责。
 import { isDeepStrictEqual, parseArgs } from 'node:util';
 import { randomUUID } from 'node:crypto';

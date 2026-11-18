@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // publish:r2 —— 只上传本次版本的不可变资源，不读写生产 manifest.json。
 //
 // 库、分块摘要、归档与图片只允许「不存在时创建」；同内容重跑跳过，不同内容必须换版本号。

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // 可选分页组件只负责呈现；原阅读器仍统一管理模式、hash 与首页读取的进度。
 import { FAVORITES_PREFIX, getReaderBookmarkStore } from './bookmarks.js';
 import { readerBrandOptions, applyReaderBranding } from './reader-branding.js';

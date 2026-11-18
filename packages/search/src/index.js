@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
 // @gallery/search —— 浏览器端台词检索（sqlite-wasm 读库）+ 页面接线。
 //
 // 只用 Web 标准 API（铁律 1）：fetch / Web Crypto / WebAssembly。库经 CDN 整份下载并按

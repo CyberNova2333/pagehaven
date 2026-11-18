@@ -34,12 +34,12 @@ test('检查流水线：文档安装、moderate 审计与统一测试不能漏�
 
 test('文档 Pages：只能由手动事件触发发布', () => {
   assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
-  assert.equal(workflow.permissions.contents, 'read');
+  assert.equal(workflow.permissions.contents, 'write');
   assert.equal(workflow.permissions.pages, 'write');
   assert.equal(workflow.permissions['id-token'], 'write');
 });
 
-test('文档 Pages：独立依赖安装和构建成功后才上传正确产物', () => {
+test('文档 Pages：独立依赖安装和构建成功后才发布文档分支与 Pages 产物', () => {
   const build = workflow.jobs.build;
   assert.equal(build['continue-on-error'], undefined);
   const steps = build.steps;
@@ -47,12 +47,17 @@ test('文档 Pages：独立依赖安装和构建成功后才上传正确产物',
   assert.equal(setup?.with?.package_json_file, 'docs-site/package.json');
   const install = steps.findIndex((step) => step.run === 'pnpm --dir docs-site install --frozen-lockfile');
   const compile = steps.findIndex((step) => step.run === 'pnpm --dir docs-site run docs:build');
+  const branchPush = steps.findIndex((step) => step.name === '发布静态产物到 docs-site 分支');
   const upload = steps.findIndex((step) => step.uses?.startsWith('actions/upload-pages-artifact@'));
-  assert.ok(install >= 0 && install < compile && compile < upload, '必须按安装、构建、上传顺序执行，不吞掉失败');
-  for (const index of [install, compile, upload]) {
+  assert.ok(
+    install >= 0 && install < compile && compile < branchPush && branchPush < upload,
+    '必须按安装、构建、发布文档分支、上传顺序执行，不吞掉失败',
+  );
+  for (const index of [install, compile, branchPush, upload]) {
     assert.equal(steps[index].if, undefined, '关键步骤不能条件跳过');
     assert.equal(steps[index]['continue-on-error'], undefined, '关键步骤失败必须终止');
   }
+  assert.match(steps[branchPush].run, /refs\/heads\/docs-site/);
   assert.equal(steps[upload].with.path, 'docs-site/.vitepress/dist');
 });
 
