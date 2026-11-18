@@ -44,7 +44,6 @@ import time
 # 特殊研究工作必须由维护者明确授权、具名登记并设置寿命上限。
 ALLOW = (
     re.compile(r"^main$"),
-    re.compile(r"^docs-site$"),
     re.compile(r"^hotfix/"),
     re.compile(r"^surgery/"),
     # 具名临时例外加在这里，并同步加进 tools/githooks/pre_push.py 的 ALLOW；
