@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 // publish:r2 的上传计划（纯函数）：本次发布要往对象存储放哪些对象、各用什么 key / Content-Type /
 // Cache-Control。计算不碰文件系统与网络——脚本负责列目录、读文件、上传，这里只负责「决定」，
 // 所以 key 与缓存头这些文档约定（ARCHITECTURE §4、§7）能直接单测，不用真连存储。

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 // @gallery/core —— 数据模型、解析器、归一化、DB 构建、取块层（CLAUDE.md 铁律 1：只用 Web 标准 API）。
 //
 // 子路径导出（package.json 的 "./*"）同样可用：只要模型与 schema 的调用方可以 import

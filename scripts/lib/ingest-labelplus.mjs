@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 // ingest:labelplus 的实现：data/raw/labelplus 里的 LabelPlus 稿 → data/text 的一话 JSON（ARCHITECTURE §4、§5）。
 //
 // 约定：原始稿放在 DATA_DIR/raw/labelplus/<series>/<issue>/<chapter>.txt——路径本身就是 chapter key，

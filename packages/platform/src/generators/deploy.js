@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 // 部署控制文件不属于公开静态资源。build:config 生成不含项目标识的模板；
 // deploy 在临时目录中用已校验 secrets 注入 name 和静态产物的绝对路径。
 // 默认路径相对 packages/platform/generated/，不依赖执行命令时的工作目录。

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 // push:search 的纯逻辑：哪些页面、哪些是新的、怎么分批、IndexNow 的请求长什么样、回应怎么读。
 //
 // 脚本（scripts/seo-push.mjs）只做接线：读文件、发请求、打日志、定退出码；「决定」全在这里，

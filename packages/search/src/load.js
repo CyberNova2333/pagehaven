@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and ADDITIONAL_TERMS.zh-CN.md; ref: ADDITIONAL_TERMS.en.md).
+// This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 // 优先使用站点构建时固定的检索库版本，避免旧页面查询到新版本的数据。
 // 未提供 release 的旧调用方仍可读 CDN manifest；每个源都须先通过元数据校验。
 // 整份下载仅在预算内可用，读取流时再次限长，最后验 sha256 才交给 sqlite。
