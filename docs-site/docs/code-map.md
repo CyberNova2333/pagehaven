@@ -10,7 +10,7 @@
 | `packages/platform/` | 配置校验、5 目标能力注册与托管规则生成 | `src/site-config.js`、`src/targets.js`、`src/deploy-name.js`、`src/generators/`、`generated/` |
 | `packages/search/` | 浏览器端检索库加载与台词查询接线 | `src/load.js`、`src/query.js`、`src/mount.js` |
 | `packages/site/` | Astro 7.4 静态漫画站、阅读器与本地书架 | `astro.config.mjs`、`src/layouts/Base.astro`、`src/pages/`、`src/lib/`、`public/` |
-| `scripts/` | 构建编排、校验检查、导入与多端发布脚本 | `build-*.mjs`、`check.mjs`、`check-data.mjs`、`init-site.mjs`、`customize.mjs`、`ingest-*.mjs`、`publish-r2.mjs`、`deploy.mjs`、`release.mjs`、`seo-push.mjs`、`docs-dev.mjs`、`ci/{run-with-secrets,git-signing,release-writeback}.mjs` |
+| `scripts/` | 构建编排、校验检查、导入与多端发布脚本 | `build-*.mjs`、`check.mjs`、`check-data.mjs`、`init-site.mjs`、`customize.mjs`、`ingest-*.mjs`、`publish-r2.mjs`、`deploy.mjs`、`release.mjs`、`seo-push.mjs`、`docs-dev.mjs`、`ci/{git-signing,release-writeback}.mjs` |
 | `scripts/lib/` | 纯逻辑单测模块与 CI 策略校验 | `manifest.mjs`、`deploy-plan.mjs`、`deploy-budget.mjs`、`deploy-proof.mjs`、`deploy-ready.mjs`、`github-pages-publish.mjs`、`fetch-signal.mjs`、`redact.mjs`、`pipeline-policy.mjs`、`readme-links.mjs`、`static-output.mjs`、`pnpm-runner.mjs` |
 | `data/` | 漫画元数据、台词层与原始翻译/OCR 稿（模板默认空） | `meta/`、`text/`、`raw/labelplus/`、`raw/ocr/` |
 | `docs/` | 仓库硬引用核心架构归档 | `docs/ARCHITECTURE.md`（由 `check.mjs` 与 `placeholder.mjs` 强引用，必须保留） |

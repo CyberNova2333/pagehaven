@@ -368,3 +368,21 @@ Synced through 07bbc3e8dfc8da4d5c316e66ac242d737633d812；此锚点标识基础�
 - 未执行真实 Cloudflare R2 / EdgeOne / ESA / Workers / GitHub Pages 云端发布或部署。
 
 Synced through 77ccab688f5348d8c04db6317c9490520bc824f6；此锚点对应基线提交，上述改动与验证记录待分批提交的工作树状态。
+
+## 原生 GitHub Actions Secrets / Variables / Environments 与工作流安全加固（2026-11-20 22:24 CST）
+
+移除原 CNB 密钥仓库遗留的 `PUBLISH_SECRETS_YML` / `DEPLOY_SECRETS_YML` 整包 Secret 与 `scripts/ci/run-with-secrets.mjs`（含对应测试与孤立的 `tools/notify-mail.sh`），改为纯原生 GitHub Actions 配置：
+
+- **原生环境与最小授权注入**：`.github/workflows/release.yml` 作业绑定 `environment: ${{ inputs.deploy_env }}`（`production` / `preview`），通过步骤级 `env:` 按阶段注入独立 Secrets（凭据）与 `vars.* || secrets.*` Variables（ID/域名/项目名），`GITHUB_PAGES_REPO` 默认回退 `github.repository`（同仓库时 `GITHUB_PAGES_TOKEN` 回退 `github.token`），并在构建、检查步骤完全隔离发布凭据。
+- **预检与策略守卫同步**：`scripts/lib/release.mjs`（`validateReleaseSecrets`）、`scripts/release.mjs` 与 `scripts/ci/git-signing.mjs` 改为直接校验/清理原生环境变量；`scripts/lib/pipeline-policy.mjs` 强制检查 `release.yml` 环境绑定、按步骤执行 `pnpm run deploy:<target>` / `verify:manifest` / `release:prepare` / `publish:r2` / `release:activate` / `status`，拒绝构建步骤注入 Secrets 或残留旧包装器，并将所有手动流 Action 固定到 40 位 commit SHA。
+- **权限拆分与只读加固**：`.github/workflows/docs-pages.yml` 收紧顶层为 `contents: read`，按作业拆分 `build`（`contents: read` + `pages: read`、`persist-credentials: false`）与 `deploy`（`pages: write` + `id-token: write`）；同步更新 `CONTRIBUTING.md`、`docs/ARCHITECTURE.md`、`docs-site/`（并避免 Vue 模板误解析双花括号）、`repo-docs/` 及对应测试。
+
+验证（于本地工作树执行）：
+- `pnpm run build`、`DEPLOY_TARGET=all pnpm run check`、`pnpm --dir docs-site run docs:build` 均退出 0；
+- `pnpm test`：退出 0（776 通过、0 失败、0 跳过）；
+- `pnpm run test:docs`：退出 0（2 通过、0 失败）；
+- `python3 .github/scripts/sync_assets_licenses.py github --check`：退出 0（0 待新增）；
+- `python3 -m unittest discover -s tools/test -v`：退出 0（25 通过、0 失败）；
+- 未执行真实 Cloudflare R2 / EdgeOne / ESA / Workers / GitHub Pages 云端发布或部署。
+
+Synced through d1f7061e40129283f3f00e4a08e32c8ff7ece94b；工作树包含未提交的工作流与文档同步改动（按当前人类指令暂不提交/推送）。

@@ -124,7 +124,7 @@ push 到 main
  └── 归档分支（archive.yml）：archive/<分支> tag → 核对 → 删分支
 ```
 
-GitHub 发布使用仓库 Actions secrets 中的 `PUBLISH_SECRETS_YML`、`DEPLOY_SECRETS_YML`（分别为发布、部署 YAML/JSON 对象）与 `RELEASE_SIGNING_KEY`（GitHub 专用 Ed25519 SSH 签名私钥，用于 `gh-pages` 推送及 `STATUS.md` / `data/text` 签名写回）；辅助脚本仅在对应子进程合并或临时写入密钥，不打印或持久落盘，普通构建和其他步骤不可见。OCR 草稿与写回内容在 GitHub 保存为工作流工件，成功及失败写回仍只允许 `data/text` 与 `STATUS.md`（先上传工件再以 `Generated-by: Pagehaven release` 签名写回，不借助 `[skip-hooks]`）。
+GitHub 发布在 `.github/workflows/release.yml` 绑定原生 `environment: ${{ inputs.deploy_env }}`（`production` / `preview`），按步骤最小授权注入独立 GitHub Actions Secrets（`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`、`CLOUDFLARE_API_TOKEN`、`EDGEONE_API_TOKEN`、`ESA_ACCESS_KEY_ID`、`ESA_ACCESS_KEY_SECRET`、`RELEASE_SIGNING_KEY` 等，跨仓库推送 Pages 时再配 `GITHUB_PAGES_TOKEN`，同仓库自动回退 `github.token`）与非机密 Variables（`R2_ACCOUNT_ID`、`R2_BUCKET`、`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_WORKER_NAME`、`WORKERS_DEPLOY_URL`、`CLOUDFLARE_PREVIEW_WORKER_NAME`、`WORKERS_PREVIEW_DEPLOY_URL`、`EDGEONE_PROJECT_ID`、`EDGEONE_PROJECT_NAME`、`ESA_PROJECT_NAME`、`ESA_DEPLOY_URL`、`ESA_PREVIEW_IP`、`GITHUB_PAGES_REPO` 等，均兼容从 Secrets 回退读取），`RELEASE_SIGNING_KEY`（GitHub 专用 Ed25519 SSH 签名私钥）仅在 `deploy:github` 与签名写回步骤提供、不打印或持久落盘，普通构建与检查步骤完全隔离。OCR 草稿与写回内容在 GitHub 保存为工作流工件，成功及失败写回仍只允许 `data/text` 与 `STATUS.md`（先上传工件再以 `Generated-by: Pagehaven release` 签名写回，不借助 `[skip-hooks]`）。
 
 - `last-green` 是稳定锚点：`git checkout last-green` 立刻回到最近一次全绿；
 - 构建 / 发布 / 部署**只手动**；`crontab:` 一律禁止（CLAUDE.md 铁律 6）；

@@ -52,17 +52,17 @@ Pagehaven 把“业务站点静态输出”与“大体积媒体/检索库”彻
 | `CHAPTERS` / `LABELPLUS_PAGES` | 逗号分隔章节 key；`auto` \| `number` \| `sequence` | 控制 `ingest:labelplus` 与 `ingest:ocr` 范围与页码映射 |
 | `INDEXNOW_ENDPOINT` | `https://api.indexnow.org/indexnow` | 覆盖 IndexNow 推送端点（测试或代理使用） |
 
-### CI 机密凭据（严禁写入仓库或前端代码）
+### CI 机密凭据与环境配置（严禁写入仓库或前端代码）
 
-| 用途范围 | 必需环境变量 | 说明与注入方式 |
-| --- | --- | --- |
-| 对象存储发布（R2） | `R2_ACCOUNT_ID`、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`、`R2_BUCKET` | 仅在 `publish:r2`、`release:*`、`status` 阶段通过 CI secrets 注入 |
-| Cloudflare Workers / Pages | `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_WORKER_NAME`、`WORKERS_DEPLOY_URL`（预览另需 `CLOUDFLARE_PREVIEW_WORKER_NAME`） | 经 `run-with-secrets.mjs` 注入单个子进程 |
-| EdgeOne Pages | `EDGEONE_API_TOKEN`、`EDGEONE_PROJECT_ID`、`EDGEONE_PROJECT_NAME` | `deploy.mjs` 先按项目 ID 核对唯一项目名，CLI 令牌经 `EDGEONE_PAGES_API_TOKEN` 环境变量传入（不走命令行明文） |
-| 阿里云 ESA Pages | `ESA_ACCESS_KEY_ID`、`ESA_ACCESS_KEY_SECRET`、`ESA_PROJECT_NAME`、`ESA_DEPLOY_URL` | `esa-cli@1.0.13` 搭配 `--no-preview`，预览验证可额外传测验 IP（如 `ESA_STAGING_IP` 等内部参数以 `deploy-ready` 为准） |
-| GitHub Pages | `GITHUB_PAGES_REPO`、`GITHUB_PAGES_TOKEN`、`RELEASE_SIGNING_KEY` | 校验 `.nojekyll`、`404.html`、`index.html` 后以 SSH 签名提交推至 `gh-pages` |
+| 用途范围 | GitHub Actions Secrets（机密） | GitHub Actions Variables（非机密，亦兼容 Secrets 回退） | 说明与最小注入范围 |
+| --- | --- | --- | --- |
+| 对象存储发布（R2） | `R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY` | `R2_ACCOUNT_ID`、`R2_BUCKET`、`R2_ENDPOINT`（可选） | 仅注入 `release:check`、`verify:manifest`、`release:prepare`、`publish:r2`、`release:activate` 与 `status` 步骤 |
+| Cloudflare Workers / Pages | `CLOUDFLARE_API_TOKEN` | `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_WORKER_NAME`、`WORKERS_DEPLOY_URL`（`workers` 预览另需 `CLOUDFLARE_PREVIEW_WORKER_NAME`、`WORKERS_PREVIEW_DEPLOY_URL`） | 仅注入 `deploy:workers` / `deploy:cloudflare` 及 preflight 步骤 |
+| EdgeOne Pages | `EDGEONE_API_TOKEN` | `EDGEONE_PROJECT_ID`、`EDGEONE_PROJECT_NAME`、`EDGEONE_API_REGION`（可选，默认 `china`） | `deploy.mjs` 先按项目 ID 核对唯一项目名，CLI 令牌经 `EDGEONE_PAGES_API_TOKEN` 环境变量传入（不走命令行明文） |
+| 阿里云 ESA Pages | `ESA_ACCESS_KEY_ID`、`ESA_ACCESS_KEY_SECRET` | `ESA_PROJECT_NAME`、`ESA_DEPLOY_URL`（预览另需 `ESA_PREVIEW_IP`） | `esa-cli@1.0.13` 搭配 `--no-preview`，预览通过 `deploy-ready` 指定测试 IP 连接校验 |
+| GitHub Pages 与写回签名 | `RELEASE_SIGNING_KEY`、`GITHUB_PAGES_TOKEN`（同仓库可省略，自动回退 `github.token`） | `GITHUB_PAGES_REPO`（可选，默认 `github.repository`） | 校验 `.nojekyll`、`404.html`、`index.html` 后以 SSH 签名提交推至 `gh-pages`，并在发布末签名写回 `STATUS.md` / `data/text` |
 
-> GitHub Actions 发布入口配置在 `.github/workflows/release.yml`，使用仓库 Secret `PUBLISH_SECRETS_YML` / `DEPLOY_SECRETS_YML`（YAML/JSON 标量键值对象）及 `RELEASE_SIGNING_KEY`（用于 `gh-pages` 与 `STATUS.md` / `data/text` 签名写回的专用 Ed25519 私钥）。**绝不可在任何配置文件、日志或文档中打印或保存真实凭据。**
+> GitHub Actions 发布入口配置在 `.github/workflows/release.yml`，作业原生绑定 `environment`（与 `inputs.deploy_env` 联动：`production` / `preview`），按步骤粒度最小授权注入上述独立 Secrets 与 Variables，构建与检查步骤均不接触发布凭据。**绝不可在任何配置文件、日志或文档中打印或保存真实凭据。**
 
 ## 生产上线前核对清单
 

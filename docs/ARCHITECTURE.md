@@ -138,7 +138,7 @@ Comimi 原生仅支持单页与双页；条漫、文字层和 bbox 高亮继续�
 此时沿用原阅读器。图片仍按既有方式加载，这项功能不提供整站离线阅读。
 
 仓库默认提供空内容模板与示例域名；三平台均需自行配置目标，生产发布拒绝示例站点及图片域名。
-发布按钮通过 GitHub Actions secrets `PUBLISH_SECRETS_YML`、`DEPLOY_SECRETS_YML` 注入标量凭据，生产启用还需配置 `RELEASE_SIGNING_KEY`（Ed25519 SSH 签名私钥）；构建前由 `release:check --require-secrets` 预检。检查与归档不再依赖外部邮件密钥。
+发布按钮通过 GitHub Actions 原生 `environment: ${{ inputs.deploy_env }}`（`production` / `preview`）与按步骤最小授权注入的独立 Secrets（凭据类）及 Variables（非机密 ID/域名/地址，兼容 `vars.X || secrets.X`）传入环境参数，生产启用还需配置 `RELEASE_SIGNING_KEY`（Ed25519 SSH 签名私钥）；构建前由 `release:check --require-secrets` 预检。检查与归档不再依赖外部邮件密钥。
 密钥变量：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID`
 `R2_SECRET_ACCESS_KEY` `R2_BUCKET` `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID` `EDGEONE_API_TOKEN`
 `EDGEONE_PROJECT_ID`（**项目 ID**，形如 `makers-…`，是权威定位）、`EDGEONE_PROJECT_NAME`（只作 CLI 的
@@ -631,10 +631,10 @@ OCR 草稿通过工作流工件保留，可在浏览器下载校对；发布不�
 目录页使用本地打包的 Anime.js 短入场，减少动效时跳过，漫画坐标、文字层、分页及无脚本阅读不受影响。
 字体与 MIT/OFL 许可随静态产物提供，不增加外部字体请求或三平台服务依赖。本段不表示已发布。
 
-- 2026-11-20 收敛至 GitHub Actions 单一工作流与签名发布链。移除独立构建平台流水线配置，
-  `pipeline-policy.mjs` 直接审计 `.github/workflows/*.yml`，`readme-links.mjs` 按 GitHub 规则校验标题锚点。
-  `run-with-secrets.mjs` 禁止密钥对象覆盖运行器或发布控制变量；`release:check --require-secrets` 在构建前核对
-  `PUBLISH_SECRETS_YML`、`DEPLOY_SECRETS_YML` 与生产签名私钥 `RELEASE_SIGNING_KEY`。`gh-pages` 推送（`github-pages-publish.mjs`）
+- 2026-11-20 收敛至 GitHub Actions 单一工作流与签名发布链。移除独立构建平台流水线配置及旧版 YAML 密钥包，
+  `release.yml` 作业绑定原生 `environment: ${{ inputs.deploy_env }}` 并通过步骤级 `env:` 最小授权注入独立 Secrets 与 Variables；
+  `pipeline-policy.mjs` 直接审计 `.github/workflows/*.yml`（含 Action SHA 固定、最小权限与环境变量隔离），`readme-links.mjs` 按 GitHub 规则校验标题锚点；
+  `release:check --require-secrets` 在构建前按目标核对直接环境变量与生产签名私钥 `RELEASE_SIGNING_KEY`。`gh-pages` 推送（`github-pages-publish.mjs`）
   与发布写回（`release-writeback.mjs`）均使用临时 Ed25519 SSH 签名密钥且不强推、不使用 `[skip-hooks]`，写回前先保存工作流工件。
   本地 `tools/agent-guard.py` 改为只读核对 `core.hooksPath`，`tools/install_hooks.py` 拒绝覆盖既有钩子，
   `tools/githooks/pre_push.py` 改用 GitHub Actions `checks.yml` 状态判定红灯并通过 `_generated.py` 核验签名写回提交。

@@ -34,7 +34,7 @@
 ## 提交、署名和内容卫生
 
 - Conventional Commits：`type(scope): 中文描述`，允许 feat/fix/refactor/docs/test/chore/ci/perf/build。一主题一提交，写明为什么；行为/构建/部署/缓存/schema 变更正文以 `文档:` 说明同步或不影响。
-- 作者是实际执笔的人，没有默认值，不确定先确认；Agent 只在末尾完整 `Co-authored-by: Name <email>` 署名。已登记：Codex <noreply@openai.com>、Claude <noreply@anthropic.com>、Kimi <noreply@moonshot.cn>、DeepSeek <noreply@deepseek.com>；新 Agent 首次贡献时登记实际通用名。
+- 作者是实际执笔的人，没有默认值，不确定先确认；Agent 只在末尾完整 `Co-authored-by: Name <email>` 署名。已登记：Codex <noreply@openai.com>、Claude <noreply@anthropic.com>、Kimi <noreply@moonshot.cn>、DeepSeek <noreply@deepseek.com>、gemini-code-assist <200291788+gemini-code-assist@users.noreply.github.com>；新 Agent 首次贡献时登记实际通用名。
 - 非初始提交必须 SSH 签名，不使用 Agent 通用签名密钥；生成密钥只向人类交公钥，私钥不外传。发布工作流写回 STATUS.md / data/text 使用专用 RELEASE_SIGNING_KEY 签名并遵循 Generated-by: Pagehaven release 窄例外，不以 CI 机器人代作作者。
 - 不改既有提交作者/署名，不写模型档位/版本、会话链接/标记、凭据及其可识别形式、私库名、内部域名/端点/主机或分发细节；外部内容只用中性功能称呼。禁止向 Agent 命名分支推送。
 - 保留原有钩子与分支/红灯闸门，不改 Git 配置或绕过钩子。文档/Agent 专项维护也需守住原项目安全和平台约束。

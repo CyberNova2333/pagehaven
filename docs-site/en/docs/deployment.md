@@ -47,17 +47,17 @@ Pagehaven decouples static site hosting from large binary storage: **one shared 
 | `CHAPTERS` / `LABELPLUS_PAGES` | Comma-separated chapter keys; `auto` \| `number` \| `sequence` | Scopes `ingest:labelplus` / `ingest:ocr` chapters and page mapping |
 | `INDEXNOW_ENDPOINT` | `https://api.indexnow.org/indexnow` | Overrides IndexNow push endpoint |
 
-### CI Secrets (Never Committed or Logged)
+### CI Secrets & Environment Config (Never Committed or Logged)
 
-| Scope | Required Secrets | Delivery Mechanism |
-| --- | --- | --- |
-| Private R2 Storage | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Injected during `publish:r2`, `release:*`, and `status` |
-| Cloudflare Workers / Pages | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_WORKER_NAME`, `WORKERS_DEPLOY_URL` (`CLOUDFLARE_PREVIEW_WORKER_NAME` for preview) | Passed via `run-with-secrets.mjs` to child processes only |
-| EdgeOne Pages | `EDGEONE_API_TOKEN`, `EDGEONE_PROJECT_ID`, `EDGEONE_PROJECT_NAME` | Project name verified against ID before CLI runs with `EDGEONE_PAGES_API_TOKEN` |
-| Aliyun ESA Pages | `ESA_ACCESS_KEY_ID`, `ESA_ACCESS_KEY_SECRET`, `ESA_PROJECT_NAME`, `ESA_DEPLOY_URL` | `esa-cli@1.0.13 --no-preview` |
-| GitHub Pages | `GITHUB_PAGES_REPO`, `GITHUB_PAGES_TOKEN`, `RELEASE_SIGNING_KEY` | Baseline checked before SSH-signed commit push to `gh-pages` |
+| Scope | GitHub Actions Secrets | GitHub Actions Variables (falls back to Secrets if unset) | Step Isolation |
+| --- | --- | --- | --- |
+| Private R2 Storage | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ENDPOINT` (optional) | Injected only into `release:check`, `verify:manifest`, `release:prepare`, `publish:r2`, `release:activate`, and `status` steps |
+| Cloudflare Workers / Pages | `CLOUDFLARE_API_TOKEN` | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_WORKER_NAME`, `WORKERS_DEPLOY_URL` (`CLOUDFLARE_PREVIEW_WORKER_NAME`, `WORKERS_PREVIEW_DEPLOY_URL` for preview) | Injected only into `deploy:workers` / `deploy:cloudflare` and preflight steps |
+| EdgeOne Pages | `EDGEONE_API_TOKEN` | `EDGEONE_PROJECT_ID`, `EDGEONE_PROJECT_NAME`, `EDGEONE_API_REGION` (optional, default `china`) | Project name verified against ID before CLI runs with `EDGEONE_PAGES_API_TOKEN` |
+| Aliyun ESA Pages | `ESA_ACCESS_KEY_ID`, `ESA_ACCESS_KEY_SECRET` | `ESA_PROJECT_NAME`, `ESA_DEPLOY_URL` (`ESA_PREVIEW_IP` for preview) | `esa-cli@1.0.13 --no-preview` |
+| GitHub Pages & Signed Writeback | `RELEASE_SIGNING_KEY`, `GITHUB_PAGES_TOKEN` (optional for same-repo pushes; falls back to `github.token`) | `GITHUB_PAGES_REPO` (optional; defaults to `github.repository`) | Baseline checked before SSH-signed commit push to `gh-pages` and signed `STATUS.md` / `data/text` writeback |
 
-> The GitHub Actions release workflow (`.github/workflows/release.yml`) injects `PUBLISH_SECRETS_YML` and `DEPLOY_SECRETS_YML` (YAML/JSON scalar key-value objects) only into targeted child processes, and uses `RELEASE_SIGNING_KEY` (dedicated Ed25519 SSH signing key) for signed `gh-pages` commits and `STATUS.md` / `data/text` writeback. **Never commit, log, or print real credentials.**
+> The GitHub Actions release workflow (`.github/workflows/release.yml`) binds `environment` (via `inputs.deploy_env`: `production` / `preview`) and injects per-key Secrets and Variables at step scope only—leaving `build`, `check`, and `ingest` steps isolated without deploy credentials. **Never commit, log, or print real credentials.**
 
 ## Pre-Release Checklist
 

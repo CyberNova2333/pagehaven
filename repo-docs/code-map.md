@@ -8,7 +8,7 @@
 | `packages/platform/src/` | 配置源 Zod 校验、五目标注册与公共/部署模板生成 | `packages/platform/src/site-config.js`、`packages/platform/src/targets.js`、`packages/platform/src/index.js` | 生成平台规则、部署控制模板并检查同步 |
 | `packages/search/src/` | 浏览器端检索库懒加载、流式 SHA-256 校验、MATCH/LIKE 查询与页面挂载 | `packages/search/src/load.js`、`packages/search/src/query.js`、`packages/search/src/mount.js` | 读取固定构建库并在浏览器执行查询 |
 | `packages/site/src/` | Astro 7.4 静态编译、外观变量、阅读器、目录分页与书架备份 | `packages/site/src/layouts/Base.astro`、`packages/site/src/lib/site-appearance.js`、`packages/site/src/lib/reading-backup.js` | 编译每话静态阅读页、搜索页、书架页与索引入口 |
-| `scripts/` | 初始化、台词导入、构建串联、静态检查、R2 上传、部署与秘密注入（含 `scripts/lib/`、`scripts/ci/`、`tools/`） | `scripts/build-site.mjs`、`scripts/check.mjs`、`scripts/deploy.mjs`、`scripts/lib/manifest.mjs`、`scripts/ci/run-with-secrets.mjs` | 根命令构建编排、预算证明检查与发布入口 |
+| `scripts/` | 初始化、台词导入、构建串联、静态检查、R2 上传与多端部署（含 `scripts/lib/`、`scripts/ci/`、`tools/`） | `scripts/build-site.mjs`、`scripts/check.mjs`、`scripts/deploy.mjs`、`scripts/lib/manifest.mjs`、`scripts/ci/release-writeback.mjs` | 根命令构建编排、预算证明检查与发布入口 |
 | `docs-site/` | 独立锁定 VitePress 双语文档站与本地搜索刷新插件 | `docs-site/.vitepress/config.mts`、`docs-site/.vitepress/guide-search-refresh.mjs` | 面向读者与维护者的双语使用文档与交互管线图 |
 
 ## `packages/core/src/`
@@ -77,13 +77,13 @@
 | [清单、建库与站点构建](../scripts/build-manifest.mjs) | 清单（[build-manifest.mjs](../scripts/build-manifest.mjs)）→ 建库（[build-db.mjs](../scripts/build-db.mjs)）→ 站点（[build-site.mjs](../scripts/build-site.mjs)）→ 索引与 sitemap | `buildManifest / resolveVersion / galleryFingerprint` | `pnpm run build` 主流程 |
 | [静态检查入口](../scripts/check.mjs) | 核对配置同步、Web 标准边界、无 `sharp`、README 锚点、CI 策略与四端预算 | `checkDocumentationPipelines / checkReadmeLinks` | 维护验证与 CI 检查 |
 | [部署、发布与证明](../scripts/deploy.mjs) | 隔离证明副本部署与签名 `gh-pages` 推送（[github-pages-publish.mjs](../scripts/lib/github-pages-publish.mjs)）；联合 [publish-r2.mjs](../scripts/publish-r2.mjs)、[release.mjs](../scripts/lib/release.mjs)、[deploy-budget.mjs](../scripts/lib/deploy-budget.mjs) 与 [deploy-ready.mjs](../scripts/lib/deploy-ready.mjs) 执行条件启用 | `recordDeployment / prepareRelease / activateRelease / pushGithubPages` | 手动发布流水线 |
-| [子进程秘密、签名写回与 Git 钩子](../scripts/ci/run-with-secrets.mjs) | 仅向子进程注入标量 CI Secret 并拦截控制变量改写；[git-signing.mjs](../scripts/ci/git-signing.mjs) 与 [release-writeback.mjs](../scripts/ci/release-writeback.mjs) 执行临时 SSH 签名写回；配合 [commit_msg.py](../tools/githooks/commit_msg.py)、[pre_push.py](../tools/githooks/pre_push.py)、[_generated.py](../tools/githooks/_generated.py) 与 [repo_maintenance_guard.py](../tools/repo_maintenance_guard.py) 守卫提交及推送 | `runWithSecrets / withGithubSigning / writeReleaseChanges / validate_commit_message / check_staged_changes` | 发布作业与 Git 本地钩子 |
+| [签名写回与 Git 钩子](../scripts/ci/git-signing.mjs) | 配合 [release-writeback.mjs](../scripts/ci/release-writeback.mjs) 执行临时 Ed25519 SSH 签名写回，配合 [commit_msg.py](../tools/githooks/commit_msg.py)、[pre_push.py](../tools/githooks/pre_push.py)、[_generated.py](../tools/githooks/_generated.py) 与 [repo_maintenance_guard.py](../tools/repo_maintenance_guard.py) 守卫提交及推送 | `withGithubSigning / writeReleaseChanges / validate_commit_message / check_staged_changes` | 发布作业与 Git 本地钩子 |
 
 - `scripts/lib/` 另包含 [deploy-plan.mjs](../scripts/lib/deploy-plan.mjs)、[pnpm-runner.mjs](../scripts/lib/pnpm-runner.mjs)、[deploy-proof.mjs](../scripts/lib/deploy-proof.mjs)、[fetch-signal.mjs](../scripts/lib/fetch-signal.mjs)、[redact.mjs](../scripts/lib/redact.mjs)、[static-output.mjs](../scripts/lib/static-output.mjs)、[readme-links.mjs](../scripts/lib/readme-links.mjs)、[seo-push.mjs](../scripts/lib/seo-push.mjs) 与 [pipeline-policy.mjs](../scripts/lib/pipeline-policy.mjs)，覆盖清单见[发布流水线与部署证明模块](modules/release-pipeline-and-proofs.md)。
 - `.github/scripts/sync_assets_licenses.py` 由 `checks.yml` 执行只读门禁，核对 `ASSETS_LICENSES.md` 人类与 AI 工具清单同步。
 - `tools/` 另包含 [_msgrules.py](../tools/githooks/_msgrules.py)、[_generated.py](../tools/githooks/_generated.py)、[github_repo.py](../tools/github_repo.py)、[install_hooks.py](../tools/install_hooks.py)、[agent-guard.py](../tools/agent-guard.py) 与 [verification-tier.py](../tools/verification-tier.py)，测试入口为 `tools/test/test_*.py`（含 `test_pre_push.py`、`test_github_repo.py`、`test_generated_commit.py`、`test_install_hooks.py`、`test_agent_guard.py`）。
 
-验证入口：`scripts/test/`（含 `docs-site.test.mjs`、`docs-workflow.test.mjs`、`docs-dev.test.mjs`、`run-with-secrets.test.mjs`、`github-pages-publish.test.mjs`、`release-writeback.test.mjs`、`pre-push.test.mjs`、`seo-push.test.mjs`、`pipeline-policy.test.mjs` 等）。
+验证入口：`scripts/test/`（含 `docs-site.test.mjs`、`docs-workflow.test.mjs`、`docs-dev.test.mjs`、`github-pages-publish.test.mjs`、`release-writeback.test.mjs`、`pre-push.test.mjs`、`seo-push.test.mjs`、`pipeline-policy.test.mjs` 等）。
 
 ## `docs-site/`
 
