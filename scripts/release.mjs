@@ -20,8 +20,7 @@ try {
   if (phase === 'check') {
     resolveVersion();
     if (process.argv.includes('--require-secrets')) {
-      validateReleaseSecrets({ publish: process.env.PUBLISH_SECRETS_YML, deploy: process.env.DEPLOY_SECRETS_YML,
-        signingKeyPresent: process.env.RELEASE_SIGNING_KEY_PRESENT, plan, config });
+      validateReleaseSecrets({ env: process.env, plan, config });
     }
     ok(`发布参数通过：${plan.target} / ${plan.environment}`);
   } else {

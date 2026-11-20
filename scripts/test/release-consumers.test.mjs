@@ -37,12 +37,13 @@ test('独立配置仍经 schema 校验，生产发布在构建和部署前拒绝
 });
 
 test('手动发布在构建前要求上传 Secrets，并且不输出原始密钥', () => {
-  for (const publish of ['', JSON.stringify({ R2_ACCOUNT_ID: 'account', R2_ACCESS_KEY_ID: 'access', R2_SECRET_ACCESS_KEY: 'secret-sentinel', R2_BUCKET: 'bucket' })]) {
+  const complete = { R2_ACCOUNT_ID: 'account', R2_ACCESS_KEY_ID: 'access', R2_SECRET_ACCESS_KEY: 'secret-sentinel', R2_BUCKET: 'bucket' };
+  for (const extra of [{ R2_ACCOUNT_ID: '', R2_ACCESS_KEY_ID: '', R2_SECRET_ACCESS_KEY: '', R2_BUCKET: '' }, complete]) {
     const r = spawnSync(process.execPath, [join(ROOT, 'scripts', 'release.mjs'), 'check', '--require-secrets'], {
       cwd: ROOT, encoding: 'utf8', timeout: 10_000,
-      env: { ...process.env, CONFIG_FILE: '', RELEASE_VERSION: 'safe-version', DEPLOY_TARGET: 'none', DEPLOY_ENV: 'production', PUBLISH_SECRETS_YML: publish, DEPLOY_SECRETS_YML: '' },
+      env: { ...process.env, CONFIG_FILE: '', RELEASE_VERSION: 'safe-version', DEPLOY_TARGET: 'none', DEPLOY_ENV: 'production', ...extra },
     });
-    assert.equal(r.status, publish ? 0 : 1, r.stdout + r.stderr);
+    assert.equal(r.status, extra.R2_BUCKET ? 0 : 1, r.stdout + r.stderr);
     assert.doesNotMatch(r.stdout + r.stderr, /secret-sentinel/);
   }
 });

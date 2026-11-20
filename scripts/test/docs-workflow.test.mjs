@@ -32,11 +32,15 @@ test('检查流水线：文档安装、moderate 审计与统一测试不能漏�
   }
 });
 
-test('文档 Pages：只能由手动事件触发发布', () => {
+test('文档 Pages：只能由手动事件触发发布，且按作业最小权限隔离', () => {
   assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
   assert.equal(workflow.permissions.contents, 'read');
-  assert.equal(workflow.permissions.pages, 'write');
-  assert.equal(workflow.permissions['id-token'], 'write');
+  assert.equal(workflow.permissions.pages, undefined);
+  assert.equal(workflow.permissions['id-token'], undefined);
+  assert.equal(workflow.jobs.build.permissions.contents, 'read');
+  assert.equal(workflow.jobs.build.permissions.pages, 'read');
+  assert.equal(workflow.jobs.deploy.permissions.pages, 'write');
+  assert.equal(workflow.jobs.deploy.permissions['id-token'], 'write');
 });
 
 test('文档 Pages：独立依赖安装和构建成功后才上传正确产物', () => {

@@ -3,10 +3,8 @@
 // 上传与启用分开：已部署页面绑定自己的库，共享指针只在整次生产部署成功后移动。
 import { createHash } from 'node:crypto';
 import { DEPLOY_TARGETS, DEFAULT_RELEASE_TARGETS } from '@gallery/platform';
-import { getObject, putObject } from './r2.mjs';
-import { R2_ENV_KEYS } from './r2.mjs';
+import { R2_ENV_KEYS, getObject, putObject } from './r2.mjs';
 import { requiredEnv, planDeployCommand } from './deploy-plan.mjs';
-import { environmentFromSecrets } from '../ci/run-with-secrets.mjs';
 
 export const RELEASE_STATE_FILE = 'release-state.json';
 export const RELEASE_TARGETS = DEPLOY_TARGETS;
@@ -31,23 +29,23 @@ export function releasePlan({ target = 'none', environment = 'production', domai
   return { target, environment, targets, activate: environment === 'production' && targets.length > 0 };
 }
 
-// 预检只解析当前目标需要的 Secrets，不执行网络请求或把凭据写到工作流环境文件。
-export function validateReleaseSecrets({ publish, deploy, plan, config, signingKeyPresent }) {
-  const publishing = environmentFromSecrets(publish);
-  const missingPublish = R2_ENV_KEYS.filter((key) => !publishing[key]?.trim());
-  if (missingPublish.length) throw new Error(`PUBLISH_SECRETS_YML 缺少 ${missingPublish.join('、')}`);
-  if (plan.targets.length) {
-    const deploying = environmentFromSecrets(deploy);
-    for (const target of plan.targets) {
-      const keys = target === 'github' ? ['GITHUB_PAGES_REPO', 'GITHUB_PAGES_TOKEN'] : requiredEnv(target);
-      if (keys.some((key) => !deploying[key]?.trim())) throw new Error(`DEPLOY_SECRETS_YML 缺少 ${target} 所需字段`);
-      if (target !== 'github') {
-        const command = planDeployCommand({ target, config, env: { ...deploying, DEPLOY_ENV: plan.environment }, distDir: 'dist' });
-        if (!command.ok) throw new Error(`DEPLOY_SECRETS_YML 的 ${target} 配置无效`);
-      }
+// 预检只核对当前目标所需的直接环境变量，不执行网络请求，也不在报错中回显凭据值。
+export function validateReleaseSecrets({ env = process.env, plan, config } = {}) {
+  const missingPublish = R2_ENV_KEYS.filter((key) => !env[key]?.trim());
+  if (missingPublish.length) throw new Error(`缺少对象存储发布环境变量：${missingPublish.join('、')}`);
+  for (const target of plan.targets) {
+    const keys = target === 'github' ? ['GITHUB_PAGES_REPO', 'GITHUB_PAGES_TOKEN'] : requiredEnv(target);
+    const missing = keys.filter((key) => !env[key]?.trim());
+    if (missing.length) throw new Error(`缺少 ${target} 部署环境变量：${missing.join('、')}`);
+    if (target !== 'github') {
+      const command = planDeployCommand({ target, config, env: { ...env, DEPLOY_ENV: plan.environment }, distDir: 'dist' });
+      if (!command.ok) throw new Error(`${target} 部署配置无效：${command.problems.join('；')}`);
     }
   }
-  if (plan.activate && signingKeyPresent !== 'true') throw new Error('生产发布缺少 RELEASE_SIGNING_KEY');
+  const hasSigningKey = Boolean(env.RELEASE_SIGNING_KEY?.trim()) || env.RELEASE_SIGNING_KEY_PRESENT === 'true';
+  if ((plan.activate || plan.targets.includes('github')) && !hasSigningKey) {
+    throw new Error('生产发布缺少 RELEASE_SIGNING_KEY');
+  }
 }
 
 // 生成时间不改变发布内容；其余字段全部进入指纹，避免将另一套数据的部署记录混进来。

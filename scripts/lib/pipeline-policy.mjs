@@ -4,8 +4,8 @@ import { DEPLOY_TARGETS, DEFAULT_RELEASE_TARGETS } from '@gallery/platform';
 
 export const MAIN_ONLY = "github.ref == 'refs/heads/main'";
 export const PRODUCTION_ONLY = "env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none'";
-export const SECRET_COMMAND = 'node scripts/ci/run-with-secrets.mjs';
 const REQUIRED_WORKFLOWS = ['checks.yml', 'release.yml', 'archive.yml', 'docs-pages.yml'];
+const LEGACY_SECRET_PATTERN = /PUBLISH_SECRETS_YML|DEPLOY_SECRETS_YML|run-with-secrets/;
 
 export function expression(value) {
   return String(value ?? '').trim().replace(/^\$\{\{\s*|\s*\}\}$/g, '').trim();
@@ -72,10 +72,17 @@ function checkReleaseWorkflow(workflow, problems) {
   if (!sameValues(inputs.deploy_env?.options, ['production', 'preview']) || inputs.deploy_env?.type !== 'choice') {
     problems.push(label + '：发布环境必须显式选择 production 或 preview');
   }
-  const steps = workflow.jobs?.release?.steps ?? [];
+  const releaseJob = workflow.jobs?.release;
+  if (expression(releaseJob?.environment) !== 'inputs.deploy_env') {
+    problems.push(label + '：发布任务必须绑定 GitHub environment: ${{ inputs.deploy_env }}');
+  }
+  if (/secrets\s*[.[]/.test(JSON.stringify(releaseJob?.env ?? {}))) {
+    problems.push(label + '：禁止在发布任务级 env 注入 secrets，必须按步骤最小授权');
+  }
+  const steps = releaseJob?.steps ?? [];
   const deployIndexes = [];
   for (const target of DEPLOY_TARGETS) {
-    const command = SECRET_COMMAND + ' DEPLOY_SECRETS_YML pnpm run deploy:' + target;
+    const command = 'pnpm run deploy:' + target;
     const matches = steps.filter((step) => step.run === command);
     const expected = "env.DEPLOY_TARGET == '" + target + "'" + (DEFAULT_RELEASE_TARGETS.includes(target) ? " || env.DEPLOY_TARGET == 'all'" : '');
     if (matches.length !== 1 || expression(matches[0]?.if) !== expected || matches[0]?.['continue-on-error'] !== undefined) {
@@ -85,14 +92,20 @@ function checkReleaseWorkflow(workflow, problems) {
   }
   const beforeUpload = [
     'pnpm run build', 'pnpm run check',
-    SECRET_COMMAND + ' PUBLISH_SECRETS_YML pnpm run verify:manifest',
-    SECRET_COMMAND + ' PUBLISH_SECRETS_YML pnpm run release:prepare',
-    SECRET_COMMAND + ' PUBLISH_SECRETS_YML pnpm run publish:r2',
+    'pnpm run verify:manifest',
+    'pnpm run release:prepare',
+    'pnpm run publish:r2',
   ];
   orderedSteps(steps, beforeUpload, label, problems);
+  for (const command of ['pnpm run build', 'pnpm run check']) {
+    const step = steps.find((item) => item?.run === command);
+    if (step && /secrets\s*[.[]/.test(JSON.stringify(step.env ?? {}))) {
+      problems.push(label + '：' + command + ' 构建检查步骤禁止注入发布密钥');
+    }
+  }
   const upload = steps.findIndex((step) => step.run === beforeUpload.at(-1));
-  const activation = steps.findIndex((step) => step.run === SECRET_COMMAND + ' PUBLISH_SECRETS_YML pnpm run release:activate');
-  const status = steps.findIndex((step) => step.run === SECRET_COMMAND + ' PUBLISH_SECRETS_YML pnpm run status');
+  const activation = steps.findIndex((step) => step.run === 'pnpm run release:activate');
+  const status = steps.findIndex((step) => step.run === 'pnpm run status');
   if (deployIndexes.some((index) => index <= upload || index >= activation) || activation < 0 || status <= activation) {
     problems.push(label + '：必须先上传，再完成目标部署，然后启用生产版本并生成状态');
   }
@@ -114,6 +127,9 @@ export function checkGithubWorkflows(workflows) {
       problems.push(name + '：工作流必须是对象');
       continue;
     }
+    if (LEGACY_SECRET_PATTERN.test(JSON.stringify(workflow))) {
+      problems.push(name + '：禁止残留旧版 YAML 秘密包或 run-with-secrets.mjs 包装器');
+    }
     const events = workflow.on && typeof workflow.on === 'object' && !Array.isArray(workflow.on) ? Object.keys(workflow.on) : [];
     if (!sameValues(events, name === 'checks.yml' ? ['push', 'workflow_dispatch'] : ['workflow_dispatch'])) {
       problems.push(name + '：只允许手动入口，自动 main push 检查只能由 checks.yml 承担');
@@ -121,6 +137,9 @@ export function checkGithubWorkflows(workflows) {
     if (name === 'checks.yml') {
       checkAutomaticWorkflow(workflow, problems);
       continue;
+    }
+    if (name !== 'release.yml' && /secrets\s*[.[]/.test(JSON.stringify(workflow))) {
+      problems.push(name + '：非发布工作流不得读取 secrets');
     }
     const jobs = workflow.jobs;
     if (!jobs || typeof jobs !== 'object' || !Object.keys(jobs).length) {
@@ -134,6 +153,9 @@ export function checkGithubWorkflows(workflows) {
       if (expression(job?.if) !== MAIN_ONLY) problems.push(name + '/' + id + '：手动操作必须限制在 main');
       if (job?.['continue-on-error'] !== undefined || job?.uses !== undefined) problems.push(name + '/' + id + '：不能忽略任务失败或转交未核对的工作流');
       for (const step of job?.steps ?? []) {
+        if (step.uses && !/^[^@]+@[a-f0-9]{40}$/.test(step.uses)) {
+          problems.push(name + '/' + id + '：手动工作流的 Action 必须固定到 40 位 commit SHA：' + step.uses);
+        }
         if (step.uses?.startsWith('actions/checkout@') && step.with?.ref !== '${{ github.sha }}') {
           problems.push(name + '/' + id + '：检出必须固定到触发 SHA，不能随 main 后续移动');
         }

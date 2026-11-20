@@ -18,11 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -39,21 +39,22 @@ jobs:
         run: pnpm --dir docs-site audit --audit-level=moderate
       - name: 本次推送新增的提交信息
         if: github.event_name == 'push'
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
           set -eu
-          before="${{ github.event.before }}"
-          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+          if [ -z "$PUSH_BEFORE" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
             echo "拿不到 before（新建分支），跳过"
             exit 0
           fi
-          if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
-            git fetch --quiet origin "$before" 2>/dev/null || true
+          if ! git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+            git fetch --quiet origin "$PUSH_BEFORE" 2>/dev/null || true
           fi
-          if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
-            echo "before=$before 在本地不可达，跳过"
+          if ! git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+            echo "before=$PUSH_BEFORE 在本地不可达，跳过"
             exit 0
           fi
-          python3 tools/check-commit-messages.py "$before..$GITHUB_SHA"
+          python3 tools/check-commit-messages.py "$PUSH_BEFORE..$GITHUB_SHA"
       - name: pnpm run check（预算守卫 + 配置同步 + lint）
         run: pnpm run check
       - name: pnpm test
@@ -69,7 +70,9 @@ jobs:
           export OUT_DIR="$GITHUB_WORKSPACE/fixture-out"
           pnpm run build && pnpm run check
       - name: 分层验证提示
-        run: python3 tools/verification-tier.py "${{ github.event.before || '' }}" "$GITHUB_SHA" || true
+        env:
+          PUSH_BEFORE: ${{ github.event.before || '' }}
+        run: python3 tools/verification-tier.py "$PUSH_BEFORE" "$GITHUB_SHA" || true
       - name: 校验 ASSETS_LICENSES.md（只读门禁）
         run: python3 .github/scripts/sync_assets_licenses.py github --check
       - name: 移动 last-green

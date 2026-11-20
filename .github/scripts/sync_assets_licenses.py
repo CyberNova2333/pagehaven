@@ -56,7 +56,7 @@ AI_CANONICAL_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bcodebuddy\b", re.I), "CodeBuddy"),
     (re.compile(r"\bdeepseek\b", re.I), "DeepSeek"),
     (re.compile(r"\bkimi\b", re.I), "Kimi"),
-    (re.compile(r"\bantigravity\b", re.I), "Antigravity"),
+    (re.compile(r"\bantigravity\b", re.I), "gemini-code-assist"),
     (re.compile(r"\bgithub\s+copilot\b", re.I), "GitHub Copilot"),
     (re.compile(r"\bcopilot\b", re.I), "Copilot"),
     (re.compile(r"\bgoogle\s+gemini\b", re.I), "Google Gemini"),

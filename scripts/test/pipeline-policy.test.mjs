@@ -38,7 +38,11 @@ test('真实工作流的自动入口越界、附加文件和不完整配置均�
     '归档取消在途执行': (candidate) => { candidate['archive.yml'].concurrency['cancel-in-progress'] = true; },
     '自动检查增加部署步骤': (candidate) => { candidate['checks.yml'].jobs.check.steps.push({ run: 'pnpm run deploy:workers' }); },
     '自动检查使用部署 Action': (candidate) => { candidate['checks.yml'].jobs.check.steps.push({ uses: 'actions/deploy-pages@v4' }); },
-    '自动检查读取发布秘密': (candidate) => { candidate['checks.yml'].env = { SECRET: 'secrets.PUBLISH_SECRETS_YML' }; },
+    '自动检查读取发布秘密': (candidate) => { candidate['checks.yml'].env = { SECRET: 'secrets.R2_SECRET_ACCESS_KEY' }; },
+    '残留旧秘密包装器': (candidate) => { candidate['release.yml'].jobs.release.steps[5].run = 'node scripts/ci/run-with-secrets.mjs'; },
+    '发布未绑定环境': (candidate) => { delete candidate['release.yml'].jobs.release.environment; },
+    '发布步骤使用未固定 SHA Action': (candidate) => { candidate['docs-pages.yml'].jobs.build.steps[0].uses = 'actions/checkout@v4'; },
+    '构建步骤注入发布密钥': (candidate) => { candidate['release.yml'].jobs.release.steps.find((s) => s.run === 'pnpm run build').env = { TOKEN: '${{ secrets.R2_SECRET_ACCESS_KEY }}' }; },
     '检查任务条件跳过': (candidate) => { candidate['checks.yml'].jobs.check.if = MAIN_ONLY; },
     '检查任务允许失败': (candidate) => { candidate['checks.yml'].jobs.check['continue-on-error'] = true; },
   };
@@ -56,7 +60,7 @@ test('检查和上传之前的关键步骤必须独立、顺序执行并阻断�
     const id = file === 'checks.yml' ? 'check' : 'release';
     const commands = file === 'checks.yml'
       ? ['pnpm install --frozen-lockfile', 'pnpm --dir docs-site install --frozen-lockfile', 'pnpm --dir docs-site audit --audit-level=moderate', 'pnpm test']
-      : ['pnpm run build', 'pnpm run check', 'node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML pnpm run publish:r2'];
+      : ['pnpm run build', 'pnpm run check', 'pnpm run publish:r2'];
     for (const command of commands) {
       for (const mode of ['missing', 'skip', 'continue', 'swallow', 'reorder']) {
         await t.test(file + ' / ' + command + ' / ' + mode, () => {
@@ -82,10 +86,10 @@ test('发布目标、上传部署启用顺序及预览隔离不能被工作流�
     '重复目标': (w) => { w.on.workflow_dispatch.inputs.target.options.push('all'); },
     '把旧 Pages 纳入 all': (w) => { w.jobs.release.steps.find((s) => s.name === 'deploy:cloudflare').if += " || env.DEPLOY_TARGET == 'all'"; },
     '部署吞错': (w) => { w.jobs.release.steps.find((s) => s.name === 'deploy:workers')['continue-on-error'] = true; },
-    '预览也启用生产': (w) => { delete w.jobs.release.steps.find((s) => s.run?.endsWith('pnpm run release:activate')).if; },
+    '预览也启用生产': (w) => { delete w.jobs.release.steps.find((s) => s.run === 'pnpm run release:activate').if; },
     '跳过部署直接启用': (w) => {
       const steps = w.jobs.release.steps;
-      const at = steps.findIndex((s) => s.run?.endsWith('pnpm run release:activate'));
+      const at = steps.findIndex((s) => s.run === 'pnpm run release:activate');
       steps.unshift(...steps.splice(at, 1));
     },
   };

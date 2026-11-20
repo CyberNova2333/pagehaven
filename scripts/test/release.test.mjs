@@ -105,24 +105,25 @@ test('releasePlan：生产部署拒绝缺失或任一占位图片域名，预览
 });
 
 test('发布 Secrets 预检在上传前检查所选目标，错误不泄露内容', () => {
-  const publish = JSON.stringify({ R2_ACCOUNT_ID: 'account', R2_ACCESS_KEY_ID: 'access', R2_SECRET_ACCESS_KEY: 'secret-sentinel', R2_BUCKET: 'bucket' });
+  const r2Env = { R2_ACCOUNT_ID: 'account', R2_ACCESS_KEY_ID: 'access', R2_SECRET_ACCESS_KEY: 'secret-sentinel', R2_BUCKET: 'bucket' };
   const config = { deploy: { cloudflare: { project: 'fixture' } } };
   const plan = releasePlan({ target: 'none' });
-  assert.doesNotThrow(() => validateReleaseSecrets({ publish, plan, config }));
-  for (const value of ['', '[]', 'TOKEN: [secret-sentinel', '{}']) {
-    assert.throws(() => validateReleaseSecrets({ publish: value, plan, config }), (error) => !error.message.includes('secret-sentinel'));
+  assert.doesNotThrow(() => validateReleaseSecrets({ env: r2Env, plan, config }));
+  for (const partial of [{}, { R2_ACCOUNT_ID: 'account' }, { ...r2Env, R2_SECRET_ACCESS_KEY: '  ' }]) {
+    assert.throws(() => validateReleaseSecrets({ env: partial, plan, config }), (error) => !error.message.includes('secret-sentinel'));
   }
   const production = releasePlan({ target: 'cloudflare', domain: DOMAIN, imageHosts: IMAGE_HOSTS });
-  const deploy = JSON.stringify({ CLOUDFLARE_API_TOKEN: 'secret-sentinel', CLOUDFLARE_ACCOUNT_ID: 'account' });
-  assert.doesNotThrow(() => validateReleaseSecrets({ publish, deploy, plan: production, config, signingKeyPresent: 'true' }));
-  assert.throws(() => validateReleaseSecrets({ publish, deploy, plan: production, config }), /RELEASE_SIGNING_KEY/);
-  assert.throws(() => validateReleaseSecrets({ publish, deploy: '{}', plan: production, config, signingKeyPresent: 'true' }), /DEPLOY_SECRETS_YML/);
+  const cfEnv = { ...r2Env, CLOUDFLARE_API_TOKEN: 'secret-sentinel', CLOUDFLARE_ACCOUNT_ID: 'account' };
+  assert.doesNotThrow(() => validateReleaseSecrets({ env: { ...cfEnv, RELEASE_SIGNING_KEY_PRESENT: 'true' }, plan: production, config }));
+  assert.doesNotThrow(() => validateReleaseSecrets({ env: { ...cfEnv, RELEASE_SIGNING_KEY: 'ssh-ed25519-key' }, plan: production, config }));
+  assert.throws(() => validateReleaseSecrets({ env: cfEnv, plan: production, config }), /RELEASE_SIGNING_KEY/);
+  assert.throws(() => validateReleaseSecrets({ env: { ...r2Env, RELEASE_SIGNING_KEY_PRESENT: 'true' }, plan: production, config }), /cloudflare 部署环境变量/);
   const preview = releasePlan({ target: 'workers', environment: 'preview' });
-  const workers = { CLOUDFLARE_API_TOKEN: 'secret-sentinel', CLOUDFLARE_ACCOUNT_ID: 'account', CLOUDFLARE_WORKER_NAME: 'production', WORKERS_DEPLOY_URL: 'https://prod.unit-fixture.org' };
-  assert.throws(() => validateReleaseSecrets({ publish, deploy: JSON.stringify(workers), plan: preview, config }), /配置无效/);
-  workers.CLOUDFLARE_PREVIEW_WORKER_NAME = 'preview';
-  workers.WORKERS_PREVIEW_DEPLOY_URL = 'https://preview.unit-fixture.org';
-  assert.doesNotThrow(() => validateReleaseSecrets({ publish, deploy: JSON.stringify(workers), plan: preview, config }));
+  const workersEnv = { ...r2Env, CLOUDFLARE_API_TOKEN: 'secret-sentinel', CLOUDFLARE_ACCOUNT_ID: 'account', CLOUDFLARE_WORKER_NAME: 'production', WORKERS_DEPLOY_URL: 'https://prod.unit-fixture.org' };
+  assert.throws(() => validateReleaseSecrets({ env: workersEnv, plan: preview, config }), /部署配置无效/);
+  workersEnv.CLOUDFLARE_PREVIEW_WORKER_NAME = 'preview';
+  workersEnv.WORKERS_PREVIEW_DEPLOY_URL = 'https://preview.unit-fixture.org';
+  assert.doesNotThrow(() => validateReleaseSecrets({ env: workersEnv, plan: preview, config }));
 });
 
 test('releaseFingerprint：属性排序与生成时间不改变指纹，数据与版本变化改变指纹', () => {

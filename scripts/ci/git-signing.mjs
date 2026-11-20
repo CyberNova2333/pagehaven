@@ -24,7 +24,7 @@ export async function withGithubSigning(key, operation) {
     env.GIT_CONFIG_COUNT = '1';
     env.GIT_CONFIG_KEY_0 = 'gpg.ssh.allowedSignersFile';
     env.GIT_CONFIG_VALUE_0 = signersFile;
-    for (const name of ['RELEASE_SIGNING_KEY', 'PUBLISH_SECRETS_YML', 'DEPLOY_SECRETS_YML']) delete env[name];
+    delete env.RELEASE_SIGNING_KEY;
     return await operation({ env, gitArgs: ['-c', `user.name=${GITHUB_AUTHOR.name}`, '-c', `user.email=${GITHUB_AUTHOR.email}`,
       '-c', 'gpg.format=ssh', '-c', `user.signingkey=${signingFile}`, '-c', 'commit.gpgsign=true', '-c', `gpg.ssh.allowedSignersFile=${signersFile}`] });
   } finally {
