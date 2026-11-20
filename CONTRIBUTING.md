@@ -124,7 +124,7 @@ push 到 main
  └── 归档分支（archive.yml）：archive/<分支> tag → 核对 → 删分支
 ```
 
-GitHub 发布使用仓库 Actions secrets 中的 `PUBLISH_SECRETS_YML` 与 `DEPLOY_SECRETS_YML`，内容分别为发布、部署 YAML/JSON 对象；辅助脚本仅在对应子进程合并这些变量，不打印或落盘，普通构建和其他步骤不可见。OCR 草稿在 GitHub 保存为工作流工件，成功及失败写回仍只允许 `data/text` 与 `STATUS.md`。
+GitHub 发布使用仓库 Actions secrets 中的 `PUBLISH_SECRETS_YML`、`DEPLOY_SECRETS_YML`（分别为发布、部署 YAML/JSON 对象）与 `RELEASE_SIGNING_KEY`（GitHub 专用 Ed25519 SSH 签名私钥，用于 `gh-pages` 推送及 `STATUS.md` / `data/text` 签名写回）；辅助脚本仅在对应子进程合并或临时写入密钥，不打印或持久落盘，普通构建和其他步骤不可见。OCR 草稿与写回内容在 GitHub 保存为工作流工件，成功及失败写回仍只允许 `data/text` 与 `STATUS.md`（先上传工件再以 `Generated-by: Pagehaven release` 签名写回，不借助 `[skip-hooks]`）。
 
 - `last-green` 是稳定锚点：`git checkout last-green` 立刻回到最近一次全绿；
 - 构建 / 发布 / 部署**只手动**；`crontab:` 一律禁止（CLAUDE.md 铁律 6）；
@@ -140,8 +140,7 @@ GitHub 发布使用仓库 Actions secrets 中的 `PUBLISH_SECRETS_YML` 与 `DEPL
 2. 红灯期间只允许修复主线的提交推 main（pre-push 红灯闸门执行：新增提交不全是
    `fix(` / `fix:` / `revert` 开头就拦；查不到状态时放行并提示；
    逃生口 `SKIP_REDLIGHT_HOOK=1`）；
-   新推送自动取消的旧检查不算测试失败；即使平台汇总为 `error`，所有子流水线均取消时
-   仍跳过该记录，继续参考最近一次有明确成功或失败结果的检查。子流水线实际失败仍触发红灯。
+   `checks.yml` 的 `main push` 检查中，运行中（`in_progress` / `queued`）与非成败结论（`cancelled` / `skipped` / `neutral`）不覆盖既有结果也不制造假红灯；以最近一次有明确成功或失败结论（`failure` / `timed_out` / `action_required` / `startup_failure` / `stale`）的记录为准。
 3. 引入者负责修，修不了就 `git revert` 先恢复绿灯；
 4. 找不到引入者 → `git bisect` 从 `last-green` 二分定位。
 
@@ -166,9 +165,9 @@ GitHub 发布使用仓库 Actions secrets 中的 `PUBLISH_SECRETS_YML` 与 `DEPL
 
 ## 贡献许可与附加条款约定 / Contribution Licensing & Additional Terms
 
-依据 `LICENSE-ADDITIONAL_TERMS-zh-CN.md` 第 1.7 款，向本项目提交拉取请求（PR）、补丁或其他贡献时，即表示你确认对所提交内容享有合法授权权利，并同意你对第一方 AGPLv3 适用材料作出的贡献除适用 [GNU AGPLv3](LICENSE) 外，亦一并纳入 [`LICENSE-ADDITIONAL_TERMS-zh-CN.md`](LICENSE-ADDITIONAL_TERMS-zh-CN.md)（包括第 9.5–9.6 款有条件的扩展附加许可；英文参考译文见 [`LICENSE-ADDITIONAL_TERMS-en.md`](LICENSE-ADDITIONAL_TERMS-en.md)）适用范围；附带独立图标、美术或字体资产的，须按 [`ASSET_LICENSES.md`](ASSET_LICENSES.md) 如实提供来源与有效授权信息。既有上游或第三方多许可组件（如内核 GPLv2、上游 MIT / Apache-2.0 / GPL-2.0-or-later 代码）仍按仓库说明保留其各自原有许可。
+依据 `LICENSE-ADDITIONAL_TERMS-zh-CN.md`（v1.6.7-r4）第 1.7—1.9 款，向本项目提交拉取请求（PR）、补丁或其他贡献时，你须确认对所提交内容享有合法授权权利并同意按对应基础许可证（第一方原创代码为 [GNU AGPLv3](LICENSE)）提供。如你希望将个人享有版权的贡献纳入 [`LICENSE-ADDITIONAL_TERMS-zh-CN.md`](LICENSE-ADDITIONAL_TERMS-zh-CN.md)（英文参考：[`LICENSE-ADDITIONAL_TERMS-en.md`](LICENSE-ADDITIONAL_TERMS-en.md)，实施指南：[`IMPLEMENTATION-GUIDE.zh-en.md`](IMPLEMENTATION-GUIDE.zh-en.md)）适用范围，请在 PR 说明或可核实记录中**分别明确声明**对附加要求以及对第 9.5–9.6 款有条件附加许可的授权范围；未作明确声明的贡献将如实记为 `[附加条款：未发表意见]` 并按原适用基础许可证处理。引入第三方组件或附带独立图标、美术、字体资产的，须按 [`ASSETS_LICENSES.md`](ASSETS_LICENSES.md) 如实登记来源、原始作者与有效许可原文。既有上游或第三方多许可组件（如内核 GPLv2、上游 MIT / Apache-2.0 / GPL-2.0-or-later 代码）保留其各自原有许可。
 
-By submitting a pull request, patch, or other contribution to this repository, you confirm that you hold the requisite rights to license your submission and agree pursuant to Section 1.7 of [`LICENSE-ADDITIONAL_TERMS-zh-CN.md`](LICENSE-ADDITIONAL_TERMS-zh-CN.md) (English reference: [`LICENSE-ADDITIONAL_TERMS-en.md`](LICENSE-ADDITIONAL_TERMS-en.md)) that your contributions to first-party Covered Material are licensed under GNU AGPLv3 (`LICENSE`) together with the Additional Terms (including the conditional additional permission in Sections 9.5–9.6, where applicable), and that any contributed standalone assets are documented under [`ASSET_LICENSES.md`](ASSET_LICENSES.md). Pre-existing upstream or third-party components retain their respective original licenses as documented in the repository.
+Pursuant to Sections 1.7–1.9 of [`LICENSE-ADDITIONAL_TERMS-zh-CN.md`](LICENSE-ADDITIONAL_TERMS-zh-CN.md) (v1.6.7-r4; English reference: [`LICENSE-ADDITIONAL_TERMS-en.md`](LICENSE-ADDITIONAL_TERMS-en.md); implementation guide: [`IMPLEMENTATION-GUIDE.zh-en.md`](IMPLEMENTATION-GUIDE.zh-en.md)), submitting a pull request, patch, or other contribution confirms that you hold the requisite rights to license your submission under the applicable base license ([GNU AGPLv3](LICENSE) for first-party code). Express authorization for the Additional Requirements and for the conditional additional permission in Sections 9.5–9.6 is verified separately: please state your covered materials and consent scope explicitly in the PR or a verifiable record; submissions without an express verifiable statement are recorded as `[Additional terms: No recorded position]` and remain governed by their base license. Any third-party components or standalone artwork, fonts, or icons must be truthfully documented in [`ASSETS_LICENSES.md`](ASSETS_LICENSES.md). Pre-existing upstream or third-party components retain their respective original licenses.
 
 <!-- repo-maintenance:begin -->
 ## 提交与核验 / Commits and verification

@@ -29,19 +29,19 @@
 - 仅 `hotfix/*`（修红灯，小时级）和 `surgery/*`（core/构建/三平台大改，≤3天）可例外，先登记 ACTIVE.md，全会话至多一条，优先接续现有分支。
 - 开分支前 `python3 tools/check-branch-hygiene.py --can-branch` 须为 0；收尾 `python3 tools/check-branch-hygiene.py`。远端未删除的非白名单分支 2 小时内有活动时，不许另开。
 - 分支退役先以 archive/<原分支名> tag 归档并确认远端，再用 GitHub Actions 归档入口删除分支；archive tag 不可变，不留长期 archive/research 分支。远端长期仅 main，短期 hotfix/surgery；main 禁强推/删除。
-- 不用 ci/build/driver/success/run-id 分支触发 CI。仅 main push 可自动检查；构建/发布与归档只由人类 web_trigger 按钮触发。禁止 crontab 与自动部署，失败不新增触发分支。
+- 不用 ci/build/driver/success/run-id 分支触发 CI。仅 main push 可自动检查；构建/发布与归档只由人类在 GitHub Actions 手动入口（workflow_dispatch）触发。禁止 crontab 与自动部署，失败不新增触发分支。
 
 ## 提交、署名和内容卫生
 
 - Conventional Commits：`type(scope): 中文描述`，允许 feat/fix/refactor/docs/test/chore/ci/perf/build。一主题一提交，写明为什么；行为/构建/部署/缓存/schema 变更正文以 `文档:` 说明同步或不影响。
 - 作者是实际执笔的人，没有默认值，不确定先确认；Agent 只在末尾完整 `Co-authored-by: Name <email>` 署名。已登记：Codex <noreply@openai.com>、Claude <noreply@anthropic.com>、Kimi <noreply@moonshot.cn>、DeepSeek <noreply@deepseek.com>；新 Agent 首次贡献时登记实际通用名。
-- 非初始提交必须 SSH 签名，不使用 Agent 通用签名密钥；生成密钥只向人类交公钥，私钥不外传。除既有流水线自动 STATUS 提交例外，不以 CI 机器人代作作者。
+- 非初始提交必须 SSH 签名，不使用 Agent 通用签名密钥；生成密钥只向人类交公钥，私钥不外传。发布工作流写回 STATUS.md / data/text 使用专用 RELEASE_SIGNING_KEY 签名并遵循 Generated-by: Pagehaven release 窄例外，不以 CI 机器人代作作者。
 - 不改既有提交作者/署名，不写模型档位/版本、会话链接/标记、凭据及其可识别形式、私库名、内部域名/端点/主机或分发细节；外部内容只用中性功能称呼。禁止向 Agent 命名分支推送。
 - 保留原有钩子与分支/红灯闸门，不改 Git 配置或绕过钩子。文档/Agent 专项维护也需守住原项目安全和平台约束。
 
 ## 现有护栏与统一维护衔接
 
-现有 `.codex/config.toml` / `.claude/settings.json` 的 PreToolUse 入口指向 `tools/agent-guard.py`，Git 钩子在 `tools/githooks/`；手工安装入口 `bash tools/install-hooks.sh`（Windows 为 tools/install-hooks.cmd）。Python/实现/判据缺失时旧护栏放行并提示，不能据此声称检查已通过。Git 钩子保持 LF，不改成 .bat。
+现有 `.codex/config.toml` / `.claude/settings.json` 的 PreToolUse 入口指向 `tools/agent-guard.py`（只读检查钩子状态与常见绕过写法，不自动修改 Git 配置），Git 钩子在 `tools/githooks/`；手工安装入口 `bash tools/install-hooks.sh`（Windows 为 tools/install-hooks.cmd，共同调用 `tools/install_hooks.py`，已有自定义或默认钩子时拒绝覆盖）。Python/实现/判据缺失时旧护栏放行并提示，不能据此声称检查已通过。Git 钩子保持 LF，不改成 .bat。
 
 原护栏的 commit-msg 检查 Conventional+中文、Co-authored-by、文档行；pre-push 检查新增提交、分支纪律及红灯时修复类提交。禁止 --no-verify/-n 和覆盖 core.hooksPath；已有 `[skip-hooks]`、SKIP_MSG_HOOK、SKIP_BRANCH_HOOK、SKIP_REDLIGHT_HOOK 属维护者明示例外，不作为日常替代。
 

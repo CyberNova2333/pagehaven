@@ -17,7 +17,7 @@
 ## 增量搜索推送与 CI/钩子策略守卫
 
 - **IndexNow 增量推送 (`push:search`)**：[SEO 推送](../../scripts/lib/seo-push.mjs) 对比当前清单与 `OUT_DIR` 中保存的旧清单的 `sitemap.mjs` 同源 URL 差集，仅把新增页面按每批 ≤ 10,000 条提交 IndexNow；不接入需站点 token 的百度链路。
-- **秘密注入与静态流水线审计**：[秘密注入助手](../../scripts/ci/run-with-secrets.mjs) 把 CI Secret 解析为标量环境变量仅注入目标子进程（过滤 `allow_` 控制字段，不打印或落盘）；[流水线守卫](../../scripts/lib/pipeline-policy.mjs) 审计 `.github/workflows/*.yml` 与 `.cnb.yml`，拒绝在常规推送中混入自动部署或条件跳过文档审计；[提交规则](../../tools/githooks/_msgrules.py) 与 [仓库守卫](../../tools/repo_maintenance_guard.py) 强制提交信息格式并拦截明文凭据。
+- **秘密注入、签名写回与静态流水线审计**：[秘密注入助手](../../scripts/ci/run-with-secrets.mjs) 把 CI Secret 解析为标量环境变量仅注入目标子进程（过滤 `allow_` 控制字段，拒绝覆盖控制与运行器变量，不打印或落盘）；[请求中止信号](../../scripts/lib/fetch-signal.mjs) 与 [日志脱敏](../../scripts/lib/redact.mjs) 为 [R2 客户端](../../scripts/lib/r2.mjs)、[R2 发布](../../scripts/publish-r2.mjs) 与 [EdgeOne 助手](../../scripts/lib/edgeone.mjs) 提供统一超时控制及报错凭据/桶名/项目标识抹除；[流水线守卫](../../scripts/lib/pipeline-policy.mjs) 直接审计 `.github/workflows/*.yml`，拒绝在常规推送中混入自动部署或条件跳过文档审计；`checks.yml` 通过 `.github/scripts/sync_assets_licenses.py github --check` 校验[四分区资产清单](../../ASSETS_LICENSES.md)同步；`release.yml` 开头强制核对 `last-green == GITHUB_SHA`；[临时 Git 签名](../../scripts/ci/git-signing.mjs) 为 [GitHub Pages 发布](../../scripts/lib/github-pages-publish.mjs) 与 [发布写回](../../scripts/ci/release-writeback.mjs) 提供一次性 Ed25519 SSH 签名并先上传 `release-writeback` 工件再受限提交 `STATUS.md` / `data/text`；[生成提交校验](../../tools/githooks/_generated.py)、[提交规则](../../tools/githooks/_msgrules.py)、[推送检查](../../tools/githooks/pre_push.py)（改用 GitHub Actions `checks.yml` 判定红灯）、[只读命令护栏](../../tools/agent-guard.py)、[安全钩子安装](../../tools/install_hooks.py) 与 [仓库守卫](../../tools/repo_maintenance_guard.py) 强制提交信息格式、签名边界并拦截明文凭据。
 
 | 异常输入或状态 | 门禁拦截结果 |
 | --- | --- |
@@ -27,8 +27,8 @@
 
 ## 验证钩子
 
-- 发布、预算与传输回归：[release.test.mjs](../../scripts/test/release.test.mjs)、[release-consumers.test.mjs](../../scripts/test/release-consumers.test.mjs)、[deploy-plan.test.mjs](../../scripts/test/deploy-plan.test.mjs)、[deploy-static.test.mjs](../../scripts/test/deploy-static.test.mjs)、[deploy-transport.test.mjs](../../scripts/test/deploy-transport.test.mjs)、[pnpm-runner.test.mjs](../../scripts/test/pnpm-runner.test.mjs)、[edgeone.test.mjs](../../scripts/test/edgeone.test.mjs)、[static-output.test.mjs](../../scripts/test/static-output.test.mjs)
-- 流水线、密钥与 SEO 回归：[pipeline-policy.test.mjs](../../scripts/test/pipeline-policy.test.mjs)、[docs-workflow.test.mjs](../../scripts/test/docs-workflow.test.mjs)、[run-with-secrets.test.mjs](../../scripts/test/run-with-secrets.test.mjs)、[seo-push.test.mjs](../../scripts/test/seo-push.test.mjs)
+- 发布、预算与传输回归：[release.test.mjs](../../scripts/test/release.test.mjs)、[release-consumers.test.mjs](../../scripts/test/release-consumers.test.mjs)、[deploy-plan.test.mjs](../../scripts/test/deploy-plan.test.mjs)、[deploy-static.test.mjs](../../scripts/test/deploy-static.test.mjs)、[deploy-transport.test.mjs](../../scripts/test/deploy-transport.test.mjs)、[github-pages-publish.test.mjs](../../scripts/test/github-pages-publish.test.mjs)、[release-writeback.test.mjs](../../scripts/test/release-writeback.test.mjs)、[pnpm-runner.test.mjs](../../scripts/test/pnpm-runner.test.mjs)、[edgeone.test.mjs](../../scripts/test/edgeone.test.mjs)、[static-output.test.mjs](../../scripts/test/static-output.test.mjs)
+- 流水线、密钥、钩子与 SEO 回归：[pipeline-policy.test.mjs](../../scripts/test/pipeline-policy.test.mjs)、[docs-workflow.test.mjs](../../scripts/test/docs-workflow.test.mjs)、[run-with-secrets.test.mjs](../../scripts/test/run-with-secrets.test.mjs)、[pre-push.test.mjs](../../scripts/test/pre-push.test.mjs)、[seo-push.test.mjs](../../scripts/test/seo-push.test.mjs)，以及 Python 单元测试 `tools/test/test_*.py`
 
 ## 延伸阅读
 

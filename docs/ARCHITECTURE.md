@@ -138,8 +138,7 @@ Comimi 原生仅支持单页与双页；条漫、文字层和 bbox 高亮继续�
 此时沿用原阅读器。图片仍按既有方式加载，这项功能不提供整站离线阅读。
 
 仓库默认提供空内容模板与示例域名；三平台均需自行配置目标，生产发布拒绝示例站点及图片域名。
-发布按钮通过 `publish_secrets_url`、`deploy_secrets_url` 引用维护者自己的密钥文件；
-前者为上传必填，后者在选择部署目标时必填。检查与归档不再依赖外部邮件密钥。
+发布按钮通过 GitHub Actions secrets `PUBLISH_SECRETS_YML`、`DEPLOY_SECRETS_YML` 注入标量凭据，生产启用还需配置 `RELEASE_SIGNING_KEY`（Ed25519 SSH 签名私钥）；构建前由 `release:check --require-secrets` 预检。检查与归档不再依赖外部邮件密钥。
 密钥变量：`R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID`
 `R2_SECRET_ACCESS_KEY` `R2_BUCKET` `CLOUDFLARE_API_TOKEN` `CLOUDFLARE_ACCOUNT_ID` `EDGEONE_API_TOKEN`
 `EDGEONE_PROJECT_ID`（**项目 ID**，形如 `makers-…`，是权威定位）、`EDGEONE_PROJECT_NAME`（只作 CLI 的
@@ -380,7 +379,7 @@ status             写 STATUS.md（只由发布流水线调用）
 
 搜索引擎推送的约定：只推差集不全推（引擎按频率与配额判滥发，上万话的站每次全推很快被拒）；
 推之前先 GET 线上的 `/<key>.txt` 核对（隔 20 秒最多试 6 次，给 CDN 铺开留时间），不对就一条
-都不推——它兼作「站点已上线」的探针；推送失败在流水线里 `allowFailure`，单独标红、
+都不推——它兼作「站点已上线」的探针；推送失败在流水线里 `continue-on-error: true`，单独标红、
 不判已完成的部署失败；页面集合与 sitemap 出自同一份 `scripts/lib/sitemap.mjs`。
 
 版本号、上传顺序、缓存头的约定：带版本号的 key（库、分块摘要、归档、版本清单）一年 immutable，
@@ -391,12 +390,12 @@ status             写 STATUS.md（只由发布流水线调用）
 并发更新会被拒绝；同次启用响应丢失可安全重试。部署步骤核对的是清单身份，正常流水线须
 连续使用同一份 dist；它不是对目录任意后续修改的逐文件签名。
 
-工作流配置：main 的 `push` 触发检查，手动触发发布与归档。检查步骤：提交信息（本次推送区间）→ check → test → build →
-再 check → 用测试样本全量空跑 → 分层提示 → 移动 `last-green`。发布输入 `chapters`、`target`
+工作流配置：以 `.github/workflows/` 作为唯一执行入口，`main` 的 `push` 触发检查（`checks.yml`），手动 `workflow_dispatch` 触发发布（`release.yml`）、分支归档（`archive.yml`）与文档站部署（`docs-pages.yml`）。检查步骤：提交信息（本次推送区间）→ check → test → build →
+再 check → 用测试样本全量空跑 → 分层提示 → 移动 `last-green`。发布先核对 `main == last-green == GITHUB_SHA`，输入 `chapters`、`target`
 （none | cloudflare | edgeone | github | workers | esa | all）、`ocr`、`deploy_env`（production | preview）、
-`version`（留空 = 日期.构建号）、`push_all`；步骤：参数检查 → ingest → build → check → verify:manifest →
+`version`（留空 = 日期.构建号）、`push_all`；步骤：参数与 Secrets 预检 → ingest → build → check → verify:manifest →
 release:prepare → publish:r2 → deploy → release:activate → 写 `STATUS.md` → push:search →
-连同 ingest 写回的 `data/text` 提交。预览与 `target=none` 在上传或部署后结束，不启用生产指针、
+上传写回工件后以 `RELEASE_SIGNING_KEY` 签名写回 `STATUS.md` 与 `data/text`（若中途失败则仅保全 `data/text`）。预览与 `target=none` 在上传或部署后结束，不启用生产指针、
 不改生产状态、不推送搜索引擎。预览 HTML 带 `noindex`；GitHub Pages 没有独立预览环境，
 `preview + github/all` 在上传前拒绝。多平台部署失败时已完成的目标可能已更新，但各自页面
 绑定自己的检索库，生产指针保持原值；启用之后的状态记录失败不会撤回已上线页面。
@@ -631,3 +630,11 @@ OCR 草稿通过工作流工件保留，可在浏览器下载校对；发布不�
 既有主题 ID、主色自定义、标题字体和读者深浅偏好契约保留；三个内置预设改为同一品牌色的表面变体。
 目录页使用本地打包的 Anime.js 短入场，减少动效时跳过，漫画坐标、文字层、分页及无脚本阅读不受影响。
 字体与 MIT/OFL 许可随静态产物提供，不增加外部字体请求或三平台服务依赖。本段不表示已发布。
+
+- 2026-11-20 收敛至 GitHub Actions 单一工作流与签名发布链。移除独立构建平台流水线配置，
+  `pipeline-policy.mjs` 直接审计 `.github/workflows/*.yml`，`readme-links.mjs` 按 GitHub 规则校验标题锚点。
+  `run-with-secrets.mjs` 禁止密钥对象覆盖运行器或发布控制变量；`release:check --require-secrets` 在构建前核对
+  `PUBLISH_SECRETS_YML`、`DEPLOY_SECRETS_YML` 与生产签名私钥 `RELEASE_SIGNING_KEY`。`gh-pages` 推送（`github-pages-publish.mjs`）
+  与发布写回（`release-writeback.mjs`）均使用临时 Ed25519 SSH 签名密钥且不强推、不使用 `[skip-hooks]`，写回前先保存工作流工件。
+  本地 `tools/agent-guard.py` 改为只读核对 `core.hooksPath`，`tools/install_hooks.py` 拒绝覆盖既有钩子，
+  `tools/githooks/pre_push.py` 改用 GitHub Actions `checks.yml` 状态判定红灯并通过 `_generated.py` 核验签名写回提交。

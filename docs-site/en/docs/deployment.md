@@ -55,7 +55,9 @@ Pagehaven decouples static site hosting from large binary storage: **one shared 
 | Cloudflare Workers / Pages | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_WORKER_NAME`, `WORKERS_DEPLOY_URL` (`CLOUDFLARE_PREVIEW_WORKER_NAME` for preview) | Passed via `run-with-secrets.mjs` to child processes only |
 | EdgeOne Pages | `EDGEONE_API_TOKEN`, `EDGEONE_PROJECT_ID`, `EDGEONE_PROJECT_NAME` | Project name verified against ID before CLI runs with `EDGEONE_PAGES_API_TOKEN` |
 | Aliyun ESA Pages | `ESA_ACCESS_KEY_ID`, `ESA_ACCESS_KEY_SECRET`, `ESA_PROJECT_NAME`, `ESA_DEPLOY_URL` | `esa-cli@1.0.13 --no-preview` |
-| GitHub Pages | `GITHUB_PAGES_REPO` and push credentials | Baseline checked before `gh-pages` push |
+| GitHub Pages | `GITHUB_PAGES_REPO`, `GITHUB_PAGES_TOKEN`, `RELEASE_SIGNING_KEY` | Baseline checked before SSH-signed commit push to `gh-pages` |
+
+> The GitHub Actions release workflow (`.github/workflows/release.yml`) injects `PUBLISH_SECRETS_YML` and `DEPLOY_SECRETS_YML` (YAML/JSON scalar key-value objects) only into targeted child processes, and uses `RELEASE_SIGNING_KEY` (dedicated Ed25519 SSH signing key) for signed `gh-pages` commits and `STATUS.md` / `data/text` writeback. **Never commit, log, or print real credentials.**
 
 ## Pre-Release Checklist
 

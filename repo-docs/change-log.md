@@ -350,3 +350,21 @@ Synced through bd859083ee37b293e7c56d735095e9fa1f7b0c85；本节记录该提交�
 - 未执行真实 Cloudflare R2 / EdgeOne / ESA / Workers / GitHub Pages 云端发布或部署。
 
 Synced through 07bbc3e8dfc8da4d5c316e66ac242d737633d812；此锚点标识基础主干 HEAD，后续工作树提交仅覆盖上述文档与文档测试文件。
+
+## GitHub Actions 单一工作流、签名发布与文档同步（2026-11-20 21:33 CST）
+
+补全当前工作树未提交的去 CNB 化、签名发布、超时脱敏及文档同步改动：
+
+- **构建与发布脚本补全**：清理 `scripts/deploy.mjs` 未使用导入；将 `scripts/lib/github-pages-publish.mjs` 的临时目录边界清理抽离出 `finally` 块以修复 `no-unsafe-finally`；为 `scripts/ci/git-signing.mjs`、`scripts/ci/release-writeback.mjs`、`scripts/lib/github-pages-publish.mjs` 补齐 SPDX 许可头；统一 `scripts/publish-r2.mjs` 为 LF 行尾，并同步 `scripts/test/edgeone.test.mjs` 断言与新增脱敏回归以匹配 `scripts/lib/edgeone.mjs` 的脱敏错误信息（配合 `scripts/lib/fetch-signal.mjs` 与 `scripts/lib/redact.mjs`）。
+- **Git 钩子与护栏测试补全**：重写 `tools/test/test_pre_push.py` 适配 `tools/githooks/pre_push.py` 的 GitHub Actions `checks.yml` JSON 红灯判定；新增离线单元测试 `tools/test/test_github_repo.py`、`tools/test/test_generated_commit.py`、`tools/test/test_install_hooks.py`、`tools/test/test_agent_guard.py`（共 25 项 Python 测试，均通过 `scripts/test/pre-push.test.mjs` 纳入 `pnpm test`）。
+- **文档与指南同步**：更新 `AGENTS.md`、`CONTRIBUTING.md`、`docs/ARCHITECTURE.md`（含 2026-11-20 决策记录）、`docs-site/` 中英文 `deployment.md` / `code-map.md` 与 `repo-docs/`（`README.md`、`code-map.md`、`modules/release-pipeline-and-proofs.md`、`references/source-evidence.md` 的 Pass 6 证据），移除残留的 `.cnb.yml`、`web_trigger`、`publish_secrets_url` / `deploy_secrets_url` 与旧红灯描述，补充 `PUBLISH_SECRETS_YML` / `DEPLOY_SECRETS_YML` / `RELEASE_SIGNING_KEY`、签名写回、超时脱敏与 `sync_assets_licenses.py` 门禁说明；保持 `AUTHORS` 删除状态。
+
+验证（于本地工作树执行）：
+- `python3 /home/cybernova/.gemini/skills/repo-docs/scripts/validate_repo_docs.py repo-docs --repo-root .`：退出 0（0 错误，2 条与本任务无关文件缺少同步规则的告警）；
+- `python3 .github/scripts/sync_assets_licenses.py github --check`：退出 0；
+- `python3 -m unittest discover -s tools/test -v`：退出 0（25 通过、0 失败）；
+- `pnpm test`：退出 0（777 通过、0 失败、0 跳过）；
+- `pnpm run build`、`DEPLOY_TARGET=all pnpm run check`、`pnpm --dir docs-site run docs:build` 与 `pnpm run test:docs`（2/2）均退出 0；
+- 未执行真实 Cloudflare R2 / EdgeOne / ESA / Workers / GitHub Pages 云端发布或部署。
+
+Synced through 77ccab688f5348d8c04db6317c9490520bc824f6；此锚点对应基线提交，上述改动与验证记录待分批提交的工作树状态。

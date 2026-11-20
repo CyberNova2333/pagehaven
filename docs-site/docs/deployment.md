@@ -28,7 +28,7 @@ Pagehaven 把“业务站点静态输出”与“大体积媒体/检索库”彻
 
 ## 不可变 R2 存储与三阶段发布
 
-`release.yml` 与 `.cnb.yml` 共用同一套发布剧本，确保**站点 HTML 绑定构建时固定的 `gallery.searchDb` 版本**，绝不让旧页面查到新版本结构，也不在部分平台失败时移动线上共享指针：
+`.github/workflows/release.yml` 编排整套发布剧本，确保**站点 HTML 绑定构建时固定的 `gallery.searchDb` 版本**，绝不让旧页面查到新版本结构，也不在部分平台失败时移动线上共享指针：
 
 1. **`pnpm run publish:r2`**：校验安全对象路径后，把版本化检索库（`db/gallery-<version>.sqlite` + `.chunks.json`）、覆盖图与缺失图片上传到 R2 私有桶，并写出不可变版本清单 `manifest-<version>.json`；旧线上指针暂存为 `out/manifest-previous.json`。
 2. **`pnpm run release:prepare`**：记录当前线上 `manifest.json` 的 ETag 与构建指纹到 `out/release-state.json`（预览与仅上传模式不启用生产指针）。
@@ -60,9 +60,9 @@ Pagehaven 把“业务站点静态输出”与“大体积媒体/检索库”彻
 | Cloudflare Workers / Pages | `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_WORKER_NAME`、`WORKERS_DEPLOY_URL`（预览另需 `CLOUDFLARE_PREVIEW_WORKER_NAME`） | 经 `run-with-secrets.mjs` 注入单个子进程 |
 | EdgeOne Pages | `EDGEONE_API_TOKEN`、`EDGEONE_PROJECT_ID`、`EDGEONE_PROJECT_NAME` | `deploy.mjs` 先按项目 ID 核对唯一项目名，CLI 令牌经 `EDGEONE_PAGES_API_TOKEN` 环境变量传入（不走命令行明文） |
 | 阿里云 ESA Pages | `ESA_ACCESS_KEY_ID`、`ESA_ACCESS_KEY_SECRET`、`ESA_PROJECT_NAME`、`ESA_DEPLOY_URL` | `esa-cli@1.0.13` 搭配 `--no-preview`，预览验证可额外传测验 IP（如 `ESA_STAGING_IP` 等内部参数以 `deploy-ready` 为准） |
-| GitHub Pages | `GITHUB_PAGES_REPO` 等推送凭据 | 校验 `.nojekyll`、`404.html`、`index.html` 后推至 `gh-pages` |
+| GitHub Pages | `GITHUB_PAGES_REPO`、`GITHUB_PAGES_TOKEN`、`RELEASE_SIGNING_KEY` | 校验 `.nojekyll`、`404.html`、`index.html` 后以 SSH 签名提交推至 `gh-pages` |
 
-> GitHub Actions 发布入口配置在 `.github/workflows/release.yml`，使用仓库 Secret `PUBLISH_SECRETS` / `DEPLOY_SECRETS`（YAML/JSON 标量键值对象）；`.cnb.yml` 另支持在手动触发时通过 HTTPS 密钥引用由运行器注入。**绝不可在任何配置文件、日志或文档中打印或保存真实凭据。**
+> GitHub Actions 发布入口配置在 `.github/workflows/release.yml`，使用仓库 Secret `PUBLISH_SECRETS_YML` / `DEPLOY_SECRETS_YML`（YAML/JSON 标量键值对象）及 `RELEASE_SIGNING_KEY`（用于 `gh-pages` 与 `STATUS.md` / `data/text` 签名写回的专用 Ed25519 私钥）。**绝不可在任何配置文件、日志或文档中打印或保存真实凭据。**
 
 ## 生产上线前核对清单
 

@@ -10,13 +10,13 @@ Quick directory orientation, standalone VitePress dev workflow, CI checks, and c
 | `packages/platform/` | Config validation, 5-target registry & hosting file generators | `src/site-config.js`, `src/targets.js`, `src/deploy-name.js`, `src/generators/`, `generated/` |
 | `packages/search/` | Browser SQLite loader, query planner & `/search/` DOM binding | `src/load.js`, `src/query.js`, `src/mount.js` |
 | `packages/site/` | Astro 7.4 static comic gallery, progressive reader & local shelf | `astro.config.mjs`, `src/layouts/Base.astro`, `src/pages/`, `src/lib/`, `public/` |
-| `scripts/` | Build orchestration, validation, ingestion & multi-target deploy | `build-*.mjs`, `check.mjs`, `check-data.mjs`, `init-site.mjs`, `customize.mjs`, `ingest-*.mjs`, `publish-r2.mjs`, `deploy.mjs`, `release.mjs`, `seo-push.mjs`, `docs-dev.mjs` |
-| `scripts/lib/` | Unit-tested pure logic & CI pipeline policy checkers | `manifest.mjs`, `deploy-plan.mjs`, `deploy-budget.mjs`, `deploy-proof.mjs`, `deploy-ready.mjs`, `pipeline-policy.mjs`, `readme-links.mjs`, `static-output.mjs`, `pnpm-runner.mjs` |
+| `scripts/` | Build orchestration, validation, ingestion & multi-target deploy | `build-*.mjs`, `check.mjs`, `check-data.mjs`, `init-site.mjs`, `customize.mjs`, `ingest-*.mjs`, `publish-r2.mjs`, `deploy.mjs`, `release.mjs`, `seo-push.mjs`, `docs-dev.mjs`, `ci/{run-with-secrets,git-signing,release-writeback}.mjs` |
+| `scripts/lib/` | Unit-tested pure logic & CI pipeline policy checkers | `manifest.mjs`, `deploy-plan.mjs`, `deploy-budget.mjs`, `deploy-proof.mjs`, `deploy-ready.mjs`, `github-pages-publish.mjs`, `fetch-signal.mjs`, `redact.mjs`, `pipeline-policy.mjs`, `readme-links.mjs`, `static-output.mjs`, `pnpm-runner.mjs` |
 | `data/` | Metadata YAML, text JSON, and raw LabelPlus / OCR scripts | `meta/`, `text/`, `raw/labelplus/`, `raw/ocr/` |
 | `docs/` | Hard-referenced architecture archive | `docs/ARCHITECTURE.md` (referenced directly by `check.mjs` & `placeholder.mjs` — always retained) |
 | `docs-site/` | Standalone bilingual VitePress documentation site | `.vitepress/config.mts`, `docs/`, `en/docs/`, `public/diagrams/` |
 | `repo-docs/` | Standard-mode contributor engineering docs | `README.md`, `walkthroughs/one-real-run.md`, `code-map.md`, `modules/`, `glossary.md`, `references/`, `change-log.md` |
-| `tools/` & `guardrails/` | Git hooks, maintenance guards & verification tiers | `tools/githooks/commit_msg.py`, `tools/githooks/_msgrules.py`, `tools/repo_maintenance_guard.py`, `tools/verification-tier.py` |
+| `tools/` & `guardrails/` | Git hooks, maintenance guards & verification tiers | `tools/githooks/{commit_msg.py,pre_push.py,_generated.py,_msgrules.py}`, `tools/github_repo.py`, `tools/install_hooks.py`, `tools/repo_maintenance_guard.py`, `tools/verification-tier.py` |
 
 ## Standalone Docs Site & Live Search Refresh
 
@@ -30,7 +30,7 @@ Quick directory orientation, standalone VitePress dev workflow, CI checks, and c
 
 Following trunk-based `main` development (`CONTRIBUTING.md`):
 - **Commit Hooks**: Enforce `<type>(<scope>): <Chinese summary>` (`<= 100` chars), a `文档:` body summary line, and `Co-authored-by:` trailer; `pre-commit` / `pre-push` block secrets and oversized assets.
-- **CI Gates**: `.github/workflows/checks.yml` (plus `.cnb.yml` checked by `pipeline-policy.mjs`) forbids auto-deploy steps on normal pushes; releases and docs-pages publishing remain manual triggers only.
+- **CI Gates**: `scripts/lib/pipeline-policy.mjs` directly audits `.github/workflows/{checks,release,archive,docs-pages}.yml`, forbidding auto-deploy steps on normal pushes; releases and docs-pages publishing remain manual triggers only.
 
 | Change Scope | Required Local Commands |
 | --- | --- |

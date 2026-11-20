@@ -44,7 +44,7 @@ pnpm --dir docs-site run docs:build
 pnpm run test:docs
 ```
 
-开发模式通过 `pnpm --dir docs-site run docs:dev`（[开发启动器](../scripts/docs-dev.mjs) + [搜索刷新插件](../docs-site/.vitepress/guide-search-refresh.mjs)）支持中英文 Markdown 保存后重建索引与缓存版本号轮换；静态构建则由 `docs-site/.vitepress/config.mts` 保持纯本地生成，不引入外部服务或 `repo-docs/` 自动直连，防止发布官网产物暴露仓库源码相对路径。CI 检查在 `.github/workflows/checks.yml` 与 `.cnb.yml` 强制上述安装、审计与测试顺序；官网部署（`.github/workflows/docs-pages.yml`）仅保留手动触发。
+开发模式通过 `pnpm --dir docs-site run docs:dev`（[开发启动器](../scripts/docs-dev.mjs) + [搜索刷新插件](../docs-site/.vitepress/guide-search-refresh.mjs)）支持中英文 Markdown 保存后重建索引与缓存版本号轮换；静态构建则由 `docs-site/.vitepress/config.mts` 保持纯本地生成，不引入外部服务或 `repo-docs/` 自动直连，防止发布官网产物暴露仓库源码相对路径。CI 检查在 `.github/workflows/checks.yml` 强制上述安装、审计与测试顺序；官网部署（`.github/workflows/docs-pages.yml`）仅保留手动触发。
 
 ## 既有权威专题
 
