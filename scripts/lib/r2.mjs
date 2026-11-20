@@ -18,9 +18,14 @@
 //
 // 存储的直连端点只在这里拼（scripts/ 允许；packages/ 不许出现，check 守卫会拦）。
 import { createHash, createHmac } from 'node:crypto';
+import { combineFetchSignal } from './fetch-signal.mjs';
+import { redactText } from './redact.mjs';
 
 /** 写凭据所需的四个环境变量；与发布流水线里传给 publish:r2 / status 的一致。 */
 export const R2_ENV_KEYS = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'];
+
+/** 对象存储请求的默认超时（毫秒），防止远端无响应导致流水线挂死。 */
+export const DEFAULT_R2_TIMEOUT_MS = 60_000;
 
 /** S3 兼容存储固定用这个区域名，服务端不校验它。 */
 const REGION = 'auto';
@@ -121,11 +126,17 @@ async function readBody(body) {
 /**
  * 建一个存储客户端。路径式寻址：桶名进路径，不进主机名——带点的桶名与 IP 形式的端点
  * （测试）都不会因证书 / DNS 出问题。
- * @param {{ endpoint: string, accessKeyId: string, secretAccessKey: string }} input
+ * @param {{ endpoint: string, accessKeyId: string, secretAccessKey: string, timeoutMs?: number, fetchImpl?: typeof fetch }} input
  */
-export function createStorage({ endpoint, accessKeyId, secretAccessKey }) {
+export function createStorage({
+  endpoint,
+  accessKeyId,
+  secretAccessKey,
+  timeoutMs = DEFAULT_R2_TIMEOUT_MS,
+  fetchImpl = fetch,
+}) {
   const base = new URL(endpoint);
-  if (!/^https?:$/.test(base.protocol)) throw new Error(`存储端点必须是 http(s)：${endpoint}`);
+  if (!/^https?:$/.test(base.protocol)) throw new Error(`存储端点必须是 http(s)：${base.protocol}`);
   // 端点自带的路径前缀要保留（换别家 S3 兼容存储时可能挂在子路径下）
   const basePath = base.pathname.replace(/\/$/, '');
 
@@ -135,9 +146,9 @@ export function createStorage({ endpoint, accessKeyId, secretAccessKey }) {
    * @param {string} method
    * @param {string} bucket
    * @param {string} key  '' 表示桶本身（列对象）
-   * @param {{ query?: Array<[string, string]>, body?: any, headers?: Record<string, string> }} [opts]
+   * @param {{ query?: Array<[string, string]>, body?: any, headers?: Record<string, string>, signal?: AbortSignal, timeoutMs?: number }} [opts]
    */
-  async function request(method, bucket, key, { query = [], body, headers = {} } = {}) {
+  async function request(method, bucket, key, { query = [], body, headers = {}, signal, timeoutMs: reqTimeoutMs } = {}) {
     const { bytes, hash } = await readBody(body);
     // 桶级操作（列对象）的路径带尾斜杠 `/bkt/`：S3 兼容实现按它区分「桶」与「同名对象」，
     // 少了尾斜杠会当成对对象 `bkt` 的请求，列清单直接 404
@@ -163,17 +174,30 @@ export function createStorage({ endpoint, accessKeyId, secretAccessKey }) {
     };
     if (bytes.length || method === 'PUT' || method === 'POST') all['content-length'] = String(bytes.length);
 
+    const fetchSignal = combineFetchSignal(signal, reqTimeoutMs ?? timeoutMs);
+    const targetLabel = key ? `${method} ${key}` : `${method} <bucket>`;
+    const scrub = (text) =>
+      redactText(text, {
+        exactLiterals: [url, base.origin, base.host, base.hostname, bucket],
+        literals: [accessKeyId, secretAccessKey],
+      });
+
     let res;
     try {
-      res = await fetch(url, { method, headers: all, body: bytes.length ? bytes : undefined });
+      res = await fetchImpl(url, {
+        method,
+        headers: all,
+        body: bytes.length ? bytes : undefined,
+        ...(fetchSignal ? { signal: fetchSignal } : {}),
+      });
     } catch (e) {
-      throw new StorageError(`${method} ${key || bucket} 失败：${e.message}`, { status: 0 });
+      throw new StorageError(`${targetLabel} 失败：${scrub(e?.message ?? e)}`, { status: 0 });
     }
     if (res.ok) return res;
     const text = await res.text().catch(() => '');
     const code = text.match(/<Code>([^<]+)<\/Code>/)?.[1];
-    const detail = text.match(/<Message>([^<]+)<\/Message>/)?.[1] ?? res.statusText;
-    throw new StorageError(`${method} ${key || bucket} 失败：HTTP ${res.status}${code ? ` ${code}` : ''} ${detail}`, {
+    const detail = scrub(text.match(/<Message>([^<]+)<\/Message>/)?.[1] ?? res.statusText);
+    throw new StorageError(`${targetLabel} 失败：HTTP ${res.status}${code ? ` ${code}` : ''} ${detail}`, {
       status: res.status,
       code,
     });
@@ -240,7 +264,19 @@ export async function listAllObjects(client, bucket, prefix) {
     ];
     if (token) query.push(['continuation-token', token]);
     // 查询串的键值按原文交给客户端：签名时按 RFC 3986 编码，URL 上也用同一份，两边一致
-    const res = await client.request('GET', bucket, '', { query });
+    let res;
+    try {
+      res = await client.request('GET', bucket, '', { query });
+    } catch (e) {
+      if (bucket && e instanceof Error && e.message.includes(bucket)) {
+        const safeMessage = redactText(e.message, { exactLiterals: [bucket] });
+        if (e instanceof StorageError) {
+          throw new StorageError(safeMessage, { status: e.status, code: e.code });
+        }
+        throw new Error(safeMessage, { cause: e });
+      }
+      throw e;
+    }
     const page = parseListXml(await res.text());
     objects.push(...page.contents);
     token = page.isTruncated ? page.nextToken : undefined;

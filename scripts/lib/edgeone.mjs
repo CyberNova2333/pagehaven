@@ -12,12 +12,18 @@
 // 腾讯云登录拿到的 token 走 china（ap-guangzhou）；global 账号的 token 走 ap-singapore。
 // 项目自己可以是 global 区——两者互不影响（当前画廊项目就是 token=china、Area=global）。
 
+import { combineFetchSignal } from './fetch-signal.mjs';
+import { redactText } from './redact.mjs';
+
 export const EDGEONE_API_REGIONS = {
   china: { baseUrl: 'https://pages-api.cloud.tencent.com/v1', region: 'ap-guangzhou' },
   global: { baseUrl: 'https://pages-api.edgeone.ai/v1', region: 'ap-singapore' },
 };
 
 export const DEFAULT_EDGEONE_API_REGION = 'china';
+
+/** EdgeOne Pages API 请求的默认超时（毫秒），防止外部接口卡死阻塞部署。 */
+export const DEFAULT_EDGEONE_TIMEOUT_MS = 15_000;
 
 /** EDGEONE_API_REGION → 端点；未知区域返回问题。baseUrl 可覆盖（测试用假服务器）。 */
 export function edgeoneApiTarget(region, baseUrl) {
@@ -29,11 +35,13 @@ export function edgeoneApiTarget(region, baseUrl) {
   return { ok: true, key, baseUrl: baseUrl || target.baseUrl, region: target.region };
 }
 
-async function postPagesApi({ token, target, body, fetchImpl }) {
+async function postPagesApi({ token, target, body, fetchImpl, signal, timeoutMs = DEFAULT_EDGEONE_TIMEOUT_MS }) {
+  const fetchSignal = combineFetchSignal(signal, timeoutMs);
   const res = await fetchImpl(target.baseUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ ...body, Region: target.region }),
+    ...(fetchSignal ? { signal: fetchSignal } : {}),
   });
   let json = null;
   try {
@@ -48,7 +56,16 @@ async function postPagesApi({ token, target, body, fetchImpl }) {
  * 调 DescribePagesProjects（只读）。按 ID 或按名字过滤，两者可同时给。
  * @returns {{ ok: true, projects: object[] } | { ok: false, problems: string[] }}
  */
-export async function describePagesProjects({ token, region, baseUrl, projectIds, name, fetchImpl = fetch }) {
+export async function describePagesProjects({
+  token,
+  region,
+  baseUrl,
+  projectIds,
+  name,
+  fetchImpl = fetch,
+  signal,
+  timeoutMs = DEFAULT_EDGEONE_TIMEOUT_MS,
+}) {
   const target = edgeoneApiTarget(region, baseUrl);
   if (!target.ok) return { ok: false, problems: [target.problem] };
   if (!token) return { ok: false, problems: ['缺 EDGEONE_API_TOKEN（EdgeOne 的 API Token，不是登录态 token 文件）'] };
@@ -57,19 +74,22 @@ export async function describePagesProjects({ token, region, baseUrl, projectIds
   if (projectIds?.length) body.ProjectIds = projectIds;
   if (name) body.Filters = [{ Name: 'Name', Values: [name] }];
 
+  const scrub = (text) => redactText(text, { literals: [token, ...(projectIds ?? []), name] });
+  const safeBaseUrl = redactText(target.baseUrl, { redactUrls: false, literals: [token] });
+
   let res;
   try {
-    res = await postPagesApi({ token, target, body, fetchImpl });
+    res = await postPagesApi({ token, target, body, fetchImpl, signal, timeoutMs });
   } catch (e) {
-    return { ok: false, problems: [`Pages API 请求失败（${target.baseUrl}）：${e.message}`] };
+    return { ok: false, problems: [`Pages API 请求失败（${safeBaseUrl}）：${scrub(e?.message ?? e)}`] };
   }
   if (res.status !== 200) {
-    return { ok: false, problems: [`Pages API 返回 HTTP ${res.status}（${target.baseUrl}）`] };
+    return { ok: false, problems: [`Pages API 返回 HTTP ${res.status}（${safeBaseUrl}）`] };
   }
   const code = res.json?.Code;
   if (code !== 0) {
     const hint = code === 109 ? '；token 与 EDGEONE_API_REGION 对不上（token 是哪个区域签发的，就要用哪个端点）' : '';
-    return { ok: false, problems: [`Pages API 返回 Code=${code}：${res.json?.Message ?? '未知错误'}${hint}`] };
+    return { ok: false, problems: [`Pages API 返回 Code=${code}：${scrub(res.json?.Message ?? '未知错误')}${hint}`] };
   }
   const response = res.json?.Data?.Response ?? res.json?.Data;
   const projects = Array.isArray(response?.Projects) ? response.Projects : [];
@@ -78,41 +98,51 @@ export async function describePagesProjects({ token, region, baseUrl, projectIds
 
 /**
  * 部署前校验：ID 必须存在、名字必须与 ID 对应、同名项目必须唯一、项目必须是直传类型。
+ * 报错文案省略原始 projectId / projectName，仅保留结构化状态与核对结论。
  * @returns {Promise<string[]>} 问题列表；空数组即通过
  */
-export async function verifyEdgeoneProject({ token, region, baseUrl, projectId, projectName, fetchImpl = fetch }) {
+export async function verifyEdgeoneProject({
+  token,
+  region,
+  baseUrl,
+  projectId,
+  projectName,
+  fetchImpl = fetch,
+  signal,
+  timeoutMs = DEFAULT_EDGEONE_TIMEOUT_MS,
+}) {
   if (!projectId) return ['缺 EDGEONE_PROJECT_ID（EdgeOne 项目 ID，形如 makers-…）'];
   if (!projectName) return ['缺 EDGEONE_PROJECT_NAME（EdgeOne 项目名，只用于 CLI 的 -n）'];
 
-  const byId = await describePagesProjects({ token, region, baseUrl, projectIds: [projectId], fetchImpl });
-  if (!byId.ok) return byId.problems;
+  const scrubProblems = (items) => items.map((item) => redactText(item, { literals: [token, projectId, projectName] }));
+
+  const byId = await describePagesProjects({ token, region, baseUrl, projectIds: [projectId], fetchImpl, signal, timeoutMs });
+  if (!byId.ok) return scrubProblems(byId.problems);
   const hit = byId.projects.find((p) => p.ProjectId === projectId);
   if (!hit) {
-    return [`Pages API 查不到项目 ${projectId}：项目被删了，或 EDGEONE_API_REGION 与 token 的区域对不上`];
+    return ['Pages API 按 EDGEONE_PROJECT_ID 查不到对应项目：项目被删了，或 EDGEONE_API_REGION 与 token 的区域对不上'];
   }
 
   const problems = [];
   if (hit.Name !== projectName) {
-    problems.push(`项目 ID ${projectId} 的名字是 ${JSON.stringify(hit.Name)}，与 EDGEONE_PROJECT_NAME=${JSON.stringify(projectName)} 不一致`);
+    problems.push('EDGEONE_PROJECT_ID 对应的项目名与 EDGEONE_PROJECT_NAME 不一致');
   }
   if (hit.Provider && hit.Provider !== 'Upload') {
-    problems.push(`项目 ${projectId} 的 Provider 是 ${hit.Provider}，CLI deploy 只支持直传（Upload）项目`);
+    problems.push(`EDGEONE_PROJECT_ID 对应项目的 Provider 是 ${hit.Provider}，CLI deploy 只支持直传（Upload）项目`);
   }
 
-  const byName = await describePagesProjects({ token, region, baseUrl, name: projectName, fetchImpl });
-  if (!byName.ok) return [...problems, ...byName.problems];
+  const byName = await describePagesProjects({ token, region, baseUrl, name: projectName, fetchImpl, signal, timeoutMs });
+  if (!byName.ok) return [...problems, ...scrubProblems(byName.problems)];
   const sameName = byName.projects.filter((p) => p.Name === projectName);
   if (sameName.length === 0) {
-    problems.push(`Pages API 按名字查不到 ${JSON.stringify(projectName)}`);
+    problems.push('Pages API 按 EDGEONE_PROJECT_NAME 查不到对应项目');
   } else if (sameName.length > 1) {
     problems.push(
-      `存在 ${sameName.length} 个同名项目 ${JSON.stringify(projectName)}（${sameName.map((p) => p.ProjectId).join('、')}）：` +
+      `存在 ${sameName.length} 个与 EDGEONE_PROJECT_NAME 同名的项目（已省略项目 ID）：` +
         'EdgeOne 允许同名，CLI 的 -n 只按名字取第一个，拒绝部署以免发错项目',
     );
   } else if (sameName[0].ProjectId !== projectId) {
-    problems.push(
-      `名字 ${JSON.stringify(projectName)} 对应的项目 ID 是 ${sameName[0].ProjectId}，与 EDGEONE_PROJECT_ID=${projectId} 不一致`,
-    );
+    problems.push('EDGEONE_PROJECT_NAME 对应的项目 ID 与 EDGEONE_PROJECT_ID 不一致');
   }
   return problems;
 }

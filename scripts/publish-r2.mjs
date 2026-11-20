@@ -18,6 +18,7 @@ import { loadSiteConfig } from './lib/config.mjs';
 import { resolveVersion, MANIFEST_FILE } from './lib/manifest.mjs';
 import { planUploads, archiveFileName, dbFileNames, sameReleaseManifest, verifyDbArtifacts } from './lib/publish-plan.mjs';
 import { r2ClientFromEnv, R2_ENV_KEYS, headObject, putImmutableObject } from './lib/r2.mjs';
+import { r2EnvSecrets, redactText } from './lib/redact.mjs';
 import { DIST_DIR, OUT_DIR, OUT_DB_DIR, ROOT } from './lib/paths.mjs';
 import { step, ok, fail, note, warn } from './lib/log.mjs';
 
@@ -215,8 +216,11 @@ try {
 } catch (e) {
   // 计划 / 数据问题的信息本身已逐条列好（e.issues），再打栈只会把手机上的日志推出屏幕。
   // 存储的错误把 HTTP 状态码带上：HEAD 的失败没有响应体，状态码才是定位的线索
+  const scrub = (text) => redactText(text, r2EnvSecrets(process.env));
   const status = e?.status;
-  fail(status ? `对象存储回 HTTP ${status}（${e.name}）：${e.message}（本阶段未修改生产版本指针）` : e.message);
-  if (!e.issues) console.error(e.stack);
+  const safeMessage = scrub(e?.message ?? e);
+  const safeName = scrub(e?.name || 'Error');
+  fail(status ? `对象存储回 HTTP ${status}（${safeName}）：${safeMessage}（本阶段未修改生产版本指针）` : safeMessage);
+  if (!e?.issues && e?.stack) console.error(scrub(e.stack));
   process.exit(1);
 }

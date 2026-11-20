@@ -45,35 +45,39 @@ test('verifyEdgeoneProject：ID 与名字一致、同名唯一、直传类型 �
   assert.deepEqual(fetchImpl.calls[1].body.Filters, [{ Name: 'Name', Values: ['gallery'] }]);
 });
 
-test('verifyEdgeoneProject：同名项目多个 → 拒绝（CLI 的 -n 只会取第一个）', async () => {
+test('verifyEdgeoneProject：同名项目多个 → 拒绝（CLI 的 -n 只会取第一个），且不泄露项目标识', async () => {
   const fetchImpl = fakeFetch({
     byName: [PROJECT, { ...PROJECT, ProjectId: 'makers-other', Name: 'gallery' }],
   });
-  const problems = await verifyEdgeoneProject({ token: 't', region: 'china', projectId: 'makers-abc123', projectName: 'gallery', fetchImpl });
+  const problems = await verifyEdgeoneProject({ token: 't-secret', region: 'china', projectId: 'makers-abc123', projectName: 'gallery', fetchImpl });
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /存在 2 个同名项目 "gallery"（makers-abc123、makers-other）/);
+  assert.match(problems[0], /存在 2 个与 EDGEONE_PROJECT_NAME 同名的项目（已省略项目 ID）/);
   assert.match(problems[0], /拒绝部署以免发错项目/);
+  assert.doesNotMatch(problems[0], /makers-abc123|makers-other|gallery|t-secret/);
 });
 
 test('verifyEdgeoneProject：ID 的名字与 EDGEONE_PROJECT_NAME 不符 / 按 ID 查不到 / Provider 不是 Upload', async () => {
   const rename = fakeFetch({ byId: [{ ...PROJECT, Name: 'other-name' }], byName: [{ ...PROJECT, Name: 'other-name' }] });
-  const p1 = await verifyEdgeoneProject({ token: 't', projectId: 'makers-abc123', projectName: 'gallery', fetchImpl: rename });
-  assert.match(p1.join('\n'), /项目 ID makers-abc123 的名字是 "other-name"，与 EDGEONE_PROJECT_NAME="gallery" 不一致/);
+  const p1 = await verifyEdgeoneProject({ token: 't-secret', projectId: 'makers-abc123', projectName: 'gallery', fetchImpl: rename });
+  assert.match(p1.join('\n'), /EDGEONE_PROJECT_ID 对应的项目名与 EDGEONE_PROJECT_NAME 不一致/);
+  assert.doesNotMatch(p1.join('\n'), /makers-abc123|other-name|gallery|t-secret/);
 
   const missing = fakeFetch({ byId: [], byName: [] });
-  const p2 = await verifyEdgeoneProject({ token: 't', projectId: 'makers-abc123', projectName: 'gallery', fetchImpl: missing });
-  assert.match(p2.join('\n'), /Pages API 查不到项目 makers-abc123/);
+  const p2 = await verifyEdgeoneProject({ token: 't-secret', projectId: 'makers-abc123', projectName: 'gallery', fetchImpl: missing });
+  assert.match(p2.join('\n'), /Pages API 按 EDGEONE_PROJECT_ID 查不到对应项目/);
+  assert.doesNotMatch(p2.join('\n'), /makers-abc123|t-secret/);
 
   const notUpload = fakeFetch({ byId: [{ ...PROJECT, Provider: 'Repo' }], byName: [{ ...PROJECT, Provider: 'Repo' }] });
-  const p3 = await verifyEdgeoneProject({ token: 't', projectId: 'makers-abc123', projectName: 'gallery', fetchImpl: notUpload });
-  assert.match(p3.join('\n'), /Provider 是 Repo，CLI deploy 只支持直传（Upload）项目/);
+  const p3 = await verifyEdgeoneProject({ token: 't-secret', projectId: 'makers-abc123', projectName: 'gallery', fetchImpl: notUpload });
+  assert.match(p3.join('\n'), /EDGEONE_PROJECT_ID 对应项目的 Provider 是 Repo，CLI deploy 只支持直传（Upload）项目/);
 
   const wrongName = fakeFetch({
     byId: [PROJECT],
     byName: [{ ...PROJECT, ProjectId: 'makers-other' }],
   });
-  const p4 = await verifyEdgeoneProject({ token: 't', projectId: 'makers-abc123', projectName: 'gallery', fetchImpl: wrongName });
-  assert.match(p4.join('\n'), /名字 "gallery" 对应的项目 ID 是 makers-other/);
+  const p4 = await verifyEdgeoneProject({ token: 't-secret', projectId: 'makers-abc123', projectName: 'gallery', fetchImpl: wrongName });
+  assert.match(p4.join('\n'), /EDGEONE_PROJECT_NAME 对应的项目 ID 与 EDGEONE_PROJECT_ID 不一致/);
+  assert.doesNotMatch(p4.join('\n'), /makers-other|gallery|t-secret/);
 });
 
 test('verifyEdgeoneProject：缺 ID / 缺名字 / 缺 token 直接点名', async () => {
@@ -102,4 +106,9 @@ test('describePagesProjects：Code 109 提示 token 区域对不上；HTTP 非 2
   const r3 = await describePagesProjects({ token: 't', region: 'mars', projectIds: ['makers-x'], fetchImpl: fakeFetch() });
   assert.equal(r3.ok, false);
   assert.match(r3.problems[0], /EDGEONE_API_REGION/);
+
+  const leaking = fakeFetch({ code: 109, message: 'bad token secret-tok for makers-secret' });
+  const r4 = await describePagesProjects({ token: 'secret-tok', region: 'global', projectIds: ['makers-secret'], fetchImpl: leaking });
+  assert.equal(r4.ok, false);
+  assert.doesNotMatch(r4.problems[0], /secret-tok|makers-secret/);
 });
