@@ -1,5 +1,24 @@
 export const STORAGE_KEY_USER_LANG = 'cbnv_user_lang';
 
+function normalizeBase(base: string = '/'): string {
+  const clean = '/' + String(base || '/').replace(/^[/\\]+/, '');
+  return clean.endsWith('/') ? clean : clean + '/';
+}
+
+function getSafeWindowOrigin(): string | null {
+  if (typeof window === 'undefined') return null;
+  const origin = window.location?.origin;
+  return origin && origin !== 'null' ? origin : null;
+}
+
+function isSameOriginUrl(url: string, origin: string, baseHref?: string): boolean {
+  try {
+    return new URL(url, baseHref || origin).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 检测访客浏览器首选语言。
  * 若首选或支持列表中包含英文（en-XX），返回 'en'；
@@ -38,16 +57,13 @@ export function getTargetRedirectUrl(
   currentPath: string,
   base: string = '/'
 ): string | null {
-  const normalizedBase = base.startsWith('/')
-    ? base.endsWith('/')
-      ? base
-      : base + '/'
-    : '/' + base + '/';
+  const normalizedBase = normalizeBase(base);
 
-  let relPath = currentPath;
-  if (currentPath.startsWith(normalizedBase)) {
-    relPath = '/' + currentPath.slice(normalizedBase.length);
+  let relPath = currentPath || '/';
+  if (relPath.startsWith(normalizedBase)) {
+    relPath = '/' + relPath.slice(normalizedBase.length);
   }
+  relPath = '/' + relPath.replace(/^[/\\]+/, '');
 
   const isEn = isEnglishPath(relPath);
   let targetRelPath = relPath;
@@ -74,10 +90,17 @@ export function getTargetRedirectUrl(
     return null; // 无需重定向
   }
 
+  targetRelPath = '/' + targetRelPath.replace(/^[/\\]+/, '');
+
   const basePrefix = normalizedBase.slice(0, -1);
   const search = typeof window !== 'undefined' ? window.location.search : '';
   const hash = typeof window !== 'undefined' ? window.location.hash : '';
-  return basePrefix + targetRelPath + search + hash;
+  const redirectUrl = basePrefix + targetRelPath + search + hash;
+  const fallbackOrigin = getSafeWindowOrigin() ?? 'https://pagehaven.invalid';
+  if (!isSameOriginUrl(redirectUrl, fallbackOrigin)) {
+    return null;
+  }
+  return redirectUrl;
 }
 
 /**
@@ -96,9 +119,16 @@ export function checkAndApplyLanguageRedirect(base: string = '/'): boolean {
       localStorage.setItem(STORAGE_KEY_USER_LANG, targetLang);
     }
 
+    const origin = getSafeWindowOrigin();
+    if (!origin) return false;
+
     const currentPath = window.location.pathname;
     const redirectUrl = getTargetRedirectUrl(targetLang, currentPath, base);
-    if (redirectUrl && redirectUrl !== currentPath) {
+    if (
+      redirectUrl &&
+      redirectUrl !== currentPath &&
+      isSameOriginUrl(redirectUrl, origin, window.location.href || origin)
+    ) {
       window.location.replace(redirectUrl);
       return true;
     }
@@ -108,56 +138,81 @@ export function checkAndApplyLanguageRedirect(base: string = '/'): boolean {
   return false;
 }
 
-let isListenerAttached = false;
+let activeListenerCleanup: (() => void) | null = null;
+let listenerBase = '/';
 
 /**
  * 监听 VitePress 顶栏与移动端下拉菜单中的语言切换点击，持久化用户偏好。
+ * 仅响应语言切换容器内的同源站内链接，避免普通导航或外链误改偏好。
  */
-export function setupLanguageSwitcherListener(): void {
-  if (typeof document === 'undefined' || isListenerAttached) return;
-  isListenerAttached = true;
+export function setupLanguageSwitcherListener(base: string = '/'): () => void {
+  listenerBase = base;
+  if (typeof document === 'undefined') return () => {};
+  if (activeListenerCleanup) return activeListenerCleanup;
 
-  document.addEventListener(
-    'click',
-    (event) => {
-      const target = event.target;
-      if (!target || !(target instanceof Element)) return;
-      const link = target.closest('a');
-      if (!link) return;
+  let active = true;
+  const onDocumentClick = (event: Event) => {
+    if (!active) return;
+    const target = event.target as {
+      closest?: (selector: string) => Element | null;
+    } | null;
+    if (!target || typeof target.closest !== 'function') return;
+    const link = target.closest('a');
+    if (!link) return;
 
-      const inTranslationMenu = !!link.closest(
-        '.VPNavBarTranslations, .VPNavScreenTranslations, .VPNavBarMenuLink, .VPNavScreenMenuLink'
-      );
-      const hreflang = (
-        link.getAttribute('hreflang') ||
-        link.getAttribute('lang') ||
-        ''
-      ).toLowerCase();
-      const href = link.getAttribute('href') || '';
+    const inTranslationMenu = !!link.closest(
+      '.VPNavBarTranslations, .VPNavScreenTranslations'
+    );
+    if (!inTranslationMenu) return;
 
-      if (
-        inTranslationMenu ||
-        hreflang.startsWith('en') ||
-        hreflang.startsWith('zh')
-      ) {
-        try {
-          if (
-            hreflang.startsWith('en') ||
-            href.includes('/en/') ||
-            href.endsWith('/en')
-          ) {
-            localStorage.setItem(STORAGE_KEY_USER_LANG, 'en');
-          } else if (
-            hreflang.startsWith('zh') ||
-            (!href.includes('/en/') && !href.endsWith('/en'))
-          ) {
-            localStorage.setItem(STORAGE_KEY_USER_LANG, 'zh');
-          }
-        } catch {}
+    const origin = getSafeWindowOrigin();
+    if (!origin) return;
+
+    const href = (link.getAttribute('href') || '').trim();
+    if (!href || href.startsWith('#')) return;
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(href, window.location.href || origin);
+    } catch {
+      return;
+    }
+    if (parsedUrl.origin !== origin) return;
+
+    const normalizedBase = normalizeBase(listenerBase);
+    let relPath = parsedUrl.pathname || '/';
+    if (relPath.startsWith(normalizedBase)) {
+      relPath = '/' + relPath.slice(normalizedBase.length);
+    }
+    relPath = '/' + relPath.replace(/^[/\\]+/, '');
+
+    const hreflang = (
+      link.getAttribute('hreflang') ||
+      link.getAttribute('lang') ||
+      ''
+    ).toLowerCase();
+
+    try {
+      if (hreflang.startsWith('en') || isEnglishPath(relPath)) {
+        localStorage.setItem(STORAGE_KEY_USER_LANG, 'en');
+      } else if (hreflang.startsWith('zh') || !isEnglishPath(relPath)) {
+        localStorage.setItem(STORAGE_KEY_USER_LANG, 'zh');
       }
-    },
-    true // capture 阶段触发，确保在路由跳转前写入
-  );
+    } catch {}
+  };
+
+  document.addEventListener('click', onDocumentClick, true); // capture 阶段触发，确保在路由跳转前写入
+
+  const cleanup = () => {
+    if (!active) return;
+    active = false;
+    document.removeEventListener('click', onDocumentClick, true);
+    if (activeListenerCleanup === cleanup) {
+      activeListenerCleanup = null;
+    }
+  };
+  activeListenerCleanup = cleanup;
+  return cleanup;
 }
 
 /**

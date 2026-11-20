@@ -90,26 +90,44 @@ const TOGGLE_HTML = `
 </div>
 `
 
-type AppearanceWindow = Window & { __advDocsAppearance?: boolean }
+type AppearanceWindow = Window & { __advDocsAppearance?: () => void }
 
-export function setupAppearanceToggle() {
-  if (typeof window === 'undefined') return
+export function setupAppearanceToggle(): () => void {
+  if (typeof window === 'undefined') return () => {}
   const global = window as AppearanceWindow
-  if (global.__advDocsAppearance) return
-  global.__advDocsAppearance = true
+  if (global.__advDocsAppearance) return global.__advDocsAppearance
 
+  let disposed = false
+  const controller = new AbortController()
+  const { signal } = controller
   const bindings = new WeakMap<HTMLButtonElement, ShadowRoot>()
+  const trackedButtons = new Set<HTMLButtonElement>()
+  const pendingTimers = new Set<number>()
   const buttons = () => Array.from(document.querySelectorAll<HTMLButtonElement>('button.VPSwitch'))
   const isDark = () => document.documentElement.classList.contains('dark')
   const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let shiftTimer: number | undefined
+  let pendingFrame: number | undefined
+  let pendingFrameMode: 'raf' | 'timeout' | undefined
+
+  const trackTimeout = (fn: () => void, ms: number) => {
+    const id = window.setTimeout(() => {
+      pendingTimers.delete(id)
+      if (!disposed) fn()
+    }, ms)
+    pendingTimers.add(id)
+    return id
+  }
 
   function colorShift() {
     if (reduced()) return
     const root = document.documentElement
     root.classList.add('adv-appearance-shift')
     if (shiftTimer !== undefined) window.clearTimeout(shiftTimer)
-    shiftTimer = window.setTimeout(() => root.classList.remove('adv-appearance-shift'), 760)
+    shiftTimer = window.setTimeout(() => {
+      shiftTimer = undefined
+      root.classList.remove('adv-appearance-shift')
+    }, 760)
   }
 
   function build(button: HTMLButtonElement) {
@@ -127,10 +145,18 @@ export function setupAppearanceToggle() {
     return shadow
   }
 
+  function syncButton(button: HTMLButtonElement) {
+    const shadow = bindings.get(button)
+    const scene = shadow?.querySelector<HTMLElement>('.scene')
+    scene?.classList.toggle('is-night', isDark())
+    scene?.classList.toggle('is-day', !isDark())
+  }
+
   function bind(button: HTMLButtonElement) {
     if (bindings.has(button)) return
     const shadow = build(button)
     bindings.set(button, shadow)
+    trackedButtons.add(button)
     const scene = shadow.querySelector<HTMLElement>('.scene')!
     const sync = () => {
       scene.classList.toggle('is-night', isDark())
@@ -152,7 +178,7 @@ export function setupAppearanceToggle() {
       }
       colorShift()
       if (event.detail === 0) {
-        window.setTimeout(sync, 0)
+        trackTimeout(sync, 0)
         return
       }
       event.preventDefault()
@@ -161,27 +187,113 @@ export function setupAppearanceToggle() {
       bypass = true
       button.click()
       sync()
-      window.setTimeout(() => { busy = false }, 700)
-    }, true)
+      trackTimeout(() => { busy = false }, 700)
+    }, { capture: true, signal })
     button.addEventListener('mouseenter', () => {
       if (!reduced()) scene.classList.add('is-hovered')
-    })
-    button.addEventListener('mouseleave', () => scene.classList.remove('is-hovered'))
+    }, { signal })
+    button.addEventListener('mouseleave', () => scene.classList.remove('is-hovered'), { signal })
   }
+
+  let observedRoot: Node | null = null
+  const resolveObserveRoot = (): Node =>
+    document.querySelector('.VPNav') ?? document.body ?? document.documentElement
 
   function bindAll() {
-    for (const button of buttons()) bind(button)
+    if (disposed) return
+    const navRoot = document.querySelector('.VPNav')
+    const scanRoot: ParentNode = navRoot ?? document
+    for (const button of scanRoot.querySelectorAll<HTMLButtonElement>('button.VPSwitch')) bind(button)
+    if (navRoot && observedRoot !== navRoot) {
+      domObserver.disconnect()
+      observedRoot = navRoot
+      domObserver.observe(navRoot, { childList: true, subtree: true })
+    }
   }
 
-  bindAll()
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindAll, { once: true })
-  new MutationObserver(bindAll).observe(document.documentElement, { childList: true, subtree: true })
-  new MutationObserver(() => {
-    for (const button of buttons()) {
-      const shadow = bindings.get(button)
-      const scene = shadow?.querySelector<HTMLElement>('.scene')
-      scene?.classList.toggle('is-night', isDark())
-      scene?.classList.toggle('is-day', !isDark())
+  const hasSwitchCandidate = (mutations: MutationRecord[]) => {
+    for (const record of mutations) {
+      for (const node of record.addedNodes) {
+        if (!node || typeof (node as Element).matches !== 'function') continue
+        const el = node as Element
+        if (el.matches('button.VPSwitch') || el.querySelector('button.VPSwitch')) {
+          return true
+        }
+      }
     }
-  }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return false
+  }
+
+  const scheduleBindAll = () => {
+    if (disposed || pendingFrame !== undefined) return
+    const flush = () => {
+      pendingFrame = undefined
+      pendingFrameMode = undefined
+      bindAll()
+    }
+    if (typeof requestAnimationFrame === 'function') {
+      pendingFrameMode = 'raf'
+      pendingFrame = requestAnimationFrame(flush)
+    } else {
+      pendingFrameMode = 'timeout'
+      pendingFrame = window.setTimeout(flush, 0)
+    }
+  }
+
+  const domObserver = new MutationObserver((mutations) => {
+    if (hasSwitchCandidate(mutations)) scheduleBindAll()
+  })
+
+  const themeObserver = new MutationObserver(() => {
+    for (const button of trackedButtons) {
+      if (!button.isConnected) {
+        trackedButtons.delete(button)
+        continue
+      }
+      syncButton(button)
+    }
+  })
+
+  bindAll()
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindAll, { once: true, signal })
+  }
+  observedRoot = resolveObserveRoot()
+  domObserver.observe(observedRoot, { childList: true, subtree: true })
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+
+  const cleanup = () => {
+    if (disposed) return
+    disposed = true
+    domObserver.disconnect()
+    themeObserver.disconnect()
+    controller.abort()
+    if (pendingFrame !== undefined) {
+      if (pendingFrameMode === 'raf' && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(pendingFrame)
+      } else {
+        window.clearTimeout(pendingFrame)
+      }
+      pendingFrame = undefined
+      pendingFrameMode = undefined
+    }
+    if (shiftTimer !== undefined) {
+      window.clearTimeout(shiftTimer)
+      shiftTimer = undefined
+    }
+    for (const id of pendingTimers) window.clearTimeout(id)
+    pendingTimers.clear()
+    for (const button of trackedButtons) {
+      button.classList.remove('adv-appearance-mounted')
+      button.querySelector('.adv-appearance-host')?.remove()
+    }
+    trackedButtons.clear()
+    document.documentElement.classList.remove('adv-appearance-shift')
+    if (global.__advDocsAppearance === cleanup) {
+      delete global.__advDocsAppearance
+    }
+  }
+
+  global.__advDocsAppearance = cleanup
+  return cleanup
 }
