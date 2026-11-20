@@ -1,7 +1,7 @@
 // deploy:github 的端到端：临时 dist 目录，真 spawn 脚本，通过与不通过两种。
 //
 // GitHub Pages 是三平台的最小公分母（铁律 2）：没有响应头、没有重定向、没有函数。
-// CNB 流水线把 dist 推到 GITHUB_PAGES_REPO 的 gh-pages 分支；这里用 DEPLOY_DRY_RUN=1
+// GitHub Actions 把 dist 推到 GITHUB_PAGES_REPO 的 gh-pages 分支；这里用 DEPLOY_DRY_RUN=1
 // 只走基线校验，把「dist 拿去就能当一个完整站点」这件事守住：.nojekyll、404.html、
 // index.html 齐全，CNAME 等于 site.domain。
 import { after, test } from 'node:test';
@@ -27,7 +27,7 @@ after(() => rm(configDir, { recursive: true, force: true }));
 
 function run(env) {
   const clean = { ...process.env };
-  for (const key of Object.keys(clean)) if (/^(GITHUB_PAGES_|DEPLOY_|DIST_DIR$|OUT_DIR$|RELEASE_VERSION$|CONFIG_FILE$)/.test(key)) delete clean[key];
+  for (const key of Object.keys(clean)) if (/^(GITHUB_PAGES_|RELEASE_|DEPLOY_|DIST_DIR$|OUT_DIR$|CONFIG_FILE$)/.test(key)) delete clean[key];
   const r = spawnSync(process.execPath, [SCRIPT, 'github'], { cwd: ROOT, encoding: 'utf8', env: { ...clean, CONFIG_FILE: configFile, ...env } });
   return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
@@ -105,4 +105,18 @@ test('deploy:github：dist 不存在 → 退 1 并提示先 build，不打栈', 
   assert.equal(r.status, 1, r.out);
   assert.match(r.out, /不存在：先 pnpm run build/);
   assert.doesNotMatch(r.out, /\n\s+at /);
+});
+
+test('deploy:github：产物与凭据齐全但缺发布签名密钥时，在远端操作前拒绝', async (t) => {
+  const dir = await dist(t, GOOD);
+  const outDir = join(dir, '..', 'out');
+  const manifest = { version: 'signed-pages-test', db: { key: 'db/gallery-signed.sqlite' } };
+  await mkdir(outDir);
+  await writeFile(join(outDir, 'manifest.json'), JSON.stringify(manifest));
+  await writeFile(join(dir, 'release.json'), JSON.stringify({ version: manifest.version,
+    fingerprint: releaseFingerprint(manifest), environment: 'production' }));
+  const result = run({ DIST_DIR: dir, OUT_DIR: outDir, GITHUB_PAGES_REPO: 'fixture/fixture', GITHUB_PAGES_TOKEN: 'fixture-token' });
+  assert.equal(result.status, 1, result.out);
+  assert.match(result.out, /缺少 RELEASE_SIGNING_KEY/);
+  assert.doesNotMatch(result.out, /fixture-token|git clone|git ls-remote/);
 });

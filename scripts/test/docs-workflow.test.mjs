@@ -59,7 +59,7 @@ test('文档 Pages：独立依赖安装和构建成功后才上传正确产物',
 test('文档 Pages：部署依赖构建成功，环境 URL 引用真实部署步骤输出', () => {
   const deploy = workflow.jobs.deploy;
   assert.equal(deploy.needs, 'build');
-  assert.equal(deploy.if, undefined, '使用默认 success 条件，不能在构建失败后继续部署');
+  assert.equal(deploy.if, "${{ github.ref == 'refs/heads/main' }}", '限定 main，并保留隐含 success 条件');
   const step = deploy.steps.find((item) => item.uses?.startsWith('actions/deploy-pages@'));
   assert.equal(step?.id, 'deployment');
   assert.equal(deploy.environment.name, 'github-pages');

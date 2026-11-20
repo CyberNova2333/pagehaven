@@ -81,7 +81,7 @@ export function renderStatus(data) {
   const lines = [
     '# STATUS.md — 当前状态',
     '',
-    '> 本文件由 `.cnb.yml` 的发布流水线在每次发布末尾自动写入（CLAUDE.md 铁律 10），**不手改**。',
+    '> 本文件由 GitHub Actions 的 `.github/workflows/release.yml` 在发布末尾自动写入，**不手改**。',
     '> 它是弃维护后别人接手的入口：从这里能知道线上是哪个版本、部署在哪、数据在哪。',
     '',
     '| 项 | 值 |',

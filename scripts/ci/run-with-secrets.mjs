@@ -6,14 +6,18 @@ import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
 
+const CONTROL_KEYS = new Set(['PATH', 'Path', 'HOME', 'SHELL', 'BASH_ENV', 'ENV', 'PNPM_HOME', 'CONFIG_FILE', 'DATA_DIR', 'DIST_DIR', 'OUT_DIR', 'STATUS_FILE', 'DEPLOY_TARGET', 'DEPLOY_ENV', 'DEPLOY_DRY_RUN', 'RELEASE_VERSION', 'RELEASE_STARTED_AT', 'RELEASE_SIGNING_KEY', 'PUBLISH_SECRETS_YML', 'DEPLOY_SECRETS_YML']);
+
 export function environmentFromSecrets(source) {
   if (typeof source !== 'string' || source.trim() === '') throw new Error('密钥变量为空或不是字符串');
-  const value = yaml.load(source);
+  let value;
+  try { value = yaml.load(source); } catch { throw new Error('密钥内容不是有效的 YAML/JSON 对象'); }
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('密钥内容必须是 YAML/JSON 对象');
   const environment = Object.create(null);
   for (const [key, item] of Object.entries(value)) {
     if (key.startsWith('allow_')) continue;
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error('密钥对象包含无效环境变量名');
+    if (CONTROL_KEYS.has(key) || /^(?:NODE_|npm_|RUNNER_|GITHUB_(?!PAGES_))/.test(key)) throw new Error('密钥对象不能覆盖运行器或发布控制变量');
     if (item === null || !['string', 'number', 'boolean'].includes(typeof item)) throw new Error(`密钥字段 ${key} 必须是标量`);
     environment[key] = String(item);
   }
@@ -23,8 +27,10 @@ export function environmentFromSecrets(source) {
 export async function runWithSecrets(secretVariable, command, args = []) {
   if (!secretVariable || !command) throw new Error('用法：run-with-secrets.mjs <密钥变量名> <命令> [参数...]');
   const secrets = environmentFromSecrets(process.env[secretVariable]);
+  const environment = { ...process.env, ...secrets };
+  for (const name of [secretVariable, 'PUBLISH_SECRETS_YML', 'DEPLOY_SECRETS_YML']) delete environment[name];
   const child = spawn(command, args, {
-    env: { ...process.env, ...secrets },
+    env: environment,
     stdio: 'inherit',
     shell: false,
   });

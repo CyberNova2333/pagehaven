@@ -17,13 +17,14 @@ concurrency:
 
 jobs:
   archive:
+    if: ${{ github.ref == 'refs/heads/main' }}
     name: 打 tag → 验证 → 删分支
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 1
       - name: 打 tag → 验证 → 删分支
         env:

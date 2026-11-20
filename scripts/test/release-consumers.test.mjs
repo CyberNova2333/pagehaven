@@ -36,16 +36,14 @@ test('独立配置仍经 schema 校验，生产发布在构建和部署前拒绝
   assert.match(invalid.stdout + invalid.stderr, /images.hosts/);
 });
 
-test('手动发布密钥参数缺失时明确失败，仅上传也必须提供上传密钥地址', () => {
-  for (const publishUrl of ['', 'https://cnb.cool/unit-group/unit-secrets/-/blob/main/publish.yml']) {
-    const r = spawnSync(process.execPath, [join(ROOT, 'scripts', 'release.mjs'), 'check', '--require-secret-imports'], {
+test('手动发布在构建前要求上传 Secrets，并且不输出原始密钥', () => {
+  for (const publish of ['', JSON.stringify({ R2_ACCOUNT_ID: 'account', R2_ACCESS_KEY_ID: 'access', R2_SECRET_ACCESS_KEY: 'secret-sentinel', R2_BUCKET: 'bucket' })]) {
+    const r = spawnSync(process.execPath, [join(ROOT, 'scripts', 'release.mjs'), 'check', '--require-secrets'], {
       cwd: ROOT, encoding: 'utf8', timeout: 10_000,
-      env: { ...process.env, CONFIG_FILE: '', RELEASE_VERSION: 'safe-version', DEPLOY_TARGET: 'none', DEPLOY_ENV: 'production',
-        publish_secrets_url: publishUrl, deploy_secrets_url: '' },
+      env: { ...process.env, CONFIG_FILE: '', RELEASE_VERSION: 'safe-version', DEPLOY_TARGET: 'none', DEPLOY_ENV: 'production', PUBLISH_SECRETS_YML: publish, DEPLOY_SECRETS_YML: '' },
     });
-    assert.equal(r.status, publishUrl ? 0 : 1, r.stdout + r.stderr);
-    if (!publishUrl) assert.match(r.stdout + r.stderr, /publish_secrets_url/);
-    assert.doesNotMatch(r.stdout + r.stderr, /unit-secrets/);
+    assert.equal(r.status, publish ? 0 : 1, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout + r.stderr, /secret-sentinel/);
   }
 });
 
@@ -81,28 +79,28 @@ test('预览与仅上传即使被单独调用，也不读取清单、写生产�
   assert.equal(await readFile(statusFile, 'utf8'), '原生产状态');
 });
 
-test('发布流水线的真实条件：只有已选择目标的生产发布执行启用、状态与SEO步骤', async () => {
-  const pipeline = yaml.load(await readFile(join(ROOT, '.cnb.yml'), 'utf8')).main.web_trigger_release[0];
-  const guarded = pipeline.stages.filter((stage) => /pnpm run (release:activate|status|push:search)/.test(stage.script ?? ''));
+test('GitHub 发布真实工作流：预检、部署、启用、工件及受限写回有序执行', async () => {
+  const workflow = yaml.load(await readFile(join(ROOT, '.github/workflows/release.yml'), 'utf8'));
+  assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
+  assert.equal(workflow.jobs.release.if, "${{ github.ref == 'refs/heads/main' }}");
+  const steps = workflow.jobs.release.steps;
+  assert.equal(steps[0].with.ref, '${{ github.sha }}');
+  const scripts = steps.map((step) => step.run || '');
+  const locate = (text) => scripts.findIndex((script) => script.includes(text));
+  const preflight = locate('release:check --require-secrets');
+  const upload = locate('pnpm run publish:r2');
+  assert.ok(locate('refs/tags/last-green') < preflight && preflight >= 0 && preflight < locate('pnpm run build'));
+  assert.ok(locate('pnpm run release:prepare') < upload);
+  const guarded = steps.filter((step) => /pnpm run (release:activate|status|push:search)/.test(step.run || ''));
   assert.equal(guarded.length, 3);
-  for (const environment of ['production', 'preview']) {
-    for (const target of ['none', ...DEPLOY_TARGETS, 'all']) {
-      for (const stage of guarded) {
-        const r = spawnSync('sh', ['-c', stage.if], {
-          env: { ...process.env, DEPLOY_ENV: environment, DEPLOY_TARGET: target }, encoding: 'utf8', timeout: 5000,
-        });
-        assert.ifError(r.error);
-        assert.equal(r.status, environment === 'production' && target !== 'none' ? 0 : 1, `${stage.name} / ${environment} / ${target}: ${r.stderr}`);
-      }
-    }
-  }
-  const scripts = pipeline.stages.map((stage) => stage.script ?? '');
-  assert.ok(scripts.some((script) => script.includes('pnpm run release:check -- --require-secret-imports')));
-  const firstImport = pipeline.stages.findIndex((stage) => stage.imports);
-  assert.ok(scripts.findIndex((script) => script.includes('--require-secret-imports')) < firstImport, '缺少密钥地址应在首次导入前明确失败');
-  const urls = new Set(pipeline.stages.map((stage) => stage.imports).filter(Boolean));
-  assert.deepEqual([...urls].sort(), ['${deploy_secrets_url}', '${publish_secrets_url}']);
-  assert.ok(scripts.findIndex((script) => script.includes('pnpm run release:prepare')) < scripts.indexOf('pnpm run publish:r2'));
-  const activation = scripts.indexOf('pnpm run release:activate');
-  for (const target of DEPLOY_TARGETS) assert.ok(scripts.indexOf(`pnpm run deploy:${target}`) < activation);
+  for (const step of guarded) assert.equal(step.if, "${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}");
+  const activation = locate('pnpm run release:activate');
+  for (const target of DEPLOY_TARGETS) assert.ok(upload < locate(`pnpm run deploy:${target}`) && locate(`pnpm run deploy:${target}`) < activation, target);
+  const archive = steps.findIndex((step) => step.id === 'writeback_artifact');
+  const writeback = locate('scripts/ci/release-writeback.mjs');
+  assert.ok(archive >= 0 && archive < writeback);
+  assert.match(steps[archive].if, /always\(\)/);
+  assert.match(steps[writeback].if, /writeback_artifact.outcome == 'success'/);
+  assert.equal(steps[writeback].env.RELEASE_SIGNING_KEY, '${{ secrets.RELEASE_SIGNING_KEY }}');
+  assert.doesNotMatch(scripts.join('\n'), /skip-hooks|git pull|git push.*--force|git commit/);
 });

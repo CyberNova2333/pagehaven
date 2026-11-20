@@ -46,13 +46,20 @@ concurrency:
 jobs:
   release:
     name: 手动发布
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
+      - name: 核对发布提交已通过检查
+        run: |
+          set -eu
+          main_sha=$(git ls-remote --exit-code origin refs/heads/main | cut -f1)
+          green_sha=$(git ls-remote --exit-code origin refs/tags/last-green | cut -f1)
+          test "$main_sha" = "$GITHUB_SHA" && test "$green_sha" = "$GITHUB_SHA" || { echo '发布必须使用当前 main 已通过检查的提交'; exit 1; }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -66,10 +73,13 @@ jobs:
           DEPLOY_TARGET: ${{ inputs.target }}
           DEPLOY_ENV: ${{ inputs.deploy_env }}
           INPUT_VERSION: ${{ inputs.version }}
+          PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
+          DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
+          RELEASE_SIGNING_KEY_PRESENT: ${{ secrets.RELEASE_SIGNING_KEY != '' }}
         run: |
           set -eu
           v="${INPUT_VERSION:-$(date -u +%Y-%m-%d).$GITHUB_RUN_ID}"
-          RELEASE_VERSION="$v" pnpm run release:check
+          RELEASE_VERSION="$v" pnpm run release:check --require-secrets
           echo "版本 $v"
           {
             echo "RELEASE_VERSION=$v"
@@ -78,6 +88,7 @@ jobs:
             echo "DEPLOY_ENV=$DEPLOY_ENV"
           } >> "$GITHUB_ENV"
       - name: ingest:labelplus
+        id: ingest
         if: ${{ inputs.chapters != '' }}
         env:
           CHAPTERS: ${{ inputs.chapters }}
@@ -159,13 +170,16 @@ jobs:
         if: ${{ env.DEPLOY_TARGET == 'github' || env.DEPLOY_TARGET == 'all' }}
         env:
           DEPLOY_SECRETS_YML: ${{ secrets.DEPLOY_SECRETS_YML }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
         run: node scripts/ci/run-with-secrets.mjs DEPLOY_SECRETS_YML pnpm run deploy:github
       - name: 启用生产版本
+        id: activate
         if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
         env:
           PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
         run: node scripts/ci/run-with-secrets.mjs PUBLISH_SECRETS_YML pnpm run release:activate
       - name: 写 STATUS.md
+        id: status
         if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
         env:
           PUBLISH_SECRETS_YML: ${{ secrets.PUBLISH_SECRETS_YML }}
@@ -179,48 +193,31 @@ jobs:
           else
             pnpm run push:search
           fi
-      - name: 提交 data/ 与 STATUS.md
-        if: ${{ env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
+      - name: 保全发布写回工件
+        id: writeback_artifact
+        if: ${{ always() && (steps.ingest.outcome == 'success' || steps.ingest.outcome == 'failure' || steps.status.outcome == 'success' || steps.status.outcome == 'failure') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-writeback-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            data/text
+            STATUS.md
+          if-no-files-found: error
+          retention-days: 14
+      - name: 签名写回本次发布改动
+        if: ${{ always() && env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' && steps.writeback_artifact.outcome == 'success' && (steps.ingest.outcome == 'success' || steps.ingest.outcome == 'failure' || steps.status.outcome == 'success') }}
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          RELEASE_ACTIVATED: ${{ steps.activate.outcome == 'success' }}
+          WRITE_STATUS: ${{ steps.status.outcome == 'success' && steps.activate.outcome == 'success' }}
         run: |
           set -eu
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-          git add STATUS.md data/text
-          if git diff --cached --quiet; then
-            echo '没有需要提交的变化'
-            exit 0
+          if [ "$WRITE_STATUS" = 'true' ]; then
+            node scripts/ci/release-writeback.mjs status
+          else
+            node scripts/ci/release-writeback.mjs data
           fi
-          git commit -F - <<MSG
-          chore(status): 发布 ${RELEASE_VERSION}（target=${{ inputs.target }}）后自动更新 STATUS.md
-
-          由 GitHub Actions 发布工作流自动写入；同时写回本次 ingest 产出的 data/text。
-
-          [skip-hooks]
-          MSG
-          git pull --rebase origin main
-          git push origin HEAD:main
       - name: 🔴 发布失败
         if: failure()
         run: |
-          echo "🔴 发布失败：请按失败阶段核对已部署的目标，部分站点可能已经更新。"
-          echo "生产指针仅在所有目标部署成功后的启用阶段更新；若启用后失败，也需核对发布状态。"
-      - name: 失败时也写回 ingest 产出的 data/text
-        if: ${{ failure() && env.DEPLOY_ENV == 'production' && env.DEPLOY_TARGET != 'none' }}
-        run: |
-          set -eu
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-          git add data/text
-          if git diff --cached --quiet; then
-            echo 'data/text 没有需要提交的变化'
-            exit 0
-          fi
-          git commit -F - <<MSG
-          chore(data): 发布中断时写回 ingest 产出的 data/text
-
-          由 GitHub Actions 发布工作流在失败路径上自动写回，避免稿只留在构建容器里。
-
-          [skip-hooks]
-          MSG
-          git pull --rebase origin main || true
-          git push origin HEAD:main || echo '⚠ data/text 写回失败：稿仍在构建容器里，重新发布或手动取回'
+          echo '发布失败：请核对已经更新的目标与生产指针；写回工件可用于恢复导入台词及状态。'

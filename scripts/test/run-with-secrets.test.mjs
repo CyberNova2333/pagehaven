@@ -14,7 +14,7 @@ test('YAML 与 JSON 标量转为子进程环境，控制字段不进入环境', 
 });
 
 test('拒绝空内容、集合值与无效变量名，不回显秘密', () => {
-  for (const source of ['', '[]', 'VALUE:\n  nested: secret', 'BAD-NAME: secret']) {
+  for (const source of ['', '[]', 'VALUE:\n  nested: secret', 'BAD-NAME: secret', 'TOKEN: [secret', 'TOKEN: a\nTOKEN: secret']) {
     assert.throws(() => environmentFromSecrets(source), (error) => !error.message.includes('secret'));
   }
 });
@@ -26,13 +26,20 @@ test('只在子进程中合并秘密并保留原有环境', async () => {
     const code = await runWithSecrets(variable, process.execPath, [
       '--input-type=module',
       '-e',
-      "if (process.env.INJECTED_VALUE !== 'from-secret' || !process.env.PATH || 'allow_events' in process.env) process.exit(2)",
+      "if (process.env.INJECTED_VALUE !== 'from-secret' || !process.env.PATH || 'allow_events' in process.env || 'PAGEHAVEN_TEST_SECRETS' in process.env || 'PUBLISH_SECRETS_YML' in process.env || 'DEPLOY_SECRETS_YML' in process.env) process.exit(2)",
     ]);
     assert.equal(code, 0);
     assert.equal(process.env.INJECTED_VALUE, undefined);
   } finally {
     delete process.env[variable];
   }
+});
+
+test('密钥对象不能改写部署环境、版本、程序搜索路径或运行器变量', () => {
+  for (const name of ['DEPLOY_ENV', 'DEPLOY_TARGET', 'DEPLOY_DRY_RUN', 'RELEASE_VERSION', 'CONFIG_FILE', 'NODE_OPTIONS', 'PATH', 'GITHUB_ENV', 'PUBLISH_SECRETS_YML']) {
+    assert.throws(() => environmentFromSecrets(`${name}: secret`), /控制变量/);
+  }
+  assert.doesNotThrow(() => environmentFromSecrets('GITHUB_PAGES_REPO: owner/repo\nGITHUB_PAGES_TOKEN: value'));
 });
 
 test('命令行入口透传非零退出码，缺少变量时失败', () => {

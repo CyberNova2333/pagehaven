@@ -9,7 +9,7 @@ import { readManifest, resolveVersion } from './lib/manifest.mjs';
 import { OUT_DIR } from './lib/paths.mjs';
 import { r2ClientFromEnv } from './lib/r2.mjs';
 import { MANIFEST_PREVIOUS_FILE } from './lib/seo-push.mjs';
-import { releasePlan, validateSecretImports, prepareRelease, activateRelease, RELEASE_STATE_FILE, RELEASE_TARGETS } from './lib/release.mjs';
+import { releasePlan, validateReleaseSecrets, prepareRelease, activateRelease, RELEASE_STATE_FILE, RELEASE_TARGETS } from './lib/release.mjs';
 import { ok, fail, note } from './lib/log.mjs';
 
 const phase = process.argv[2];
@@ -19,8 +19,9 @@ try {
   const plan = releasePlan({ target: process.env.DEPLOY_TARGET || 'none', environment: process.env.DEPLOY_ENV || 'production', domain: config.site.domain, imageHosts: config.images.hosts });
   if (phase === 'check') {
     resolveVersion();
-    if (process.argv.includes('--require-secret-imports')) {
-      validateSecretImports({ publishUrl: process.env.publish_secrets_url, deployUrl: process.env.deploy_secrets_url, target: plan.target });
+    if (process.argv.includes('--require-secrets')) {
+      validateReleaseSecrets({ publish: process.env.PUBLISH_SECRETS_YML, deploy: process.env.DEPLOY_SECRETS_YML,
+        signingKeyPresent: process.env.RELEASE_SIGNING_KEY_PRESENT, plan, config });
     }
     ok(`发布参数通过：${plan.target} / ${plan.environment}`);
   } else {

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StorageError } from '../lib/r2.mjs';
-import { activateRelease, deploymentReceipt, prepareRelease, releaseFingerprint, releasePlan, validateSecretImports } from '../lib/release.mjs';
+import { activateRelease, deploymentReceipt, prepareRelease, releaseFingerprint, releasePlan, validateReleaseSecrets } from '../lib/release.mjs';
 
 const DOMAIN = 'gallery.unit-fixture.org';
 const IMAGE_HOSTS = ['images.unit-fixture.org'];
@@ -104,26 +104,25 @@ test('releasePlan：生产部署拒绝缺失或任一占位图片域名，预览
   assert.equal(releasePlan({ target: 'none', domain: 'gallery.example.org', imageHosts: ['images.example.org'] }).activate, false);
 });
 
-test('密钥文件参数：上传始终必填、部署按目标必填，兼容自托管 CNB 地址', () => {
-  const publishUrl = 'https://cnb.cool/unit-group/unit-secrets/-/blob/main/publish.yml';
-  const deployUrl = 'https://code.unit-fixture.org/unit-group/unit-secrets/-/blob/main/deploy.json';
-  assert.doesNotThrow(() => validateSecretImports({ publishUrl, target: 'none' }));
-  for (const target of ['cloudflare', 'edgeone', 'github', 'all']) {
-    assert.doesNotThrow(() => validateSecretImports({ publishUrl, deployUrl, target }));
-    assert.throws(() => validateSecretImports({ publishUrl, target }), /deploy_secrets_url/);
+test('发布 Secrets 预检在上传前检查所选目标，错误不泄露内容', () => {
+  const publish = JSON.stringify({ R2_ACCOUNT_ID: 'account', R2_ACCESS_KEY_ID: 'access', R2_SECRET_ACCESS_KEY: 'secret-sentinel', R2_BUCKET: 'bucket' });
+  const config = { deploy: { cloudflare: { project: 'fixture' } } };
+  const plan = releasePlan({ target: 'none' });
+  assert.doesNotThrow(() => validateReleaseSecrets({ publish, plan, config }));
+  for (const value of ['', '[]', 'TOKEN: [secret-sentinel', '{}']) {
+    assert.throws(() => validateReleaseSecrets({ publish: value, plan, config }), (error) => !error.message.includes('secret-sentinel'));
   }
-  assert.throws(() => validateSecretImports({ deployUrl, target: 'none' }), /publish_secrets_url/);
-});
-
-test('密钥文件参数：拒绝非 HTTPS、非文件地址和嵌入凭据，错误不回显输入', () => {
-  const valid = 'https://cnb.cool/unit-group/unit-secrets/-/blob/main/publish.yml';
-  for (const publishUrl of ['', 'not-a-url', valid.replace('https:', 'http:'), valid.replace('/blob/', '/tree/'), `${valid}?token=private-value`, `${valid}#private-value`, valid.replace('https://', 'https://private-value@'), ` ${valid}`]) {
-    assert.throws(() => validateSecretImports({ publishUrl, target: 'none' }), (error) => {
-      assert.match(error.message, /publish_secrets_url/);
-      assert.doesNotMatch(error.message, /private-value|unit-secrets/);
-      return true;
-    });
-  }
+  const production = releasePlan({ target: 'cloudflare', domain: DOMAIN, imageHosts: IMAGE_HOSTS });
+  const deploy = JSON.stringify({ CLOUDFLARE_API_TOKEN: 'secret-sentinel', CLOUDFLARE_ACCOUNT_ID: 'account' });
+  assert.doesNotThrow(() => validateReleaseSecrets({ publish, deploy, plan: production, config, signingKeyPresent: 'true' }));
+  assert.throws(() => validateReleaseSecrets({ publish, deploy, plan: production, config }), /RELEASE_SIGNING_KEY/);
+  assert.throws(() => validateReleaseSecrets({ publish, deploy: '{}', plan: production, config, signingKeyPresent: 'true' }), /DEPLOY_SECRETS_YML/);
+  const preview = releasePlan({ target: 'workers', environment: 'preview' });
+  const workers = { CLOUDFLARE_API_TOKEN: 'secret-sentinel', CLOUDFLARE_ACCOUNT_ID: 'account', CLOUDFLARE_WORKER_NAME: 'production', WORKERS_DEPLOY_URL: 'https://prod.unit-fixture.org' };
+  assert.throws(() => validateReleaseSecrets({ publish, deploy: JSON.stringify(workers), plan: preview, config }), /配置无效/);
+  workers.CLOUDFLARE_PREVIEW_WORKER_NAME = 'preview';
+  workers.WORKERS_PREVIEW_DEPLOY_URL = 'https://preview.unit-fixture.org';
+  assert.doesNotThrow(() => validateReleaseSecrets({ publish, deploy: JSON.stringify(workers), plan: preview, config }));
 });
 
 test('releaseFingerprint：属性排序与生成时间不改变指纹，数据与版本变化改变指纹', () => {

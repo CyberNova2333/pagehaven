@@ -7,7 +7,7 @@
 //   · cloudflare / edgeone：起对应 CLI，stdio 直通——CLI 的报错原样透出，脚本不翻译也不吞；
 //     DEPLOY_DRY_RUN=1 只打印命令（凭据打码）不执行；DEPLOY_ENV=preview 发预览（默认 production）。
 //   · github：先校验 dist 里的基线文件，再把 dist 推到 GITHUB_PAGES_REPO 的 gh-pages 分支
-//     （GitHub Pages 从该分支发布）；凭据是 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN，
+//     （GitHub Pages 从该分支发布）；凭据是 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN / RELEASE_SIGNING_KEY，
 //     只校验不上传用 DEPLOY_DRY_RUN=1。
 //   · workers / esa：临时上传副本、独立预览、目标预算与本次随机部署标记核对。
 // 只在 CI 里真跑；凭据缺失是配置错误，退出 1（铁律 7）。
@@ -24,7 +24,7 @@
 // dist 里的 edgeone.json 是否被识别；EDGEONE_API_REGION 与 token 的签发区域是否一致。
 import { spawnSync } from 'node:child_process';
 import { resolvePnpmCommand } from './lib/pnpm-runner.mjs';
-import { readFile, readdir, mkdtemp, mkdir, cp, rm, writeFile } from 'node:fs/promises';
+import { readFile, mkdtemp, cp, rm, writeFile } from 'node:fs/promises';
 import { existsSync, constants } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep, dirname, resolve } from 'node:path';
@@ -40,6 +40,8 @@ import { step, ok, fail, note } from './lib/log.mjs';
 import { inspectDeploymentFiles, validateDeploymentBudget } from './lib/deploy-budget.mjs';
 import { waitForDeployment, createStagingVerifier } from './lib/deploy-ready.mjs';
 import { createDeploymentProof, deploymentProofFile } from './lib/deploy-proof.mjs';
+import { withGithubSigning } from './ci/git-signing.mjs';
+import { pushGithubPages } from './lib/github-pages-publish.mjs';
 
 const show = (p) => (p.startsWith(ROOT + sep) ? relative(ROOT, p).split(sep).join('/') : p);
 /** 预期中的配置错误：说清楚就退，不打栈——栈只会把手机上的日志推出屏幕。 */
@@ -70,54 +72,6 @@ async function cleanupDeploymentDirectory(temp) {
     throw new Error('临时部署目录边界校验失败，拒绝清理');
   }
   await rm(absolute, { recursive: true, force: true });
-}
-
-/**
- * GitHub Pages 的发布：把 dist 原样推到 <repo> 的 gh-pages 分支。
- * 站点是纯产物、图片 key 带内容哈希（修图走「新 key + 重建」），分支历史没有价值，
- * 所以每次整份覆盖（--force）。GitHub Pages 在仓库设置里指向 gh-pages 即可。
- */
-async function pushGithubPages({ repo, token, version }) {
-  const remote = `https://x-access-token:${token}@github.com/${repo}.git`;
-  const scrub = (s) => (token ? String(s).split(token).join('***') : String(s));
-  const tmp = await mkdtemp(join(tmpdir(), 'gallery-gh-pages-'));
-  const git = (args) => {
-    const r = spawnSync('git', args, { cwd: tmp, encoding: 'utf8' });
-    if (r.status !== 0) {
-      const detail = ((r.stderr || '') + (r.stdout || '')).trim();
-      throw new Error(scrub(`git ${args[0]} 失败（退出码 ${r.status ?? '起不来'}）：${detail}`));
-    }
-    return r.stdout || '';
-  };
-  try {
-    const clone = spawnSync('git', ['clone', '--depth', '1', '--branch', 'gh-pages', remote, tmp], { encoding: 'utf8' });
-    if (clone.status !== 0) {
-      // gh-pages 还不存在（首次发布）：从空分支开始
-      await rm(tmp, { recursive: true, force: true });
-      await mkdir(tmp, { recursive: true });
-      git(['init', '--quiet']);
-      git(['checkout', '--quiet', '-b', 'gh-pages']);
-      git(['remote', 'add', 'origin', remote]);
-    }
-    // 清空工作树（保留 .git），再把 dist 的内容放到根上
-    for (const name of await readdir(tmp)) {
-      if (name !== '.git') await rm(join(tmp, name), { recursive: true, force: true });
-    }
-    for (const name of await readdir(DIST_DIR)) {
-      await cp(join(DIST_DIR, name), join(tmp, name), { recursive: true });
-    }
-    git(['add', '-A']);
-    if (!git(['status', '--porcelain']).trim()) {
-      note('gh-pages 内容没有变化，不产生空提交');
-      return { pushed: false, commit: git(['rev-parse', 'HEAD']).trim() };
-    }
-    const message = version ? `chore(pages): 发布 ${version}` : 'chore(pages): 发布';
-    git(['-c', 'user.name=cnb', '-c', 'user.email=cnb@cnb.cool', 'commit', '--quiet', '-m', message]);
-    git(['push', '--force', 'origin', 'gh-pages']);
-    return { pushed: true, commit: git(['rev-parse', 'HEAD']).trim() };
-  } finally {
-    await rm(tmp, { recursive: true, force: true });
-  }
 }
 
 const target = process.argv[2];
@@ -162,12 +116,15 @@ try {
     const token = process.env.GITHUB_PAGES_TOKEN;
     if (!repo || !token) {
       fail(
-        `${summary}，但缺 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN：GitHub Pages 由 CNB 流水线把 dist 推到该仓库的 gh-pages 分支（GitHub Pages 的发布源指到 gh-pages 即可）；只校验基线用 DEPLOY_DRY_RUN=1`,
+        `${summary}，但缺 GITHUB_PAGES_REPO / GITHUB_PAGES_TOKEN：GitHub Actions 发布工作流把 dist 推到该仓库的 gh-pages 分支（GitHub Pages 的发布源指到 gh-pages 即可）；只校验基线用 DEPLOY_DRY_RUN=1`,
       );
       process.exit(1);
     }
     const receipt = await deploymentInput(target, environment);
-    const { pushed, commit } = await pushGithubPages({ repo, token, version: receipt.version });
+    const signingKey = process.env.RELEASE_SIGNING_KEY;
+    if (!signingKey) bail('GitHub Pages 发布缺少 RELEASE_SIGNING_KEY，拒绝创建未签名的发布提交');
+    const { pushed, commit } = await withGithubSigning(signingKey,
+      ({ gitArgs, env }) => pushGithubPages({ distDir: DIST_DIR, repo, token, version: receipt.version, gitArgs, env }));
     await waitForGithubPagesBuild({ repo, token, commit, onProgress: note });
     await recordDeployment(receipt);
     ok(pushed ? `已推送 ${show(DIST_DIR)} → ${repo} 的 gh-pages 分支，Pages 构建已成功` : `${summary}；gh-pages 内容未变，Pages 构建已确认`);

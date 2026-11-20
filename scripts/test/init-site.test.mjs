@@ -39,6 +39,7 @@ test('init 参数默认预览：呈现更改与示例域名提示，不修改配
   assert.match(result.output, /site\.title.*我的书库/);
   assert.match(result.output, /示例域名/);
   assert.match(result.output, /未写入配置/);
+  assert.match(result.output, /GitHub Actions 的发布工作流中手动选择目标/);
   assert.equal(await readFile(ws.config, 'utf8'), ws.text);
   assert.deepEqual(await readdir(ws.dir), ['site.config.yaml']);
 });

@@ -17,7 +17,6 @@ export const OUT_DB_DIR = join(OUT_DIR, 'db');
 export const SITE_DIR = join(ROOT, 'packages', 'site');
 export const SITE_GENERATED_DIR = join(SITE_DIR, 'src', 'generated');
 export const PLATFORM_GENERATED_DIR = join(ROOT, 'packages', 'platform', 'generated');
-/** CNB 云原生构建配置；GitHub Actions 在 .github/workflows 中保留等价入口。 */
-export const CNB_FILE = join(ROOT, '.cnb.yml');
-export const CNB_DIR = join(ROOT, '.cnb');
+/** 实际执行的 GitHub Actions 工作流目录。 */
+export const WORKFLOW_DIR = join(ROOT, '.github', 'workflows');
 export const CONFIG_FILE = join(ROOT, 'site.config.yaml');

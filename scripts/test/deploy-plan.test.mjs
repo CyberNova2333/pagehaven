@@ -174,7 +174,7 @@ test('Workers 生产与预览都在计划阶段拒绝末尾连字符，ESA 名�
 
 function cleanEnv() {
   const env = { ...process.env };
-  for (const k of Object.keys(env)) if (/^(CLOUDFLARE_|EDGEONE_|DEPLOY_|DIST_DIR$|OUT_DIR$|RELEASE_VERSION$|CONFIG_FILE$)/.test(k)) delete env[k];
+  for (const k of Object.keys(env)) if (/^(CLOUDFLARE_|EDGEONE_|GITHUB_|RELEASE_|DEPLOY_|DIST_DIR$|OUT_DIR$|CONFIG_FILE$)/.test(k)) delete env[k];
   env.CONFIG_FILE = configFile;
   return env;
 }

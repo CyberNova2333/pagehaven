@@ -39,7 +39,7 @@ const generated = await writeSiteGalleryJson(gallery, { searchDb: manifest?.db ?
 note(`${relative(ROOT, generated.galleryFile)}：${gallery.totals.series} 个作品、${gallery.totals.chapters} 话；台词分片 ${generated.textFiles.length} 份`);
 await rm(DIST_DIR, { recursive: true, force: true });
 
-// 不经 npx，直接用 node 跑 astro 包自己声明的 bin：在 CNB / Codespaces / 任何本地环境
+// 直接用 node 跑 astro 包自己声明的 bin：在 GitHub Actions / Codespaces / 本地环境
 // 行为一致，也不依赖 PATH 里有没有 node_modules/.bin。
 const require = createRequire(join(SITE_DIR, 'package.json'));
 const astroPkgPath = require.resolve('astro/package.json');

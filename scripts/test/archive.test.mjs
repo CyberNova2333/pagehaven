@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import yaml from 'js-yaml';
 import { ROOT } from '../lib/paths.mjs';
 
-const pipeline = yaml.load(await readFile(join(ROOT, '.cnb.yml'), 'utf8'));
-const stage = pipeline.main.web_trigger_archive[0].stages.find((entry) => entry.script).script;
+const pipeline = yaml.load(await readFile(join(ROOT, '.github/workflows/archive.yml'), 'utf8'));
+const stage = pipeline.jobs.archive.steps.find((entry) => entry.run).run;
 const env = { ...process.env, LC_ALL: 'C', GIT_AUTHOR_NAME: 'Archive Fixture', GIT_AUTHOR_EMAIL: 'archive@example.invalid',
   GIT_COMMITTER_NAME: 'Archive Fixture', GIT_COMMITTER_EMAIL: 'archive@example.invalid' };
 function git(args, { cwd, input } = {}) {
@@ -45,12 +45,11 @@ async function fixture(t) {
     assert.notEqual(spawnSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: client, env }).status, 0,
       '归档客户端事先不应拥有待归档或竞争提交');
   }
-  // 只替换真实远端的来源；分支保护、标签核对及删除命令执行流水线原文。
-  const localStage = stage.replace(/^repo_url=.*$/m, 'repo_url="$FIXTURE_REMOTE"');
-  assert.notEqual(localStage, stage);
+  // origin 已指向本地夹具；分支保护、标签核对及删除命令执行工作流原文。
+  const localStage = stage;
   const execute = (script = localStage, branch = 'fixture') => spawnSync(shell, ['-c', script], {
     cwd: client, encoding: 'utf8', timeout: 15_000,
-    env: { ...shellEnv, branch, FIXTURE_REMOTE: remote, FIXTURE_WRITER: writer, FIXTURE_NEXT_SHA: next },
+    env: { ...shellEnv, BRANCH: branch, GITHUB_STEP_SUMMARY: join(dir, 'summary.md'), FIXTURE_REMOTE: remote, FIXTURE_WRITER: writer, FIXTURE_NEXT_SHA: next },
   });
   return { remote, client, run, write, main, first, next, localStage, execute };
 }
@@ -80,7 +79,7 @@ test('归档执行真实阶段：观测后、获取前分支变化时拒绝创�
 
 test('归档执行真实阶段：获取后竞争更新仍由 lease 保留新分支，标签只保存已核对顶点', async (t) => {
   const f = await fixture(t);
-  const raced = f.localStage.replace(/^(git push "\$repo_url" "\$sha:refs\/tags\/\$tag")$/m,
+  const raced = f.localStage.replace(/^(git push origin "\$sha:refs\/tags\/\$tag")$/m,
     'git -C "$FIXTURE_WRITER" push "$FIXTURE_REMOTE" "$FIXTURE_NEXT_SHA:refs/heads/fixture"\n$1');
   assert.notEqual(raced, f.localStage);
   const result = f.execute(raced);

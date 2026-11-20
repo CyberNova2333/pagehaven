@@ -10,14 +10,17 @@ permissions:
 
 concurrency:
   group: docs-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: docs-site/package.json
@@ -44,6 +47,7 @@ jobs:
           path: docs-site/.vitepress/dist
 
   deploy:
+    if: ${{ github.ref == 'refs/heads/main' }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10

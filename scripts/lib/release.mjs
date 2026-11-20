@@ -4,6 +4,9 @@
 import { createHash } from 'node:crypto';
 import { DEPLOY_TARGETS, DEFAULT_RELEASE_TARGETS } from '@gallery/platform';
 import { getObject, putObject } from './r2.mjs';
+import { R2_ENV_KEYS } from './r2.mjs';
+import { requiredEnv, planDeployCommand } from './deploy-plan.mjs';
+import { environmentFromSecrets } from '../ci/run-with-secrets.mjs';
 
 export const RELEASE_STATE_FILE = 'release-state.json';
 export const RELEASE_TARGETS = DEPLOY_TARGETS;
@@ -28,21 +31,23 @@ export function releasePlan({ target = 'none', environment = 'production', domai
   return { target, environment, targets, activate: environment === 'production' && targets.length > 0 };
 }
 
-// 手动发布只接收密钥文件地址，凭据仍由 CNB 在需要的任务中通过 imports 注入。
-export function validateSecretImports({ publishUrl, deployUrl, target }) {
-  for (const [name, value, required] of [
-    ['publish_secrets_url', publishUrl, true],
-    ['deploy_secrets_url', deployUrl, target !== 'none'],
-  ]) {
-    if (!value && !required) continue;
-    let url;
-    try { url = new URL(value); } catch { /* 统一报错，不回显输入中的账号或令牌。 */ }
-    if (!url || value.trim() !== value || url.protocol !== 'https:' ||
-        url.username || url.password || url.search || url.hash ||
-        !/^\/[^\s]+\/-\/blob\/[^/]+\/.+\.(?:ya?ml|json)$/i.test(url.pathname)) {
-      throw new Error(`${name} 必须填写 CNB HTTPS 密钥文件地址（/-/blob/<ref>/<file>.yml 或 .json），不能包含登录凭据、查询参数或片段`);
+// 预检只解析当前目标需要的 Secrets，不执行网络请求或把凭据写到工作流环境文件。
+export function validateReleaseSecrets({ publish, deploy, plan, config, signingKeyPresent }) {
+  const publishing = environmentFromSecrets(publish);
+  const missingPublish = R2_ENV_KEYS.filter((key) => !publishing[key]?.trim());
+  if (missingPublish.length) throw new Error(`PUBLISH_SECRETS_YML 缺少 ${missingPublish.join('、')}`);
+  if (plan.targets.length) {
+    const deploying = environmentFromSecrets(deploy);
+    for (const target of plan.targets) {
+      const keys = target === 'github' ? ['GITHUB_PAGES_REPO', 'GITHUB_PAGES_TOKEN'] : requiredEnv(target);
+      if (keys.some((key) => !deploying[key]?.trim())) throw new Error(`DEPLOY_SECRETS_YML 缺少 ${target} 所需字段`);
+      if (target !== 'github') {
+        const command = planDeployCommand({ target, config, env: { ...deploying, DEPLOY_ENV: plan.environment }, distDir: 'dist' });
+        if (!command.ok) throw new Error(`DEPLOY_SECRETS_YML 的 ${target} 配置无效`);
+      }
     }
   }
+  if (plan.activate && signingKeyPresent !== 'true') throw new Error('生产发布缺少 RELEASE_SIGNING_KEY');
 }
 
 // 生成时间不改变发布内容；其余字段全部进入指纹，避免将另一套数据的部署记录混进来。

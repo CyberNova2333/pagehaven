@@ -48,7 +48,7 @@ function summary(plan, file, locale) {
   console.log(say(locale, `配置：${file}`, `Configuration: ${file}`));
   for (const change of plan.changes) console.log(`  ${change.path}: ${JSON.stringify(change.before)} → ${JSON.stringify(change.after)}`);
   if (!plan.changes.length) console.log(say(locale, '配置未变。', 'Configuration is unchanged.'));
-  console.log(say(locale, `目标引导：${plan.target}；发布时仍需在 CNB 手动选择目标。`, `Setup guidance: ${plan.target}; choose the release target manually in CNB when publishing.`));
+  console.log(say(locale, `目标引导：${plan.target}；发布时仍需在 GitHub Actions 的发布工作流中手动选择目标。`, `Setup guidance: ${plan.target}; choose the target manually in the GitHub Actions release workflow.`));
   if (plan.target === 'cloudflare') console.log(say(locale, '请准备对应的 Pages 项目，并在部署密钥中配置账号与令牌。', 'Prepare the matching Pages project and configure its account and token in deployment secrets.'));
   if (plan.target === 'edgeone') console.log(say(locale, '请在部署密钥中配置项目 ID、项目名、区域与令牌。', 'Configure the project ID, project name, region, and token in deployment secrets.'));
   if (plan.target === 'github') console.log(say(locale, '请在部署密钥中配置发布仓库与令牌，并将 Pages 来源设为 gh-pages 根目录。', 'Configure the publishing repository and token in deployment secrets, with Pages sourced from the gh-pages root.'));

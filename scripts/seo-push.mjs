@@ -24,7 +24,7 @@
 //   SEO_PUSH_KEY_RETRIES    key 文件核对最多试几次（默认 6）；SEO_PUSH_KEY_RETRY_MS 每次间隔（默认 20000）——
 //                           部署刚完成时 CDN / Pages 还没铺开，第一次取到 404 很正常，等一等再判
 //   SEO_PUSH_DRY_RUN        1 = 只打印将推什么，不发任何请求（与 --dry-run 同义）
-//   GITHUB_STEP_SUMMARY     有就把一张小表追加进去（GitHub Actions 兼容；CNB 不设该变量）
+//   GITHUB_STEP_SUMMARY     有就把一张小表追加到 GitHub Actions 的运行摘要
 import { appendFile, readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { loadSiteConfig } from './lib/config.mjs';

@@ -25,8 +25,6 @@ test('README 章节链接拒绝英文原文及过时别名，并指出文件及�
     '<a href="#Getting started">开始</a>',
     '<a href="#section-1">架构</a>',
     '[边界](#limitations)',
-    '<a id="section-1"></a>',
-    '<a id="limitations"></a>',
   ].join('\n'), 'README.en.md');
   assert.equal(problems.length, 5);
   assert.ok(problems.some((problem) => problem.includes('README.en.md:3') && problem.includes('#Features')));
@@ -34,6 +32,36 @@ test('README 章节链接拒绝英文原文及过时别名，并指出文件及�
   assert.ok(problems.some((problem) => problem.includes('README.en.md:5') && problem.includes('#Getting started')));
   assert.ok(problems.some((problem) => problem.includes('#section-1')));
   assert.ok(problems.some((problem) => problem.includes('#limitations')));
+});
+
+test('GitHub 重复标题编号处理与现有带编号标题的冲突', () => {
+  const markdown = [
+    '## Heading', '## Heading-1', '## Heading', '## Heading',
+    '[一](#heading)', '[显式编号标题](#heading-1)', '[二](#heading-2)', '[三](#heading-3)',
+    '[不存在](#heading-4)',
+  ].join('\n');
+  const problems = checkReadmeLinks(markdown, 'README.md');
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /#heading-4/);
+});
+
+test('GitHub 自定义锚点不参与标题编号，HTML 标签内的非锚点属性不算锚点', () => {
+  const markdown = [
+    '<a name="features"></a>', '<a id="custom-section"></a>', '<a data-name="fake"></a>',
+    '## Features', '## Features',
+    '[自定义](#custom-section)', '[标题](#features)', '[重复标题](#features-1)', '[伪属性](#fake)',
+  ].join('\n');
+  const problems = checkReadmeLinks(markdown, 'README.md');
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /#fake/);
+});
+
+test('GitHub 标题去除格式和链接目标，保留正文中的下划线', () => {
+  assert.deepEqual(checkReadmeLinks([
+    '## This is a _Helpful_ **Section** with [links](https://example.invalid)',
+    '[标题](#this-is-a-helpful-section-with-links)',
+    '## snake_case `inline_code`', '[代码](#snake_case-inline_code)',
+  ].join('\n'), 'README.md'), []);
 });
 
 test('README 标题锚点去掉标点并保留中文及已有连字符', () => {

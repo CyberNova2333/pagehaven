@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
-// CNB 的 README 章节参数与标题生成的锚点一致：小写、空白转连字符、去除标点。
+// GitHub 的 README 章节链接：标题锚点去重，自定义锚点独立于标题编号。
 // 只检查本页的 HTML href 和 Markdown 内联链接，不把示例代码当成正文。
 export function checkReadmeLinks(markdown, file) {
   let fence = null;
@@ -20,12 +20,22 @@ export function checkReadmeLinks(markdown, file) {
   for (const line of lines) {
     const heading = /^ {0,3}#{1,6}(?:[ \t]+|$)(.*)$/.exec(line);
     if (heading) {
-      headings.add(heading[1].replace(/[ \t]+#+[ \t]*$/, '').trim().toLowerCase()
-        .replace(/[^\p{L}\p{N}\p{M}_\s-]/gu, '').replace(/\s/g, '-'));
+      const base = heading[1].replace(/[ \t]+#+[ \t]*$/, '').trim()
+        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/<[^>]*>/g, '')
+        .replace(/(^|\s)_{1,2}([^_]+)_{1,2}(?=$|\s|[.,!?])/g, '$1$2')
+        .toLowerCase().replace(/[^\p{L}\p{N}\p{M}_ -]/gu, '').replace(/ /g, '-');
+      let anchor = base;
+      let suffix = 0;
+      while (headings.has(anchor)) anchor = `${base}-${++suffix}`;
+      headings.add(anchor);
     }
   }
 
   const text = lines.join('\n');
+  const anchors = new Set(headings);
+  for (const match of text.matchAll(/<a\b[^>]*\s(?:name|id)\s*=\s*(["'])([^"']+)\1[^>]*>/gi)) {
+    anchors.add(match[2]);
+  }
   const problems = [];
   const patterns = [
     /\bhref\s*=\s*(["'])#([^"']*)\1/gi,
@@ -42,8 +52,8 @@ export function checkReadmeLinks(markdown, file) {
         problems.push(`${location} 章节链接 #${fragment} 的 URL 编码无效`);
         continue;
       }
-      if (!headings.has(decoded)) {
-        problems.push(`${location} 章节链接 #${fragment} 未匹配实际标题生成的 CNB 锚点（小写、空白转连字符、去除标点）`);
+      if (!anchors.has(decoded)) {
+        problems.push(`${location} 章节链接 #${fragment} 未匹配 GitHub 标题或自定义锚点（标题小写、空格转连字符、重复标题带编号）`);
       }
     }
   }
