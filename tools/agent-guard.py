@@ -1,49 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PreToolUse 钩子（matcher: Bash）—— 让 tools/githooks/ 里的 git 钩子**自动生效**。
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
+"""PreToolUse 命令护栏：检查钩子状态与常见绕过写法，不自动修改 Git 配置。
 
-Claude Code 与 Codex CLI 都支持项目内的 PreToolUse 钩子，且都是「跟着仓库走、
-克隆下来就加载」的。git 自己的钩子不行：`core.hooksPath` 是每份克隆的本地配置，
-**没法从入库文件里设**——这是 git 有意为之的安全设计（否则 clone 一个仓库就等于
-执行任意代码）。所以才有 tools/install-hooks.sh 那个手动步骤。
-
-本脚本把那个手动步骤消掉：
-
-    .claude/settings.json  →  PreToolUse(Bash)  ┐
-                                                ├→ 本脚本
-    .codex/config.toml     →  PreToolUse(Bash)  ┘
-
-PreToolUse 在命令**执行之前**跑，所以这里把 core.hooksPath 设好之后，紧接着那条
-`git commit` / `git push` 已经会走 tools/githooks/。也就是说：
-
-  · 装了本仓库的 Claude 或 Codex 跑过**任意一条** Bash 命令 → 该克隆的 git 钩子
-    从此长期生效，之后连人类手敲的 commit 也一并受管；
-  · 逻辑不重复实现——真正的判定仍然只在 tools/githooks/ 里那两个 git 钩子中，
-    本脚本只负责「让它们接上电」。
-
-## 唯一在这里直接拦的事：绕过 git 钩子
-
-git 钩子唯一挡不住的就是绕过 git 钩子本身。两条路都拦：
-
-  · `git commit --no-verify` / `-n`、`git push --no-verify`；
-  · `git -c core.hooksPath=... commit/push`（把钩子目录换掉，效果一样且更隐蔽）。
-
-想跳过检查请用文档里写明的逃生口（提交信息里顶格独占一行的 [skip-hooks]、
-或 SKIP_BRANCH_HOOK=1），那两个至少会在输出里留下痕迹。
-
-**这不是安全边界**，是防手滑与防偷懒的护栏。真想绕总归绕得过去（环境变量、
-临时脚本、直接写 .git/）。判定的目标是「常见写法一个不漏、正常提交一个不误伤」，
-不是「堵死一切」。
-
-判定改用 shlex 分词而不是在原始命令文本上跑正则——正则那版同时漏和误伤：
-`git -c user.name=x commit --no-verify` 漏（`git` 与 `commit` 之间隔了全局选项）、
-反斜杠续行漏（按 \n 切段切断了）、而 `git commit -m "调整 -n 参数的说明"` 却被
-误拦（引号里的 -n 被当成了选项）。分词之后这三种全部正确。
-
-## 健壮性
-
-任何内部异常一律放行（exit 0，fail-open）。钩子自身绝不能挡住正常工作——
-这条比它想强制的任何规则都优先。
+这不是安全边界。实际提交/推送规则由已安装的 Git 钩子执行；本入口在无法解析时
+沿用既有 fail-open 契约。安装由维护者显式运行 tools/install-hooks.sh 或 .cmd。
 """
 
 import json
@@ -66,13 +28,25 @@ COMMIT_SHORT_NOVERIFY = re.compile(r"^-[A-Za-z]*n[A-Za-z]*$")
 
 
 def split_segments(cmd):
-    """按 shell 分隔符切段并分词。分不了词的段退回朴素 split（fail-open）。"""
+    """保留引号中的分隔符，不把提交正文拆成 shell 命令。"""
     cmd = re.sub(r"\\\n", " ", cmd)          # 先接上反斜杠续行，否则切段会切断它
-    for seg in re.split(r"&&|\|\||[;|\n]", cmd):
-        try:
-            yield shlex.split(seg)
-        except ValueError:                   # 引号不配对等
-            yield seg.split()
+    lexer = shlex.shlex(cmd, posix=True, punctuation_chars=';&|\n')
+    lexer.whitespace = ' \t\r'
+    lexer.whitespace_split = True
+    lexer.commenters = ''
+    segment = []
+    try:
+        for token in lexer:
+            if token and all(character in ';&|\n' for character in token):
+                if segment:
+                    yield segment
+                    segment = []
+            else:
+                segment.append(token)
+    except ValueError:
+        return
+    if segment:
+        yield segment
 
 
 def offending(cmd):
@@ -80,7 +54,7 @@ def offending(cmd):
     for toks in split_segments(cmd):
         try:
             i = next(k for k, t in enumerate(toks)
-                     if t == "git" or t.endswith("/git"))
+                     if t.replace('\\', '/').rsplit('/', 1)[-1].lower() in ('git', 'git.exe'))
         except StopIteration:
             continue
         rest, sub, hooks_off = toks[i + 1:], None, False
@@ -90,6 +64,9 @@ def offending(cmd):
             if t == "-c" and j + 1 < len(rest):
                 if rest[j + 1].split("=", 1)[0].strip().lower() == "core.hookspath":
                     hooks_off = True
+                j += 2
+                continue
+            if t in ('-C', '--git-dir', '--work-tree', '--namespace', '--exec-path'):
                 j += 2
                 continue
             if t.startswith("-"):
@@ -104,11 +81,19 @@ def offending(cmd):
             continue
         if hooks_off:
             return "-c core.hooksPath=…（把钩子目录换掉）"
-        for t in rest:
+        j = 0
+        while j < len(rest):
+            t = rest[j]
+            if t == '--':
+                break
+            if sub == 'commit' and t in ('-m', '--message', '-F', '--file', '-C', '--reuse-message', '-c', '--reedit-message', '--author', '--date', '--trailer'):
+                j += 2
+                continue
             if t == "--no-verify":
                 return "--no-verify"
             if sub == "commit" and COMMIT_SHORT_NOVERIFY.match(t):
                 return t + "（commit 的 -n 就是 --no-verify）"
+            j += 1
     return None
 
 
@@ -118,7 +103,7 @@ def git(*args, **kw):
 
 
 def ensure_hooks_path(cwd):
-    """把 core.hooksPath 指向 tools/githooks。返回给用户看的一行说明，或 None。
+    """只读核对 core.hooksPath，返回提示或 None。
 
     cwd 用钩子输入里的那个，不是本进程的——命令可能在别的仓库/子目录里跑，
     按本进程的 cwd 判会认错仓库。
@@ -139,18 +124,8 @@ def ensure_hooks_path(cwd):
                 "本仓库的提交/分支检查不会生效；"
                 "确认无误可跑 bash tools/install-hooks.sh。" % (cur, HOOKS_DIR))
 
-    for h in ("commit-msg", "pre-push"):
-        p = os.path.join(root, HOOKS_DIR, h)
-        if os.path.exists(p):
-            try:
-                os.chmod(p, os.stat(p).st_mode | 0o111)
-            except OSError:
-                pass
-    if git("config", "core.hooksPath", HOOKS_DIR, cwd=root).returncode != 0:
-        return None
-    return ("已把本克隆的 core.hooksPath 指向 %s —— "
-            "提交信息规范与分支纪律（CLAUDE.md / AGENTS.md）从现在起会真的拦人。"
-            % HOOKS_DIR)
+    return ("尚未配置项目钩子；本工具只检查，不自动修改 Git 配置或覆盖默认钩子。"
+            "需要安装时请运行 bash tools/install-hooks.sh。")
 
 
 def main():

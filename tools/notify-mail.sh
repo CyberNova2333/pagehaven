@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 # 标准邮件通知：把一次构建 / 部署的结果发到全域邮件转发端点。
 #
 # 这套是**组织内各仓库共用的一份标准脚本**（同名、同内容、同变量）：
@@ -34,10 +36,8 @@
 # 原则：**通知没发出去就必须显式失败**。变量没配齐、找不到解释器、报文没能生成、网络断了、
 # 服务端 4xx/5xx——一律打 ::error:: 并以非零退出码结束，让「红灯邮件」这一步在流水线上变红。
 #
-#   本脚本跑在 .cnb.yml 的 failStages 里，**只有构建已经失败时才会执行**；CNB 的退出码语义是
-#   「0=成功、78=成功但中断、其它=任务失败并中断当前流水线」。所以它变红不会掩盖原本的失败
-#   原因（失败阶段与原因由 CNB_BUILD_FAILED_* 传递，不看这一步的结论），只会让「通知实际没
-#   送达」这件事不再被静默吞掉。
+#   是否在失败后调用由工作流决定；本脚本的退出码只表示通知是否送达。
+#   原始构建失败原因应由调用方保留，不能用通知成功覆盖构建失败。
 #
 #   ⚠ 旧版本一律 exit 0（失败只留一行 warning），代价是上游 502 时这一步照样全绿：通知没发
 #   出去，而构建页面上看不出任何异常。**不要改回那个行为。**

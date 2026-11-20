@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 """CI 侧的提交信息检查：查一个提交区间，判据与 git 钩子共用（tools/githooks/_msgrules.py）。
 
 为什么本地有两道钩子了还要这一道：commit-msg 只在装了钩子的克隆里生效，pre-push
@@ -15,23 +17,30 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "githooks"))
 import _msgrules  # noqa: E402
+import _generated  # noqa: E402
 
 
 def git(*args):
-    p = subprocess.run(["git", *args], capture_output=True, text=True)
+    p = subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
     return p.stdout if p.returncode == 0 else ""
 
 
 def main(argv):
     rng = argv[1] if len(argv) > 1 else "origin/main..HEAD"
-    shas = [s for s in git("rev-list", "--no-merges", rng).split() if s]
+    shas = [s for s in git("rev-list", rng).split() if s]
     if not shas:
         print("✔ 区间 %s 内没有需要检查的提交" % rng)
         return 0
     bad = 0
     for sha in shas:
         msg = git("log", "-1", "--format=%B", sha)
-        probs = _msgrules.problems(msg, drop_comments=False)
+        generated = _generated.requested(msg)
+        probs = _msgrules.problems(msg, drop_comments=False, generated=generated)
+        if generated:
+            try:
+                _generated.validate_commit(sha, msg)
+            except Exception as exc:
+                probs.append("生成提交检查失败：%s" % exc)
         subject = msg.split("\n")[0][:72]
         if probs:
             bad += 1

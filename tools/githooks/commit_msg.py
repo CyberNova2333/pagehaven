@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 """commit-msg 钩子：把 CLAUDE.md / AGENTS.md 的提交规范变成硬拦截。
 
 装法见 tools/install-hooks.sh。拦下的三条都是文档里写死的：
@@ -58,7 +60,15 @@ def main():
 
     # 判据在 _msgrules 里，与 pre-push 共用一份——两个钩子查的是同一件事，
     # 只是时刻不同（提交时 / 推送时），不该各写一遍然后慢慢长歪。
-    problems = _msgrules.problems(raw, drop_comments=True)
+    import _generated
+    generated = _generated.requested(raw)
+    if generated:
+        try:
+            _generated.validate_index(raw)
+        except Exception as exc:
+            sys.stderr.write("生成提交检查失败：%s\n" % exc)
+            return 1
+    problems = _msgrules.problems(raw, drop_comments=True, generated=generated)
     if not problems:
         return 0
 

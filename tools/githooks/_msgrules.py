@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 """commit-msg 与 pre-push 共用的提交信息判据。
 
 判据只有一份，两个钩子都用它，因为它们查的是同一件事、在两个不同的时刻：
@@ -55,7 +57,7 @@ def normalize(raw, drop_comments):
     return subject, "\n".join(lines)
 
 
-def problems(raw, drop_comments=False):
+def problems(raw, drop_comments=False, generated=False):
     """返回不合规之处的列表（每项是一段给人看的说明）。合规则返回空列表。
 
     自动生成的信息、以及带顶格 [skip-hooks] 的信息，一律返回空列表。
@@ -88,7 +90,7 @@ def problems(raw, drop_comments=False):
             out.append("前缀之后的描述必须用**中文**（AGENTS.md §1 一）\n"
                        "      当前标题: " + subject[:72])
 
-    if not re.search(r"^Co-authored-by:\s*\S[^<>\n]*<[^<>\s]+@[^<>\s]+>",
+    if not generated and not re.search(r"^Co-authored-by:\s*\S[^<>\n]*<[^<>\s]+@[^<>\s]+>",
                      body, re.M):
         out.append("缺（或格式不对的）Co-authored-by trailer"
                    "（CLAUDE.md 提交约定 / AGENTS.md §1 三）\n"

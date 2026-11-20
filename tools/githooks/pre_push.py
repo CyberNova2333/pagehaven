@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 """pre-push 钩子：把 AGENTS.md §0 的分支纪律与 §1 的提交规范变成硬拦截。
 
 装法见 tools/install-hooks.sh。
@@ -43,10 +45,9 @@
 
 ### 三、红灯期间推 main（红灯协议，CONTRIBUTING.md §五）
 
-只在**往 main 推**时查。用本机 cnb 命令行工具查 CNB：main 上最近一次**已跑完**的
-push 构建（「🟢 全量回归 + last-green」迁到 CNB 后由它产生）是什么结论。是 error（红灯）时，本次推送新增的
-提交**必须全是修复类**（标题以 `fix(` / `fix:` / `revert` 开头），否则拦下。
-查不到（没装或没登录 cnb、没网、CNB 上还没有对应流水线）一律放行并提示——护栏坏了让路，不锁仓库。
+只在**往 main 推**时查。查询 GitHub 的 checks.yml 工作流中最近一次有成败结论的
+main push 检查，失败时只允许 fix / revert。已取消与尚未完成的检查不覆盖之前的失败。
+备用端提交编号可以不同，主线状态仍来自 GitHub。查询不可用时明确提示 Unknown，沿用既有放行契约。
 
 逃生口：`SKIP_REDLIGHT_HOOK=1 git push ...`
 
@@ -60,17 +61,21 @@ push 构建（「🟢 全量回归 + last-green」迁到 CNB 后由它产生）�
 用它意味着你**明确知道自己在跳过什么**，并且准备好向维护者解释。
 """
 
-import csv
+import json
 import os
 import re
 import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from github_repo import github_remote, equivalent_commit
+
 HOOK_NAME = "pre-push"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     import _msgrules                                          # noqa: E402
+    import _generated
 except ImportError:
     # 判据模块不在 → **放行**，不是拦下。缺一个文件就让整个仓库提交不了/推不了，
     # 比它想强制的任何规则都糟糕：报错还只有一段 Python traceback，没人看得懂。
@@ -86,7 +91,6 @@ except ImportError:
 # 「不限制历史提交，从现在开始检查」——历史里的老提交不翻旧账，否则谁 rebase
 # 一下旧分支都会被一堆与自己无关的提交卡死。
 CUTOFF_EPOCH = 1788393600   # 2026-09-03，本仓库钩子上线时刻
-MAX_COMMITS = 200                 # 单次推送最多查这么多，超出的不查（护栏不是审计）
 
 ALLOW = (re.compile(r"^main$"), re.compile(r"^hotfix/"), re.compile(r"^surgery/"))
 # 具名临时例外加在上表末尾，且必须同步加进 tools/check-branch-hygiene.py 的 ALLOW，
@@ -104,8 +108,7 @@ RECENT_HOURS = 2.0
 
 # 红灯闸门：标题以这些开头的算「修复类」提交（红灯期间唯一允许推 main 的）
 FIXISH = re.compile(r"^\s*(fix[(：:]|revert)", re.IGNORECASE)
-# 红灯状态来自 CNB：main 上最近一次已跑完的 push 构建。原先查 GitHub 上的 checks.yml 工作流，
-# 迁到 CNB 后由 push 到 main 触发的流水线产生。cnb 命令行工具启动较慢，超时放宽到 30 秒。
+# 红灯来源固定为 GitHub 的 checks.yml，备用推送也使用同一主线状态。
 REDLIGHT_EVENT = "push"
 REDLIGHT_TIMEOUT = 30
 
@@ -156,8 +159,7 @@ def new_commits(local_sha, remote_sha):
         rng = ["%s..%s" % (remote_sha, local_sha)]
     else:
         rng = [local_sha, "--not", "--remotes=%s" % remote_name()]
-    r = sh("git", "rev-list", "--no-merges",
-           "--max-count=%d" % MAX_COMMITS, *rng)
+    r = sh("git", "rev-list", *rng)
     if r.returncode != 0:
         return []                                    # 算不出来就不查（fail-open）
     return [x for x in r.stdout.split() if x]
@@ -176,11 +178,30 @@ def check_messages(refs):
                 continue
             ts, _, raw = r.stdout.partition("\x1f")
             try:
-                if int(ts.strip()) < CUTOFF_EPOCH:   # 历史提交不翻旧账
+                if int(ts.strip()) < CUTOFF_EPOCH and not _generated.requested(raw):   # 历史提交不翻旧账
                     continue
             except ValueError:
                 continue
-            probs = _msgrules.problems(raw)
+            generated = _generated.requested(raw)
+            probs = []
+            if generated:
+                try:
+                    candidate = sha
+                    identity = sh("git", "log", "-1", "--format=%an <%ae>", sha).stdout.strip()
+                    if identity != _generated.IDENTITY:
+                        primary, _ = github_remote(remote_name())
+                        candidate = equivalent_commit(sha, primary)
+                        if not candidate:
+                            raise ValueError("备用提交缺少等价 GitHub 提交")
+                        author = _generated.git("show", "-s", "--format=%an%n%ae%n%cn%n%ce%n%P", sha).strip().splitlines()
+                        if len(author) != 5 or author[0] != "CyberNova" or author[2] != "CyberNova" or author[1] != author[3] or len(author[4].split()) != 1:
+                            raise ValueError("备用生成提交身份或父图不符合镜像规则")
+                        _generated.verify_signature(sha, email=author[1])
+                        _generated.validate_paths(_generated.git("diff-tree", "--no-commit-id", "--name-status", "--no-renames", "-r", "-z", sha), _generated.validate_message(raw))
+                    _generated.validate_commit(candidate, raw)
+                except Exception as exc:
+                    probs.append("生成提交检查失败：%s" % exc)
+            probs += _msgrules.problems(raw, generated=generated)
             if probs:
                 subj = (raw.strip().split("\n") or [""])[0][:60]
                 bad.append((sha[:8], branch, subj, probs))
@@ -203,106 +224,57 @@ def report_messages(bad):
 
 
 def repo_slug():
-    """从远端 URL 解出 CNB 仓库路径（可含子组织）。解不出来返回 None（本检查 fail-open）。"""
-    r = sh("git", "remote", "get-url", remote_name())
-    if r.returncode != 0:
+    try:
+        return github_remote(remote_name())[1]
+    except ValueError:
         return None
-    m = re.search(r"cnb\.cool[:/](.+?)(?:\.git)?/?$", r.stdout.strip())
-    return m.group(1) if m else None
 
 
 def main_redlight_from_output(output):
-    """从 cnb 的文本输出判断最近一次有成败结论的构建，不把纯取消算成失败。
-
-    CLI 的 pipelines 是带 CSV 行的表格（字段内可能有逗号），不是普通 YAML。
-    只有完整表格确认全部取消时，才忽略顶层 error；缺失或异常的表格不消除红灯。
-    """
-    if not re.search(r"^status:\s*200\b", output, re.M):
-        return None, "cnb 查询失败（未登录、无权限或网络问题）"
-    builds, cur, table = [], None, None
-    for line in output.splitlines():
-        m = re.match(r"(\s*)- sn:\s*(\S+)", line)
-        if m:
-            cur = {"sn": m.group(2), "indent": len(m.group(1)), "pipelines": []}
-            builds.append(cur)
-            table = None
-            continue
-        if cur is None or not line.strip():
-            continue
-        indent = len(line) - len(line.lstrip())
-        if table is not None:
-            if indent > table["indent"]:
-                try:
-                    row = next(csv.reader([line.strip()], strict=True))
-                    if len(row) != len(table["fields"]):
-                        raise ValueError("不完整的流水线行")
-                    cur["pipelines"].append(row[table["fields"].index("status")].strip())
-                except (csv.Error, ValueError):
-                    cur["invalid_pipelines"] = True
-                continue
-            table = None
-        if indent != cur["indent"] + 2:
-            continue
-        m = re.match(r"\s*status:\s*(\S+)", line)
-        if m:
-            cur["status"] = m.group(1)
-            continue
-        m = re.match(r"\s*pipelineTotalCount:\s*(\d+)\s*$", line)
-        if m:
-            cur["pipeline_total"] = int(m.group(1))
-            continue
-        m = re.match(r"\s*pipelines\[(\d+)\]\{([^}]+)\}:\s*$", line)
-        if m:
-            cur["pipeline_count"] = int(m.group(1))
-            table = {"indent": indent, "fields": [f.strip() for f in m.group(2).split(",")]}
-    if not builds:
-        return None, "CNB 上 main 还没有构建记录（全量回归流水线尚未迁到 CNB）"
+    """只参考检查工作流的 main push；取消和运行中记录不抹掉已有红灯。"""
+    try:
+        builds = json.loads(output)
+    except (TypeError, ValueError):
+        return None, "GitHub 检查结果不是有效 JSON"
+    if not isinstance(builds, list):
+        return None, "GitHub 检查结果不是列表"
     for build in builds:
-        status = build.get("status")
-        if status not in ("success", "error", "cancel"):
+        if not isinstance(build, dict):
+            return None, "GitHub 检查记录格式无效"
+        if build.get("headBranch") != "main" or build.get("event") != "push":
             continue
-        pipelines = build["pipelines"]
-        if status == "cancel":
-            # 不让混合取消/失败的构建遮住真实失败。
-            if "error" in pipelines:
-                return True, ""
+        if build.get("status") != "completed":
             continue
-        if status == "error":
-            count = build.get("pipeline_count")
-            all_cancelled = (
-                count is not None and count > 0 and len(pipelines) == count
-                and build.get("pipeline_total", count) == count
-                and not build.get("invalid_pipelines")
-                and all(value == "cancel" for value in pipelines)
-            )
-            if all_cancelled:
-                continue
+        result = build.get("conclusion")
+        if result in ("cancelled", "skipped", "neutral"):
+            continue
+        if result == "success":
+            return False, ""
+        if result in ("failure", "timed_out", "action_required", "startup_failure", "stale"):
             return True, ""
-        return False, ""
-    return None, "main 上最近的构建尚未完成或均已取消，没有可判定成败的记录"
+        return None, "GitHub 检查包含未知结论，不能视为成功"
+    return None, "main 的检查尚无可判定成败的 push 记录"
 
 
 def remote_main_is_red():
-    """main 最近一次已跑完的 push 构建是不是红灯。返回 (结论, 查不到的原因)，结论 None = 查不到。
-
-    用本机 cnb 命令行工具查询，复用它的登录态，钩子里不碰任何令牌。它的输出是
-    YAML 风格的文本，构建按创建时间从新到旧排列，每个构建以「- sn:」开头。"""
+    """从 GitHub 主仓库的 checks.yml 查询主线健康状态，不使用镜像提交号。"""
     slug = repo_slug()
     if not slug:
-        return None, "远端不是 CNB 仓库"
+        return None, "未找到 GitHub 主仓库"
     import shutil
-    cnb = shutil.which("cnb")          # Windows 上是 cnb.cmd，必须先解析出完整路径再调用
-    if not cnb:
-        return None, "本机没有 cnb 命令行工具"
+    gh = shutil.which("gh")
+    if not gh:
+        return None, "本机没有 GitHub CLI"
     try:
-        r = subprocess.run([cnb, "build", "get-build-logs", "--repo", slug, "--targetRef", "main",
-                            "--event", REDLIGHT_EVENT, "--page-size", "10"],
+        r = subprocess.run([gh, "run", "list", "--repo", slug, "--workflow", "checks.yml",
+                            "--branch", "main", "--event", REDLIGHT_EVENT, "--limit", "100",
+                            "--json", "status,conclusion,headBranch,headSha,event"],
                            capture_output=True, text=True, encoding="utf-8", errors="replace",
                            timeout=REDLIGHT_TIMEOUT)
     except Exception as e:
-        return None, "调用 cnb 失败（%s）" % type(e).__name__
+        return None, "调用 GitHub CLI 失败（%s）" % type(e).__name__
     if r.returncode != 0:
-        return None, "cnb 查询失败（未登录、无权限或网络问题）"
+        return None, "GitHub 查询失败（未登录、无权限或网络问题）"
     return main_redlight_from_output(r.stdout)
 
 
@@ -345,35 +317,11 @@ def report_redlight(bad):
                      "  确需跳过: SKIP_REDLIGHT_HOOK=1 git push ...\n\n")
 
 
-# ────────────────────────────────────────────────────────────────
-# 四、强制约定保全（CONTRIBUTING §八 非主线分支发版强制约定）
-#
-# 约定本身「禁止更改」：删掉 §八 / 规则四 / 铁律 7，等于把发版纪律从仓库里
-# 抹掉。ruleset 挡的是 force push / 删分支——那是「推翻整个分支」；这一道挡
-# 「改约定文件内容」：凡本次推送新增的提交改了三个约定文件之一，改动后必须
-# 仍含各自的强制约定标记，否则拦。
-#
-# 判据是「标记必须还在」，不是「内容不许动」——§八 的措辞修正、错别字、
-# 补细节都放行，只有把整段约定删掉/改成非强制才会被拦。
-#
-# 逃生口：SKIP_POLICY_HOOK=1 git push ...（改了约定还硬要推，向维护者交代）
-# ────────────────────────────────────────────────────────────────
-
-# 三个约定文件各自的「强制约定存在」标记：改了文件但标记不在了 = 约定被删。
-# 用「章节标题 + 紧跟其后的禁止措辞」双条件，防只留标题、正文被掏空的写法。
+# 当前规范的最低结构；检查文件删除和段落丢失，不代替人工语义审查。
 POLICY_MARKERS = {
-    "CONTRIBUTING.md": (
-        "## 八、非主线分支发版强制约定",
-        "本约定**禁止修改**",
-    ),
-    "AGENTS.md": (
-        "### 规则四：非主线分支发版必须登记「停止支持开关」",
-        "本约定**禁止修改**",
-    ),
-    "CLAUDE.md": (
-        "7. **非主线分支发版强制约定（禁止更改）**",
-        "本约定**禁止修改**",
-    ),
+    "CONTRIBUTING.md": ("## 五、红灯协议", "红灯期间只允许修复主线"),
+    "AGENTS.md": ("## 平台与数据铁律", "## 发布和分支纪律", "## 提交、署名和内容卫生", "main 禁强推/删除"),
+    "CLAUDE.md": ("AGENTS.md", "单一来源"),
 }
 POLICY_FILES = tuple(POLICY_MARKERS.keys())
 
@@ -395,26 +343,20 @@ def check_policy(refs):
                 continue
             seen.add(sha)
             # 该提交动了哪个约定文件？
+            parent = sh("git", "rev-parse", "%s^" % sha)
+            parent = parent.stdout.strip() if parent.returncode == 0 else ""
+            revisions = [parent, sha] if parent else ["--root", sha]
             r = sh("git", "diff-tree", "--no-commit-id", "--name-only",
-                   "-r", sha, "--", *POLICY_FILES)
+                   "-r", *revisions, "--", *POLICY_FILES)
             if r.returncode != 0:
                 continue
             touched = r.stdout.split()
             if not touched:
                 continue
-            # 改动前（父提交）与改动后都要有强制约定标记；父提交里本来就没有
-            # 的（老分支首次补约定），只要求改后必须有。
-            parent = sh("git", "rev-parse", "%s^" % sha)
-            parent = parent.stdout.strip() if parent.returncode == 0 else ""
             for path in touched:
                 after = file_at(sha, path)
-                if after is None:
-                    continue                        # 把整个文件删了也拦
-                if not markers_present(path, after):
-                    before = file_at(parent, path) if parent else None
-                    # 文件是本次新建且标记齐全 → 放行；否则报
-                    if before is not None and markers_present(path, before):
-                        bad.append((sha[:8], branch, path))
+                if after is None or not markers_present(path, after):
+                    bad.append((sha[:8], branch, path))
     return bad
 
 
@@ -429,12 +371,9 @@ def report_policy(bad):
     for sha, branch, path in bad:
         sys.stderr.write("  %s (%s)  动了 %s，改动后强制约定标记不在了\n"
                          % (sha, branch, path))
-    sys.stderr.write("\n  被删的约定：CONTRIBUTING.md §八「非主线分支发版强制约定」\n"
-                     "  （AGENTS.md 规则四 / CLAUDE.md 铁律 7 同源）——\n"
-                     "  非主线分支版本独立发版必须先登记 config.json 停止支持开关，\n"
-                     "  主线跟上后关开关并强制推送主线最新版下载链接。\n"
-                     "  本约定**禁止更改**，受 branch ruleset 保护。\n\n")
-    sys.stderr.write("  规则出处: CONTRIBUTING.md §八\n"
+    sys.stderr.write("\n  约束来自当前 AGENTS.md 的平台、分支与提交规则，\n"
+                     "  CONTRIBUTING.md 的红灯协议，以及 CLAUDE.md 的单一来源引用。\n"
+                     "  不得通过删除文件或相关规则段落使守卫失效。\n"
                      "  确需跳过: SKIP_POLICY_HOOK=1 git push ...\n\n")
 
 
@@ -469,7 +408,7 @@ def main():
             report_redlight(red_bad)
             rc = 1
 
-    # ── 四、强制约定保全（CONTRIBUTING §八 非主线分支发版约定）──
+    # ── 四、当前规则保全 ──
     if os.environ.get("SKIP_POLICY_HOOK"):
         sys.stderr.write("pre-push: SKIP_POLICY_HOOK=1，跳过强制约定检查\n")
     else:
@@ -499,7 +438,7 @@ def main():
             problems.append(
                 "`%s` 的名字像 CI 触发器。\n"
                 "      AGENTS.md §2：**永远不要用分支触发 CI**。\n"
-                "      构建由人类在 CNB 网页上点按钮手动触发；\n"
+                "      构建由人类在 GitHub Actions 手动入口触发；\n"
                 "      想验能不能过 CI，按 AGENTS.md §3 在本地跑。" % name)
             continue
         problems.append("`%s` 是一条新的非白名单分支。" % name)

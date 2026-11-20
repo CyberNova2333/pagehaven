@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 """分层验证提示：按本次推送改动的路径，说明进入 main 的验证级别（CONTRIBUTING.md §二.3）。
 
 检查流水线把输出写进构建日志。CI 能替代的只有前两级；后两级（真部署 / 真实数据查一次）

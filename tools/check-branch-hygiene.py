@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 """远端分支纪律检查器。**开任何分支之前先跑它。**
 
 ## 它回答什么
@@ -40,6 +42,8 @@ import subprocess
 import sys
 import time
 
+from github_repo import github_remote
+
 # 允许存在于远端的分支。常规类型只有 main / hotfix/* / surgery/*；
 # 特殊研究工作必须由维护者明确授权、具名登记并设置寿命上限。
 ALLOW = (
@@ -65,7 +69,8 @@ def sh(*args):
 
 
 def remote_branches():
-    r = sh("git", "ls-remote", "--heads", "origin")
+    remote, _ = github_remote()
+    r = sh("git", "ls-remote", "--heads", remote)
     if r.returncode != 0:
         print("✘ 取不到远端分支列表：" + r.stderr.strip())
         sys.exit(2)
@@ -86,8 +91,8 @@ def tip_age_hours(sha, name):
     """分支尖端提交距今多久（小时）。取不到返回 None。"""
     # 对象可能不在本地，先按需取一次
     if sh("git", "cat-file", "-e", sha + "^{commit}").returncode != 0:
-        sh("git", "fetch", "--quiet", "origin",
-           "refs/heads/%s:refs/remotes/hygiene/%s" % (name, name))
+        remote, _ = github_remote()
+        sh("git", "fetch", "--quiet", "--no-tags", remote, "refs/heads/" + name)
     r = sh("git", "log", "-1", "--format=%ct", sha)
     if r.returncode != 0 or not r.stdout.strip():
         return None
@@ -111,7 +116,11 @@ def main():
                     help="判定「现在能不能开新分支」，不能则退出码 1")
     args = ap.parse_args()
 
-    branches = remote_branches()
+    try:
+        branches = remote_branches()
+    except ValueError as exc:
+        print("✘ " + str(exc))
+        return 2
     strays = [(s, n) for s, n in branches if not allowed(n)]
 
     print("远端分支共 %d 条：" % len(branches))
@@ -149,11 +158,9 @@ def main():
                 fresh.append((name, h))
             print("    %s" % name)
         print("\n  不要直接删——先归档成 tag 再删。推荐走 CI：")
-        print("    CNB 分支详情页 →「归档分支」按钮 → 输入分支名")
+        print("    GitHub Actions →「归档分支」工作流 → 输入分支名")
         print("  （它会先打 archive/<原名> tag、验证推上远端，然后才删分支）")
-        for _, name in strays:
-            print("    手动等价: git push origin origin/%s^{}:refs/tags/archive/%s"
-                  " && git push origin --delete %s" % (name, name, name))
+
 
     if overdue:
         print("\n✘ 有 %d 条例外分支超期（白名单不等于永久居住证）：" % len(overdue))
