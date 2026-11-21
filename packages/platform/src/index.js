@@ -19,9 +19,10 @@ export const DEPLOY_CONFIG_FILES = ['wrangler.jsonc', 'esa.jsonc'];
 
 /**
  * @param {import('./site-config.js').SiteConfig} config
- * @returns {Record<string, string>}
+ * @param {{directory?: string}} [options] 独立构建的静态产物目录，相对于模板。
+ * @returns {Promise<Record<string, string>>}
  */
-export async function generateAll(config) {
+export async function generateAll(config, { directory } = {}) {
   const { renderCloudflareHeaders } = await import('./generators/headers.js');
   const { renderCloudflareRedirects } = await import('./generators/redirects.js');
   const { renderEdgeoneConfig } = await import('./generators/edgeone.js');
@@ -30,7 +31,7 @@ export async function generateAll(config) {
     _headers: renderCloudflareHeaders(config),
     _redirects: renderCloudflareRedirects(config),
     'edgeone.json': renderEdgeoneConfig(config),
-    'wrangler.jsonc': renderWorkersDeployConfig(config),
-    'esa.jsonc': renderEsaDeployConfig(config),
+    'wrangler.jsonc': renderWorkersDeployConfig(config, { directory }),
+    'esa.jsonc': renderEsaDeployConfig(config, { directory }),
   };
 }

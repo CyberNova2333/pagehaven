@@ -7,6 +7,7 @@
     "pnpm": ">=10.0.0"
   },
   "scripts": {
+    "demo": "node scripts/demo.mjs",
     "init": "node scripts/init-site.mjs",
     "customize": "node scripts/customize.mjs",
     "ingest:labelplus": "node scripts/ingest-labelplus.mjs",
@@ -44,6 +45,7 @@
     "eslint": "^10.0.0",
     "globals": "^17.0.0",
     "js-yaml": "^4.1.0",
+    "playwright": "1.65.1",
     "undici": "8.12.2",
     "yaml": "2.9.1"
   },

@@ -2,15 +2,13 @@
 // build:sitemap，再让 check 守卫过一遍产物。不 mock 任何一步——每话恰好一个 HTML、台词在 HTML 里、
 // 索引与 sitemap 的形状，这些只有真构建出来才算数。
 //
-// CONFIG_FILE / DATA_DIR / DIST_DIR / OUT_DIR 全指到样本与临时目录，不修改站点源配置。
-// 唯一会写进仓库的是 packages/site/src/generated/（不入库、每次构建重生成）与
-// packages/platform/generated/（build:config 的输出；内容与入库的一致，等于没改）。
+// 构建、平台模板和 Astro 缓存均使用测试自己的临时目录。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { buildAstro } from '../lib/astro-build.mjs';
 import { tmpdir } from 'node:os';
 import { dirname, extname, basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,20 +22,18 @@ import { releaseFingerprint } from '../lib/release.mjs';
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const FIXTURES = join(ROOT, 'packages', 'core', 'test', 'fixtures', 'data');
 const SITE_DIR = join(ROOT, 'packages', 'site');
-/** 站点生成物目录：build:site 写、astro build 读；下面有几个用例会动它里面的文件再直接跑 astro。 */
-const GENERATED = join(SITE_DIR, 'src', 'generated');
 // 用户可在自定义工具中关闭文字层/导航或开启增强分页；测试的基线场景由快照明确规定，
 // 不依赖维护者当前的开关选择。其余配置仍取当前站点，另固定无须 HTML 转义的测试标题。
 const config = structuredClone(await loadSiteConfig());
 config.site.title = '构建测试书房';
-Object.assign(config.features, { text_layer: true, comimi_reader: false, platform_config: true });
+Object.assign(config.features, { text_layer: true, comimi_reader: false, range_search: false, platform_config: true });
 Object.assign(config.appearance, { show_search: true, show_library: true });
 const siteOrigin = `https://${config.site.domain}`;
 const imageOrigin = `https://${config.images.hosts[0]}`;
 
 function run(script, env) {
   const clean = { ...process.env };
-  for (const key of ['CONFIG_FILE', 'DATA_DIR', 'DIST_DIR', 'OUT_DIR', 'DEPLOY_ENV', 'RELEASE_VERSION']) delete clean[key];
+  for (const key of ['BUILD_WORK_DIR', 'CONFIG_FILE', 'DATA_DIR', 'DIST_DIR', 'OUT_DIR', 'DEPLOY_ENV', 'RELEASE_VERSION']) delete clean[key];
   const r = spawnSync(process.execPath, [join(ROOT, 'scripts', script)], { cwd: ROOT, encoding: 'utf8', env: { ...clean, ...env } });
   return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
@@ -47,16 +43,6 @@ async function configSnapshot(dir) {
   // JSON 是合法 YAML，避免在测试里维护第二份配置模板或字段清单。
   await writeFile(file, JSON.stringify(config));
   return file;
-}
-
-// 跳过 build-site.mjs、直接跑 astro build：用来验证「生成物与 gallery.json 对不上」这类只有绕过流水线
-// 才会出现的状态。astro 的 bin 与 build-site.mjs 同样从包自己的声明取，不依赖 PATH。
-const require = createRequire(join(SITE_DIR, 'package.json'));
-const astroPkg = require.resolve('astro/package.json');
-const ASTRO_BIN = join(dirname(astroPkg), require(astroPkg).bin.astro);
-function astroBuild(outDir) {
-  const r = spawnSync(process.execPath, [ASTRO_BIN, 'build', '--outDir', outDir], { cwd: SITE_DIR, encoding: 'utf8' });
-  return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
 
 /** 从 HTML 里取某个属性的 JSON 值（Astro 把 " 写成 &quot;）。 */
@@ -75,15 +61,18 @@ async function walk(dir, out = []) {
   return out;
 }
 
-// 沿阅读器自己的同源 JS 引用查找静态与懒加载 chunk；不能扫描整个 _astro，搜索页也在同一产物中。
-async function readerChunks(dist, html) {
+// 从当前页面追踪 JS。首屏只包含静态 import/export 与 HTML 明确预加载的资源。
+async function pageScripts(dist, html, { initialOnly = false } = {}) {
+  const references = initialOnly
+    ? /(?:\bfrom\s*|\bimport\s*)["']((?:\.{1,2}\/|\/_astro\/)[^"'\s]+\.js)["']/g
+    : /["']((?:\.{1,2}\/|\/_astro\/)[^"'\s]+\.js)["']/g;
   const roots = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"[^>]*>/g)];
   const inline = [...html.matchAll(/<script\b(?=[^>]*\btype="module")(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
-  assert.ok(roots.length + inline.length > 0, '阅读器应包含构建后的浏览器模块');
+  assert.ok(roots.length + inline.length > 0, '页面应包含构建后的浏览器模块');
   const classic = new Set();
   for (const [tag, src] of roots) {
     if (/\btype="module"/.test(tag)) {
-      assert.match(src, /^\/_astro\/[^?#]+\.js$/, '增强分页模块应来自本站静态产物');
+      assert.match(src, /^\/_astro\/[^?#]+\.js$/, '页面模块应来自本站静态产物');
     } else {
       // 外壳可有同源普通脚本（例如明暗开关）；也读取其正文，不能漏掉不应加载的依赖。
       assert.match(src, /^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.js$/, '普通脚本必须来自本站静态产物');
@@ -91,10 +80,11 @@ async function readerChunks(dist, html) {
     }
   }
   const pending = roots.map(([, src]) => src);
+  for (const [, href] of html.matchAll(/<link\b(?=[^>]*\brel="modulepreload")[^>]*\bhref="([^"]+)"/g)) pending.push(href);
   const seen = new Set();
   const chunks = [...inline];
   for (const chunk of inline) {
-    for (const [, src] of chunk.matchAll(/["'](\/_astro\/[^"'\s]+\.js)["']/g)) pending.push(src);
+    for (const [, src] of chunk.matchAll(references)) pending.push(src);
   }
   while (pending.length) {
     const src = pending.pop();
@@ -104,13 +94,19 @@ async function readerChunks(dist, html) {
     const text = await readFile(join(dist, src.slice(1)), 'utf8');
     chunks.push(text);
     // Vite 的 import/export 与预加载映射均使用带引号的相对 JS 路径。
-    for (const [, specifier] of text.matchAll(/["']((?:\.{1,2}\/|\/_astro\/)[^"'\s]+\.js)["']/g)) {
+    for (const [, specifier] of text.matchAll(references)) {
       const dependency = new URL(specifier, `https://static.invalid${src}`).pathname;
       assert.ok(dependency.startsWith('/_astro/'), '模块依赖必须留在本站构建目录内');
       pending.push(dependency);
     }
   }
   return chunks.join('\n');
+}
+
+async function assertSearchStartup(dist, html) {
+  const initialScripts = await pageScripts(dist, html, { initialOnly: true });
+  assert.doesNotMatch(initialScripts, /sqlite3_open_v2/, 'SQLite 运行时应在首次有效查询时加载');
+  assert.doesNotMatch(initialScripts, /一目瞭然 一目了然/, '作品筛选和短词提示不应载入 OpenCC 词典');
 }
 
 test('站点配置：trigram 最短 MATCH 长度固定为 3，拒绝会漏掉两字结果的设置', () => {
@@ -126,8 +122,13 @@ test('站点配置：trigram 最短 MATCH 长度固定为 3，拒绝会漏掉两
 test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，守卫通过', { timeout: 120_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-site-'));
   const DIST = join(tmp, 'dist');
-  const env = { CONFIG_FILE: await configSnapshot(tmp), DATA_DIR: FIXTURES, DIST_DIR: DIST, OUT_DIR: join(tmp, 'out'), RELEASE_VERSION: 'site-build-test' };
+  const GENERATED = join(tmp, 'site-generated');
+  const env = { BUILD_WORK_DIR: tmp, CONFIG_FILE: await configSnapshot(tmp), DATA_DIR: FIXTURES, DIST_DIR: DIST, OUT_DIR: join(tmp, 'out'), RELEASE_VERSION: 'site-build-test' };
   t.after(() => rm(tmp, { recursive: true, force: true }));
+  async function astroBuild(out) {
+    const r = await buildAstro({ work: tmp, generated: GENERATED, out, stdio: 'pipe' });
+    return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
+  }
   const model = await loadGallery({ dataDir: FIXTURES, imagePrefix: config.images.prefix });
   await mkdir(env.OUT_DIR, { recursive: true });
   await writeFile(join(env.OUT_DIR, 'manifest.json'), JSON.stringify(buildManifest(model, config, { version: env.RELEASE_VERSION })));
@@ -168,7 +169,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       const stray = (await walk(dir)).filter((f) => ['.js', '.css', '.wasm'].includes(extname(f)));
       assert.deepEqual(stray, [], `${key} 下不该有独立 JS/CSS/wasm`);
       const html = await readFile(join(dir, 'index.html'), 'utf8');
-      const modules = await readerChunks(DIST, html);
+      const modules = await pageScripts(DIST, html);
       assert.doesNotMatch(modules, /sqlite|search-config|search-form|search-results|createMangaViewer|comimi/i,
         `${key} 的书签模块不能带入检索执行器或默认关闭的增强分页`);
       assert.doesNotMatch(html, /id="enhanced-(?:option|toggle|viewer|status)"/, `${key} 默认不输出增强分页控件或容器`);
@@ -316,6 +317,8 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     const issue2 = await readFile(join(DIST, 'sample', 'vol02', 'index.html'), 'utf8');
     assert.ok(!issue2.includes('有台词'), '没有台词稿的话不标');
     const search = await readFile(join(DIST, 'search', 'index.html'), 'utf8');
+    await assertSearchStartup(DIST, search);
+    assert.ok(!(await readdir(join(DIST, '_astro'))).some((name) => /^worker-.*\.js$/.test(name)), '默认构建不分发 Range Worker');
     for (const id of ['search-form', 'search-input', 'search-results', 'search-status', 'search-config', 'search-series', 'search-more', 'search-coverage']) {
       assert.ok(search.includes(`id="${id}"`), `搜索页缺 #${id}`);
     }
@@ -390,7 +393,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     assert.match(library, /<button\b(?=[^>]*\bid="backup-apply")(?=[^>]*\bdisabled(?:\s|[=>]))[^>]*>/, '导入前必须先生成可确认的预览');
     assert.match(library, /<\w+\b(?=[^>]*\bid="backup-preview")(?=[^>]*\bhidden(?:\s|[=>]))[^>]*>/, '初始页面不能假装已有备份预览');
     assert.match(library, /<noscript>[\s\S]*?备份[\s\S]*?<\/noscript>/, '备份需要脚本时必须解释');
-    const libraryModules = await readerChunks(DIST, library);
+    const libraryModules = await pageScripts(DIST, library);
     assert.match(libraryModules, /pagehaven-reading-backup/, '实际备份模型必须接入构建后的书架模块');
     assert.ok(libraryModules.includes('#bookmark-search'), '实际书签搜索控制器必须接入书架模块');
     assert.match(libraryModules, /onSummary\s*:\s*[^,}\n]*updateLibrary/, '作品及进度快照必须连接到概览更新入口');
@@ -528,7 +531,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
   });
 
   // 下面的用例改动 src/generated/ 里的文件再直接跑 astro build，跑完原样放回：
-  // 这个目录是共享的构建中间态，不能留下与 gallery.json 对不上的东西。
+  // 这些用例共用本测试自己的临时目录。
 
   await t.test('features.comimi_reader 开：可选同源模块保留原图片、文字层与每话一 HTML', async () => {
     const cfgFile = join(GENERATED, 'site-config.json');
@@ -536,11 +539,18 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     try {
       const cfg = JSON.parse(saved);
       cfg.features.comimi_reader = true;
+      cfg.features.range_search = true;
       cfg.features.platform_config = false;
       await writeFile(cfgFile, JSON.stringify(cfg));
       const out = join(tmp, 'dist-enhanced-reader');
-      const r = astroBuild(out);
+      const r = await astroBuild(out);
       assert.equal(r.status, 0, r.out);
+      const searchHtml = await readFile(join(out, 'search', 'index.html'), 'utf8');
+      const assets = await readdir(join(out, '_astro'));
+      await assertSearchStartup(out, searchHtml);
+      const rangeWorker = assets.find((name) => /^worker-.*\.js$/.test(name));
+      assert.ok(rangeWorker, '启用分块检索后必须分发同源 Worker');
+      assert.ok((await pageScripts(out, searchHtml)).includes(rangeWorker), '搜索页须引用实际 Worker');
       for (const chapter of model.chapters) {
         const dir = join(out, ...chapter.key.split('/'));
         assert.deepEqual((await walk(dir)).filter((file) => extname(file) === '.html'), [join(dir, 'index.html')]);
@@ -552,7 +562,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
         for (const [index, page] of pages.entries()) {
           assert.ok(page[1].includes(`src="${imageOrigin}/${chapter.pages[index].keys.webp}"`), '原图片仍在 HTML 中');
         }
-        const modules = await readerChunks(out, html);
+        const modules = await pageScripts(out, html);
         assert.doesNotMatch(modules, /sqlite|search-config|search-form|search-results/i, '阅读器的模块依赖不应包含检索执行器');
       }
       const html = await readFile(join(out, 'sample', 'vol01', 'c001', 'index.html'), 'utf8');
@@ -571,7 +581,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     const saved = await readFile(shard);
     await rm(shard);
     try {
-      const r = astroBuild(join(tmp, 'dist-missing-shard'));
+      const r = await astroBuild(join(tmp, 'dist-missing-shard'));
       assert.notEqual(r.status, 0, `astro build 应该失败：\n${r.out}`);
       assert.match(r.out, /sample\/vol01\/c001/, '错误信息应指出是哪一话');
       assert.match(r.out, /hasText/);
@@ -588,7 +598,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     await writeFile(cfgFile, JSON.stringify(cfg));
     try {
       const out = join(tmp, 'dist-two-hosts');
-      const r = astroBuild(out);
+      const r = await astroBuild(out);
       assert.equal(r.status, 0, r.out);
       const html = await readFile(join(out, 'sample', 'vol01', 'c001', 'index.html'), 'utf8');
       assert.deepEqual(jsonAttr(html, 'data-hosts'), [config.images.hosts[0], 'backup.example.org']);
@@ -597,7 +607,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
       assert.ok(!html.includes('https://backup.example.org/'), '第二条域名只给切源脚本用，不该出现在图片 URL 里');
       // 真实切源与逐页重试由 reader-images 行为测试覆盖，这里守住页面接线与构建后的模块。
       assert.equal((html.match(/class="image-retry btn"/g) ?? []).length, 3, '每页提供独立重试入口');
-      assert.match(await readerChunks(out, html), /image-feedback/, '图片状态模块必须进入阅读器产物');
+      assert.match(await pageScripts(out, html), /image-feedback/, '图片状态模块必须进入阅读器产物');
       const search = await readFile(join(out, 'search', 'index.html'), 'utf8');
       const m = /<script type="application\/json" id="search-config">(.*?)<\/script>/.exec(search);
       assert.deepEqual(JSON.parse(m[1]).images.hosts, [config.images.hosts[0], 'backup.example.org']);
@@ -614,7 +624,7 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
     await writeFile(cfgFile, JSON.stringify(cfg));
     try {
       const out = join(tmp, 'dist-no-text-layer');
-      const r = astroBuild(out);
+      const r = await astroBuild(out);
       assert.equal(r.status, 0, r.out);
       const html = await readFile(join(out, 'sample', 'vol01', 'c001', 'index.html'), 'utf8');
       assert.ok(!html.includes('class="text-layer'), 'flag 关了不该有文字层');
@@ -631,9 +641,10 @@ test('站点构建：样本数据 → 每话一 HTML + 索引分片 + sitemap，
 test('0 话也能建：空 data/ 目录下首页、搜索页、书架、404、索引总表、sitemap 都在', { timeout: 120_000 }, async (t) => {
   const tmp = await mkdtemp(join(tmpdir(), 'gallery-site-empty-'));
   const DIST = join(tmp, 'dist');
-  const env = { CONFIG_FILE: await configSnapshot(tmp), DATA_DIR: join(tmp, 'data'), DIST_DIR: DIST, OUT_DIR: join(tmp, 'out') };
+  const GENERATED = join(tmp, 'site-generated');
+  const env = { BUILD_WORK_DIR: tmp, CONFIG_FILE: await configSnapshot(tmp), DATA_DIR: join(tmp, 'data'), DIST_DIR: DIST, OUT_DIR: join(tmp, 'out') };
   t.after(() => rm(tmp, { recursive: true, force: true }));
-  for (const script of ['build-site.mjs', 'build-index.mjs', 'build-sitemap.mjs']) {
+  for (const script of ['build-config.mjs', 'build-site.mjs', 'build-index.mjs', 'build-sitemap.mjs']) {
     const r = run(script, env);
     assert.equal(r.status, 0, `${script} 失败：\n${r.out}`);
   }
@@ -678,7 +689,7 @@ test('作品 id 撞上站点固定路由时构建报错而不是静默丢页', {
       join(data, 'meta', `${id}.yaml`),
       `id: ${id}\ntitle: x\nissues:\n  - id: v1\n    number: 1\n    title: v\n    chapters:\n      - id: c1\n        number: 1\n        title: c\n        pages:\n          - { n: 1, img: 0123456789ab, w: 10, h: 10 }\n`,
     );
-    const env = { CONFIG_FILE: configFile, DATA_DIR: data, DIST_DIR: join(tmp, id, 'dist'), OUT_DIR: join(tmp, id, 'out') };
+    const env = { BUILD_WORK_DIR: tmp, CONFIG_FILE: configFile, DATA_DIR: data, DIST_DIR: join(tmp, id, 'dist'), OUT_DIR: join(tmp, id, 'out') };
     for (const script of ['build-site.mjs', 'build-index.mjs']) {
       const r = run(script, env);
       assert.notEqual(r.status, 0, `${script} 应该拒绝 ${id}`);

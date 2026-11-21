@@ -8,17 +8,16 @@
 //   · EdgeOne 读 edgeone.json；
 //   · GitHub Pages 什么都不读——.nojekyll、CNAME、404.html，重定向靠 meta refresh 页。
 // 前两者受 features.platform_config 控制；关掉就是纯静态基线，站点必须照常可用（铁律 2）。
-import { spawnSync } from 'node:child_process';
+import { buildAstro } from './lib/astro-build.mjs';
 import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, join, relative } from 'node:path';
+import { join, relative } from 'node:path';
 import { GENERATED_FILES } from '@gallery/platform';
 import { loadSiteConfig } from './lib/config.mjs';
 import { loadGallery } from './lib/data.mjs';
 import { readManifest, galleryFingerprint } from './lib/manifest.mjs';
 import { releaseFingerprint } from './lib/release.mjs';
-import { DATA_DIR, DIST_DIR, OUT_DIR, PLATFORM_GENERATED_DIR, ROOT, SITE_DIR } from './lib/paths.mjs';
+import { DATA_DIR, DIST_DIR, OUT_DIR, PLATFORM_GENERATED_DIR, ROOT } from './lib/paths.mjs';
 import { writeSiteConfigJson, writeSiteGalleryJson } from './lib/site-generated.mjs';
 import { metaRefresh, redirectOutputPaths } from './lib/static-output.mjs';
 import { step, ok, note, warn } from './lib/log.mjs';
@@ -26,7 +25,10 @@ import { step, ok, note, warn } from './lib/log.mjs';
 step('build:site');
 const config = await loadSiteConfig();
 const redirects = config.redirects.map((rd) => ({ ...rd, ...redirectOutputPaths(DIST_DIR, rd.from) }));
-await writeSiteConfigJson(config, { preview: process.env.DEPLOY_ENV === 'preview' });
+// 本地样本站从同源端口加载素材，正式配置仍按域名 schema 校验。
+const readerConfig = process.argv.includes('--same-origin-assets')
+  ? { ...config, images: { ...config.images, hosts: ['/'] } } : config;
+await writeSiteConfigJson(readerConfig, { preview: process.env.DEPLOY_ENV === 'preview' });
 // 数据进站点的唯一通道：模型写成 src/generated/ 下的 JSON，页面用 import / import.meta.glob 读。
 // 0 话时也照建——gallery.json 是空树、text/ 是空目录，动态路由生成不出页面，其余页面照常。
 const gallery = await loadGallery({ dataDir: DATA_DIR, imagePrefix: config.images.prefix });
@@ -39,16 +41,7 @@ const generated = await writeSiteGalleryJson(gallery, { searchDb: manifest?.db ?
 note(`${relative(ROOT, generated.galleryFile)}：${gallery.totals.series} 个作品、${gallery.totals.chapters} 话；台词分片 ${generated.textFiles.length} 份`);
 await rm(DIST_DIR, { recursive: true, force: true });
 
-// 直接用 node 跑 astro 包自己声明的 bin：在 GitHub Actions / Codespaces / 本地环境
-// 行为一致，也不依赖 PATH 里有没有 node_modules/.bin。
-const require = createRequire(join(SITE_DIR, 'package.json'));
-const astroPkgPath = require.resolve('astro/package.json');
-const astro = join(dirname(astroPkgPath), require(astroPkgPath).bin.astro);
-const r = spawnSync(process.execPath, [astro, 'build', '--outDir', DIST_DIR], {
-  cwd: SITE_DIR,
-  stdio: 'inherit',
-  env: { ...process.env, DATA_DIR },
-});
+const r = await buildAstro();
 if (r.status !== 0) process.exit(r.status ?? 1);
 
 if (manifest?.db) {

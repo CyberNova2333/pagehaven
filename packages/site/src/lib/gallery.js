@@ -12,7 +12,7 @@
  * @param {string} key   对象存储内的 key，例如 img/s/v/c/1-<hash12>.webp
  */
 export function imageUrl(host, key) {
-  return `https://${host}/${key}`;
+  return host === '/' ? `/${key}` : `https://${host}/${key}`;
 }
 
 /** 站内 URL 由 chapter key 推：'/' + key + '/'（与 @gallery/core 的 urlFor 同形）。 */

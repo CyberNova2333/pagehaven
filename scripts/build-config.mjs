@@ -8,14 +8,14 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { generateAll } from '@gallery/platform';
 import { loadSiteConfig } from './lib/config.mjs';
-import { PLATFORM_GENERATED_DIR, ROOT } from './lib/paths.mjs';
+import { PLATFORM_GENERATED_DIR, TEMPLATE_ASSETS_DIRECTORY, ROOT } from './lib/paths.mjs';
 import { writeSiteConfigJson } from './lib/site-generated.mjs';
 import { step, ok } from './lib/log.mjs';
 
 step('build:config');
 const config = await loadSiteConfig();
 await mkdir(PLATFORM_GENERATED_DIR, { recursive: true });
-for (const [name, content] of Object.entries(await generateAll(config))) {
+for (const [name, content] of Object.entries(await generateAll(config, { directory: TEMPLATE_ASSETS_DIRECTORY }))) {
   const p = join(PLATFORM_GENERATED_DIR, name);
   await writeFile(p, content);
   ok(relative(ROOT, p));

@@ -57,6 +57,8 @@ jobs:
           python3 tools/check-commit-messages.py "$PUSH_BEFORE..$GITHUB_SHA"
       - name: pnpm run check（预算守卫 + 配置同步 + lint）
         run: pnpm run check
+      - name: 安装浏览器回归所用的 Chromium
+        run: pnpm exec playwright install --with-deps --only-shell chromium
       - name: pnpm test
         run: pnpm test
       - name: pnpm run build（全量静态构建，dry-run）
@@ -66,8 +68,7 @@ jobs:
       - name: 用测试样本全量空跑
         run: |
           export DATA_DIR=packages/core/test/fixtures/data
-          export DIST_DIR="$GITHUB_WORKSPACE/fixture-dist"
-          export OUT_DIR="$GITHUB_WORKSPACE/fixture-out"
+          export BUILD_WORK_DIR="$RUNNER_TEMP/pagehaven-fixture"
           pnpm run build && pnpm run check
       - name: 分层验证提示
         env:

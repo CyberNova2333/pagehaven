@@ -1,0 +1,16 @@
+id: beacon
+title: 潮汐手记
+altTitles: [归航灯]
+description: 一座灯塔，两页回港的故事。
+cover: f7071d5a9cee
+issues:
+  - id: v1
+    number: 1
+    title: 海岸
+    chapters:
+      - id: signal
+        number: 1
+        title: 晚潮
+        pages:
+          - {"n": 1, "img": "f7071d5a9cee", "w": 800, "h": 1080}
+          - {"n": 2, "img": "34a3b6369c1f", "w": 800, "h": 1080}
