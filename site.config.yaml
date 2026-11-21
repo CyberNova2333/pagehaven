@@ -26,11 +26,11 @@ db:
   chunk_size: 65536
   # 对象存储内 DB 的 key 前缀；带日期的版本化 key 见 ARCHITECTURE §4
   prefix: db/
-  # 当前整库下载的硬上限；Range VFS 接入前超出此值不加载
+  # 整库下载上限。开启按块检索且 CDN 支持 Range 时可查询更大的库
   whole_download_max_bytes: 31457280
 
 search:
-  # 浏览器端 VFS 每次 Range 请求的块大小；必须等于 db.page_size
+  # SQLite 读页大小；网络按 db.chunk_size 对齐取块；必须等于 db.page_size
   request_chunk_size: 4096
   # trigram：≥ 3 字走 MATCH；恰好 2 字走 LIKE；1 字拒绝
   min_match_length: 3
@@ -40,6 +40,7 @@ search:
 features:
   # 牵一发动全身的功能默认关；打开动作本身是一个独立 commit（CONTRIBUTING §三）。
   # flag 只能让站点退回更保守的形态，不能关掉 pnpm run check 里的任何守卫。
+  range_search: false      # 在专用 Worker 中使用 SQLite Range VFS
   search_function: false   # 部署 Hono 函数加速检索
   platform_config: true    # 把 _headers/_redirects/edgeone.json 放进 dist（关掉 = 纯静态基线）
   text_layer: true         # 阅读器叠可选中的文字层

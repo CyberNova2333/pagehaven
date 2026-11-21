@@ -379,6 +379,7 @@ test('publish:r2：同尺寸损坏与摘要错配在访问存储前拒绝，dry-
   damaged[512] ^= 1;
   const wrongHash = 'ff'.repeat(32);
   const cases = [
+    ['分块清单字节摘要错配', manifestPath, manifest({ db: { ...manifest().db, chunksSha256: wrongHash } }), /分块清单实际 SHA-256/],
     ['同尺寸单字节损坏', dbPath, damaged, /实际 SHA-256/],
     ['版本清单摘要错配', manifestPath, manifest({ db: { ...manifest().db, sha256: wrongHash } }), /实际 SHA-256/],
     ['分块清单整份摘要错配', chunksPath, { ...DB_CHUNKS, sha256: wrongHash }, /整份 SHA-256/],

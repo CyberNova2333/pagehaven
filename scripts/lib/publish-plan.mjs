@@ -17,7 +17,7 @@
 // 本阶段不读写共享 manifest.json；正式部署成功后由单独的启用步骤更新当前版本。
 import { basename } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { CHUNK_MANIFEST_VERSION, computeChunkManifest } from '@gallery/core/db/chunks';
+import { CHUNK_MANIFEST_VERSION, computeChunkManifest, sha256Hex } from '@gallery/core/db/chunks';
 import { isSafeObjectKey, isSafeObjectPrefix } from '@gallery/core/object-path';
 
 export const CACHE_IMMUTABLE_YEAR = 'public, max-age=31536000, immutable';
@@ -73,6 +73,7 @@ export async function verifyDbArtifacts({ manifest, dbConfig, dbBytes, chunksByt
   if (!Number.isSafeInteger(meta.size) || meta.size <= 0 || meta.size !== dbBytes.byteLength) reject('数据库实际长度与 manifest 不一致');
   if (meta.pageSize !== dbConfig.page_size || meta.chunkSize !== dbConfig.chunk_size) reject('数据库页大小或分块大小与站点配置不一致');
   if (typeof meta.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(meta.sha256)) reject('manifest.db.sha256 无效');
+  if (meta.chunksSha256 !== undefined && meta.chunksSha256 !== await sha256Hex(chunksBytes)) reject('分块清单实际 SHA-256 与 manifest.db.chunksSha256 不一致');
   let chunks;
   try { chunks = JSON.parse(Buffer.from(chunksBytes).toString('utf8')); }
   catch { reject('分块摘要不是有效 JSON'); }

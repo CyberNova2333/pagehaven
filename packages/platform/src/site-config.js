@@ -69,6 +69,7 @@ export const SiteConfigSchema = z
       api_path: absPath.default('/api/search'),
     }),
     features: z.strictObject({
+      range_search: z.boolean().default(false),
       search_function: z.boolean().default(false),
       platform_config: z.boolean().default(true),
       text_layer: z.boolean().default(true),

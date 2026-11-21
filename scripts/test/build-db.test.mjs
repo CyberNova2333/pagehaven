@@ -71,6 +71,7 @@ test('build:db：样本 → gallery-<version>.sqlite + .chunks.json，manifest.j
     pageSize: 4096,
     chunkSize: 65536,
     chunks: `db/${dbName}.chunks.json`,
+    chunksSha256: sha256(await readFile(chunksPath)),
   });
 
   // 日志：各表行数、大小、页数、耗时、落盘前的逐页校验

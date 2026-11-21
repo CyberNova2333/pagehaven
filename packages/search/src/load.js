@@ -1,129 +1,80 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
-// 优先使用站点构建时固定的检索库版本，避免旧页面查询到新版本的数据。
-// 未提供 release 的旧调用方仍可读 CDN manifest；每个源都须先通过元数据校验。
-// 整份下载仅在预算内可用，读取流时再次限长，最后验 sha256 才交给 sqlite。
-import { openGalleryDb, sha256Hex } from '@gallery/core';
-import { isSafeObjectKey, isSafeObjectPrefix } from '@gallery/core/object-path';
+// 只在分块清单的摘要随页面固定后启用 Range。旧发布沿用整库摘要和下载预算。
+import { CHUNK_MANIFEST_VERSION, ChunkedFile, SourceSet, SyncChunkedFile, normalizeChunkManifest, openChunkedGalleryDb, sha256Hex } from '@gallery/core';
+import { FETCH_TIMEOUT_MS, firstHost, openWholeDb, readBoundedResponse, resolveDbConfig } from './whole.js';
+export { FETCH_TIMEOUT_MS, DEFAULT_WHOLE_DOWNLOAD_MAX_BYTES } from './whole.js';
 
-export const FETCH_TIMEOUT_MS = 20_000;
-export const DEFAULT_WHOLE_DOWNLOAD_MAX_BYTES = 30 * 1024 * 1024;
+const DEFAULT_CHUNKS_MANIFEST_MAX_BYTES = 16 * 1024 * 1024;
+const DEFAULT_RANGE_CACHE_CHUNKS = 128;
 
-const showHost = (host) => (host.includes('://') ? host : `https://${host}`);
-
-function describeError(e) {
-  const code = e?.cause?.code || e?.code;
-  if (e?.name === 'TimeoutError') return `超过 ${FETCH_TIMEOUT_MS / 1000} 秒未完成`;
-  return code ? `${e.message}（${code}）` : String(e?.message ?? e);
-}
-
-async function firstHost(hosts, attempt, signal) {
-  const problems = [];
-  for (const host of hosts) {
-    signal?.throwIfAborted();
-    try {
-      return { host, value: await attempt(host) };
-    } catch (e) {
-      signal?.throwIfAborted();
-      problems.push(`${host}：${describeError(e)}`);
+async function fetchChunksManifest({ hosts, meta, fetchImpl = fetch, signal, maxBytes = DEFAULT_CHUNKS_MANIFEST_MAX_BYTES }) {
+  const res = await firstHost(hosts, async (host) => {
+    const raw = await readBoundedResponse(fetchImpl, `${host}/${meta.chunks}`, {
+      maxBytes,
+      signal,
+      overflowLabel: '分块清单大小上限',
+    });
+    if (await sha256Hex(raw) !== meta.chunksSha256) throw new Error('分块清单 SHA-256 与发布清单不符');
+    const json = JSON.parse(new TextDecoder().decode(raw));
+    if (json.version !== CHUNK_MANIFEST_VERSION) throw new Error('不支持的分块清单版本');
+    const parsed = normalizeChunkManifest(json);
+    if (parsed.totalBytes !== meta.size) {
+      throw new Error(`chunks.json totalBytes (${parsed.totalBytes}) 与 manifest size (${meta.size}) 不符`);
     }
-  }
-  throw new Error(`所有图片域名都取不到（${problems.join('；')}）`);
-}
-
-function requestSignal(signal, controller) {
-  return AbortSignal.any([AbortSignal.timeout(FETCH_TIMEOUT_MS), ...(signal ? [signal] : []), ...(controller ? [controller.signal] : [])]);
-}
-
-function validateMeta(meta, prefix, maxBytes) {
-  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) throw new Error('没有有效的 db 字段：检索库尚未构建');
-  const { key, size, sha256 } = meta;
-  if (!isSafeObjectKey(key) || !key.startsWith(prefix) || !key.endsWith('.sqlite')) {
-    throw new Error('db.key 必须是检索库前缀下的相对 sqlite 对象路径');
-  }
-  if (!Number.isSafeInteger(size) || size <= 0) throw new Error('db.size 必须是正整数字节数');
-  if (typeof sha256 !== 'string' || !/^[a-fA-F0-9]{64}$/.test(sha256)) throw new Error('db.sha256 必须是 64 位十六进制摘要');
-  if (size > maxBytes) throw new Error(`检索库 ${size} 字节超过整份下载上限 ${maxBytes} 字节，暂不能加载`);
-  return { ...meta, sha256: sha256.toLowerCase() };
-}
-
-/** 预分配只发生在可信尺寸已受上限约束后；源多发的字节不再拼接或交给 sqlite。 */
-async function download(fetchImpl, url, meta, maxBytes, signal) {
-  const controller = new AbortController();
-  let reader;
-  let res;
-  try {
-    res = await fetchImpl(url, { signal: requestSignal(signal, controller) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}：${url}`);
-    const length = res.headers?.get('content-length');
-    if (length !== null && length !== undefined && /^\d+$/.test(length)) {
-      const announced = Number(length);
-      if (announced > maxBytes) throw new Error(`响应长度 ${announced} 超过整份下载上限 ${maxBytes} 字节`);
-      if (announced !== meta.size) throw new Error(`长度 ${announced} 与 manifest 的 ${meta.size} 不符`);
+    if (parsed.sha256 !== meta.sha256) {
+      throw new Error(`chunks.json sha256 (${parsed.sha256.slice(0, 12)}…) 与 manifest 不符`);
     }
-    if (!res.body?.getReader) throw new Error('响应没有可读取的数据流');
-    reader = res.body.getReader();
-    const bytes = new Uint8Array(meta.size);
-    let received = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.byteLength;
-      if (received > maxBytes) throw new Error(`下载超过整份下载上限 ${maxBytes} 字节，已取消`);
-      if (received > meta.size) throw new Error(`长度超过 manifest 的 ${meta.size} 字节，已取消`);
-      bytes.set(value, received - value.byteLength);
+    if (meta.chunkSize && parsed.chunkSize !== meta.chunkSize) {
+      throw new Error(`chunks.json chunkSize (${parsed.chunkSize}) 与 manifest (${meta.chunkSize}) 不符`);
     }
-    if (received !== meta.size) throw new Error(`长度 ${received} 与 manifest 的 ${meta.size} 不符（响应截断）`);
-    const actual = await sha256Hex(bytes);
-    if (actual !== meta.sha256) throw new Error(`sha256 ${actual.slice(0, 12)}… 与 manifest 的 ${meta.sha256.slice(0, 12)}… 不符（字节损坏）`);
-    return bytes;
-  } catch (e) {
-    controller.abort();
-    if (reader) await reader.cancel().catch(() => {});
-    else await res?.body?.cancel().catch(() => {});
-    throw e;
-  } finally {
-    reader?.releaseLock();
-  }
+    return parsed;
+  }, signal);
+  return res.value;
 }
 
 /**
  * 返回的 db 由调用方负责 close()。release 存在时只读取该固定版本，null 不回退生产库。
- * @param {{config: object, fetchImpl?: typeof fetch, signal?: AbortSignal}} input
+ * 提供 readRangeSync 且 manifest 含 chunks 时，优先通过 @gallery/core/chunkfetch + SQLite Range VFS 加载，
+ * 仅在所有源都无视 Range 时按 whole_download_max_bytes 预算自动退化回整份下载。
+ * @param {{config: object, fetchImpl?: typeof fetch, readRangeSync?: Function, sleepSync?: Function,
+ *   cacheChunks?: number, timeoutMs?: number, signal?: AbortSignal}} input
  */
-export async function loadGalleryDb({ config, fetchImpl = fetch, signal }) {
-  const hosts = (config.images?.hosts ?? []).map(showHost);
-  if (hosts.length === 0) throw new Error('site.config.yaml 没有配 images.hosts');
-  const settings = config.db ?? {};
-  const prefix = settings.prefix ?? '';
-  if (!prefix) throw new Error('site.config.yaml 没有配 db.prefix');
-  if (!isSafeObjectPrefix(prefix)) throw new Error('db.prefix 必须是以 / 结尾且没有空段或点段的 ASCII 相对对象前缀');
-  const maxBytes = settings.whole_download_max_bytes ?? DEFAULT_WHOLE_DOWNLOAD_MAX_BYTES;
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Error('整份下载上限必须是非负整数字节数');
-  signal?.throwIfAborted();
+export async function loadGalleryDb({
+  config,
+  fetchImpl = fetch,
+  readRangeSync,
+  sleepSync,
+  cacheChunks = DEFAULT_RANGE_CACHE_CHUNKS,
+  timeoutMs = FETCH_TIMEOUT_MS,
+  signal,
+}) {
+  const resolved = await resolveDbConfig({ config, fetchImpl, signal, allowLargeWithChunks: Boolean(readRangeSync) });
+  const { hosts, meta } = resolved;
+  const fallbackWhole = () => openWholeDb(resolved, fetchImpl, signal);
+  if (!readRangeSync || !meta.chunks || !meta.chunksSha256) return fallbackWhole();
 
-  let meta;
-  if (Object.hasOwn(settings, 'release')) {
-    if (settings.release === null) throw new Error('此站点版本的检索库尚未构建');
-    meta = validateMeta(settings.release, prefix, maxBytes);
-  } else {
-    const manifest = await firstHost(hosts, async (host) => {
-      const res = await fetchImpl(`${host}/${prefix}manifest.json`, { signal: requestSignal(signal) });
-      if (!res.ok) {
-        await res.body?.cancel().catch(() => {});
-        throw new Error(`HTTP ${res.status}`);
-      }
-      return validateMeta((await res.json())?.db, prefix, maxBytes);
-    }, signal);
-    meta = manifest.value;
-  }
+  const manifest = await fetchChunksManifest({ hosts, meta, fetchImpl, signal });
+  const sources = new SourceSet(hosts.map((host, i) => ({ id: String(i), url: `${host}/${meta.key}` })));
+  const probeFile = new ChunkedFile({ sources, manifest, fetch: fetchImpl, timeoutMs });
+  const summary = await probeFile.probeAll({ signal, verifyRange: true });
+  if (summary.needsWhole) return fallbackWhole();
 
-  const fetched = await firstHost(hosts, (host) => download(fetchImpl, `${host}/${meta.key}`, meta, maxBytes, signal), signal);
-  signal?.throwIfAborted();
-  const db = await openGalleryDb(fetched.value);
-  if (signal?.aborted) {
-    db.close();
-    signal.throwIfAborted();
+  const reader = new SyncChunkedFile({ sources, manifest, cacheChunks, readRangeSync, sleepSync, timeoutMs });
+  try {
+    const db = await openChunkedGalleryDb({
+      readSync: (offset, length) => reader.read(offset, length),
+      totalBytes: manifest.totalBytes,
+      sectorSize: meta.pageSize ?? config.db?.page_size ?? 4096,
+    });
+    if (signal?.aborted) {
+      db.close();
+      signal.throwIfAborted();
+    }
+    const source = sources.allStats().find((s) => s.samples > 0 && !s.disabled);
+    return { db, meta, host: source ? hosts[Number(source.id)] : hosts[0], mode: 'range', fallbackWhole };
+  } catch (error) {
+    if (error.code === 'needs-whole') return fallbackWhole();
+    throw error;
   }
-  return { db, meta, host: fetched.host };
 }

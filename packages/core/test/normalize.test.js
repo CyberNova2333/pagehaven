@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { normalizeText } from '../src/normalize.js';
+import { configs } from 'opencc-js/preset/t2cn';
 
 // 测试里需要的不可见字符 / 组合符号一律用码位写，肉眼能看出是哪个字符
 const cp = (...codes) => String.fromCodePoint(...codes);
@@ -109,6 +110,16 @@ test('幂等：归一化的结果再归一化不变（查询串与索引文本�
   for (const s of samples) {
     const once = normalizeText(s);
     assert.equal(normalizeText(once), once, `不幂等：${JSON.stringify(s)} → ${JSON.stringify(once)}`);
+  }
+});
+
+test('搜索页的长度预检与 t → cn 词典一致，包括映射到扩展区的汉字', () => {
+  const { normalizationChain, conversionChain } = configs.t2s;
+  for (const table of [...normalizationChain, ...conversionChain].flat()) {
+    for (const entry of table.split('|')) {
+      const [from, to] = entry.split(' ');
+      assert.equal([...from.toLowerCase()].length, [...to.toLowerCase()].length, entry);
+    }
   }
 });
 

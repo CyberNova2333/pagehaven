@@ -9,7 +9,17 @@ import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import * as chunkfetch from '../src/chunkfetch/index.js';
-import { probe, fetchRange, fetchWhole, SourceSet, pickSource, ChunkedFile, ChunkFetchError } from '../src/chunkfetch/index.js';
+import {
+  probe,
+  fetchRange,
+  fetchRangeSync,
+  fetchWhole,
+  SourceSet,
+  pickSource,
+  ChunkedFile,
+  SyncChunkedFile,
+  ChunkFetchError,
+} from '../src/chunkfetch/index.js';
 // sha256Hex 是取块层的内部实现，不从 index.js 出去（db 模块对外导出同名函数，两边 export * 会撞）
 import { sha256Hex } from '../src/chunkfetch/digest.js';
 
@@ -879,4 +889,153 @@ test('默认 maxAttempts 随源数推导：三条源全挂时第三条也轮得�
   d2.mode.status = 502;
   d3.mode.status = 503;
   assert.equal((await rejectsWithCode(g.readChunk(2), 'exhausted')).attempts, 4);
+});
+
+test('fetchRangeSync：覆盖 Worker 同步 XHR 的 206 / 200 / Content-Range / gzip / 超时 / 断网', () => {
+  const makeXhr = (handler) => () => {
+    const headers = {};
+    let url = '';
+    const xhr = {
+      status: 0,
+      response: null,
+      responseType: '',
+      timeout: 0,
+      ontimeout: null,
+      open(method, target, asyncFlag) {
+        assert.equal(method, 'GET');
+        assert.equal(asyncFlag, false);
+        url = target;
+      },
+      setRequestHeader(k, v) {
+        headers[k.toLowerCase()] = v;
+      },
+      getResponseHeader(k) {
+        return xhr._respHeaders[k.toLowerCase()] ?? null;
+      },
+      _respHeaders: {},
+      send() {
+        handler(xhr, url, headers);
+      },
+    };
+    return xhr;
+  };
+
+  const okBytes = fetchRangeSync('https://cdn.example/db.sqlite', 0, 9, {
+    timeoutMs: 1200,
+    xhrFactory: makeXhr((xhr, _u, reqHeaders) => {
+      assert.equal(xhr.responseType, 'arraybuffer');
+      assert.equal(xhr.timeout, 1200);
+      assert.equal(reqHeaders.range, 'bytes=0-9');
+      xhr.status = 206;
+      xhr._respHeaders = { 'content-range': 'bytes 0-9/100', 'content-length': '10' };
+      xhr.response = FILE.subarray(0, 10).buffer.slice(0, 10);
+    }),
+  });
+  assert.deepEqual(Buffer.from(okBytes), FILE.subarray(0, 10));
+
+  assert.throws(
+    () =>
+      fetchRangeSync('https://cdn.example/db.sqlite', 10, 19, {
+        xhrFactory: makeXhr((xhr) => {
+          xhr.status = 200;
+          xhr.response = new ArrayBuffer(10);
+        }),
+      }),
+    (e) => e instanceof ChunkFetchError && e.code === 'range-ignored',
+  );
+
+  assert.throws(
+    () =>
+      fetchRangeSync('https://cdn.example/db.sqlite', 0, 9, {
+        xhrFactory: makeXhr((xhr) => {
+          xhr.status = 206;
+          xhr._respHeaders = { 'content-range': 'bytes 0-8/100' };
+          xhr.response = new ArrayBuffer(9);
+        }),
+      }),
+    (e) => e instanceof ChunkFetchError && e.code === 'content-range-mismatch',
+  );
+
+  assert.throws(
+    () =>
+      fetchRangeSync('https://cdn.example/db.sqlite', 0, 9, {
+        xhrFactory: makeXhr((xhr) => {
+          xhr.status = 206;
+          xhr._respHeaders = {
+            'content-range': 'bytes 0-9/100',
+            'content-length': '5',
+            'content-encoding': 'gzip',
+          };
+          xhr.response = new ArrayBuffer(5);
+        }),
+      }),
+    (e) => e instanceof ChunkFetchError && e.code === 'short-body' && /Content-Encoding: gzip/.test(e.message),
+  );
+
+  assert.throws(
+    () =>
+      fetchRangeSync('https://cdn.example/db.sqlite', 0, 9, {
+        timeoutMs: 50,
+        xhrFactory: makeXhr((xhr) => {
+          xhr.ontimeout?.();
+          throw Object.assign(new Error('timeout'), { name: 'TimeoutError' });
+        }),
+      }),
+    (e) => e instanceof ChunkFetchError && e.code === 'timeout',
+  );
+
+  assert.throws(
+    () =>
+      fetchRangeSync('https://cdn.example/db.sqlite', 0, 9, {
+        xhrFactory: makeXhr((xhr) => {
+          xhr.status = 0;
+        }),
+      }),
+    (e) => e instanceof ChunkFetchError && e.code === 'network',
+  );
+});
+
+test('SyncChunkedFile：LRU 缓存、坏块 SHA-256 立即切源、与后期 range-ignored 转 needs-whole', () => {
+  const badBuf = corrupt(FILE, [2]);
+  const calls = [];
+  const sources = new SourceSet([
+    { id: 'bad', url: 'https://bad.example/db.sqlite' },
+    { id: 'good', url: 'https://good.example/db.sqlite' },
+  ]);
+  const switches = [];
+  const failedChunks = [];
+  const syncFile = new SyncChunkedFile({
+    sources,
+    manifest: MANIFEST,
+    cacheChunks: 2,
+    onSourceSwitch: (e) => switches.push(e),
+    onChunkVerifyFailed: (e) => failedChunks.push(e),
+    readRangeSync(url, start, end) {
+      calls.push([url, start, end]);
+      const buf = url.includes('bad.example') ? badBuf : FILE;
+      return new Uint8Array(buf.subarray(start, end + 1));
+    },
+  });
+
+  // 跨第 2、3 块读取：bad 源在第 2 块摘要不符立刻切给 good 源
+  const span = syncFile.read(CHUNK * 2 + 100, CHUNK);
+  assert.deepEqual(Buffer.from(span), FILE.subarray(CHUNK * 2 + 100, CHUNK * 3 + 100));
+  assert.ok(failedChunks.some((e) => e.chunk === 2 && e.source === 'bad'));
+  assert.ok(switches.some((e) => e.from === 'bad' && e.to === 'good' && e.why === 'checksum'));
+
+  const beforeCacheHit = calls.length;
+  assert.deepEqual(Buffer.from(syncFile.read(CHUNK * 2, 16)), FILE.subarray(CHUNK * 2, CHUNK * 2 + 16));
+  assert.equal(calls.length, beforeCacheHit, 'LRU 命中不再触发同步请求');
+
+  // 所有可用源都在后期返回 range-ignored 时触发 needs-whole
+  const onlySource = new SourceSet([{ id: 'no-range', url: 'https://single.example/db.sqlite' }]);
+  const ignoreReader = new SyncChunkedFile({
+    sources: onlySource,
+    manifest: MANIFEST,
+    readRangeSync() {
+      throw new ChunkFetchError('range-ignored', '服务器无视 Range 回 200');
+    },
+  });
+  assert.throws(() => ignoreReader.read(0, 100), (e) => e instanceof ChunkFetchError && e.code === 'needs-whole');
+  assert.equal(ignoreReader.needsWhole, true);
 });

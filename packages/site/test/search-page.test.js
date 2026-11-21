@@ -1,10 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+import { mountTitleSearch } from '../src/lib/title-search.js';
 
-const source = readFileSync(new URL('../src/pages/search/index.astro', import.meta.url), 'utf8');
-const script = /<script is:inline>\s*([\s\S]*?)<\/script>/.exec(source)[1];
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 function metadataSearch(items, fetchImpl = async () => ({ ok: true, json: async () => items })) {
@@ -18,17 +15,15 @@ function metadataSearch(items, fetchImpl = async () => ({ ok: true, json: async 
       addEventListener(name, listener) { this.listeners.set(name, listener); },
     };
   };
-  const nodes = new Map(['form', 'q', 'results', 'status'].map((name) => [`meta-${name}`, node()]));
+  const nodes = new Map(['form', 'q', 'results', 'status', 'more'].map((name) => [`meta-${name}`, node()]));
   let requests = 0;
   const renderedTitles = [];
   nodes.get('meta-results').appendChild = function (child) {
     this.children.push(child);
     renderedTitles.push(child.children[0].textContent);
   };
-  runInNewContext(script, {
-    document: { getElementById: (id) => nodes.get(id), createElement: node },
-    fetch: async (...args) => { requests++; return fetchImpl(...args); },
-  });
+  const doc = { getElementById: (id) => nodes.get(id), createElement: node };
+  mountTitleSearch(doc, async (...args) => { requests++; return fetchImpl(...args); });
   return {
     nodes, renderedTitles, get requests() { return requests; },
     get titles() { return nodes.get('meta-results').children.map((row) => row.children[0].textContent); },
@@ -151,4 +146,37 @@ test('作品过滤：并发失败只更新最新状态，再次输入发起一�
   page.submit();
   await settle();
   assert.equal(page.requests, 2, '真正的空目录也缓存，不反复下载');
+});
+
+test('作品别名命中时显示正题；旧索引没有别名仍可过滤', async () => {
+  const page = metadataSearch([{ ...catalog[0], altTitles: ['Afterglow'] }, catalog[1]]);
+  page.input('AFTERGLOW');
+  await settle();
+  assert.deepEqual(page.titles, ['晴天故事']);
+  page.input('雨天');
+  await settle();
+  assert.deepEqual(page.titles, ['雨天故事']);
+});
+
+test('大目录分批追加，过滤可找到末批作品，清空条件回到首批', async () => {
+  const all = Array.from({ length: 123 }, (_, i) => ({ title: '作品' + i, url: '/s' + i + '/', chapters: 2 }));
+  const page = metadataSearch(all);
+  const more = page.nodes.get('meta-more');
+  await settle();
+  const firstLink = page.nodes.get('meta-results').children[0];
+  assert.equal(page.titles.length, 50);
+  assert.equal(more.hidden, false);
+  more.listeners.get('click')();
+  assert.equal(page.titles.length, 100);
+  assert.equal(page.nodes.get('meta-results').children[0], firstLink);
+  more.listeners.get('click')();
+  assert.deepEqual(page.titles, all.map((item) => item.title));
+  assert.equal(more.hidden, true);
+  page.input('作品122');
+  await settle();
+  assert.deepEqual(page.titles, ['作品122']);
+  page.input('');
+  await settle();
+  assert.deepEqual(page.titles, all.slice(0, 50).map((item) => item.title));
+  assert.equal(page.requests, 1);
 });

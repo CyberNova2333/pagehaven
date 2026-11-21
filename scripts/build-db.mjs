@@ -19,7 +19,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { buildGalleryDb, openGalleryDb, tableCounts } from '@gallery/core/db/build';
-import { computeChunkManifest } from '@gallery/core/db/chunks';
+import { computeChunkManifest, sha256Hex } from '@gallery/core/db/chunks';
 import { loadSiteConfig } from './lib/config.mjs';
 import { loadGallery } from './lib/data.mjs';
 import { readManifest, resolveVersion, galleryFingerprint, MANIFEST_FILE } from './lib/manifest.mjs';
@@ -77,7 +77,8 @@ try {
   const dbPath = join(OUT_DB_DIR, dbName);
   const chunksPath = join(OUT_DB_DIR, chunksName);
   await writeFile(dbPath, bytes);
-  await writeFile(chunksPath, JSON.stringify(chunks, null, 2) + '\n');
+  const chunksBytes = new TextEncoder().encode(JSON.stringify(chunks, null, 2) + '\n');
+  await writeFile(chunksPath, chunksBytes);
 
   ok(`${show(dbPath)}：${bytes.length} 字节 = ${bytes.length / pageSize} 页 × ${pageSize}，建库 ${buildMs} ms，逐页校验通过`);
   note(`行数：series ${counts.series}、issues ${counts.issues}、chapters ${counts.chapters}、pages ${counts.pages}、lines ${counts.lines}`);
@@ -93,6 +94,7 @@ try {
       pageSize,
       chunkSize,
       chunks: prefix + chunksName,
+      chunksSha256: await sha256Hex(chunksBytes),
     };
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
     ok(`${show(manifestPath)}：db 字段指向 ${manifest.db.key}`);

@@ -15,6 +15,16 @@ export default defineConfig({
   // dist 在仓库根：check 守卫、三套 deploy 都只认这一个目录
   outDir: '../../dist',
   vite: {
+    // 关闭分块检索时，浏览器入口的依赖图里不包含专用 Worker。
+    resolve: {
+      alias: {
+        'pagehaven:search-page': siteConfig.features.range_search ? '@gallery/search/range-page' : '@gallery/search/page',
+      },
+    },
+    worker: {
+      // 搜索端 Dedicated Worker 打包为 ES module，保留 sqlite-wasm 与内部块的路径解析
+      format: 'es',
+    },
     optimizeDeps: {
       // sqlite-wasm 自带 wasm 资源、用 import.meta.url 定位；Vite 预构建会把这段 URL 改坏
       exclude: ['@sqlite.org/sqlite-wasm'],

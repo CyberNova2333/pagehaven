@@ -35,11 +35,11 @@ function acceptsBytes(header) {
 
 /**
  * @param {string} url
- * @param {{ fetch?: typeof globalThis.fetch, signal?: AbortSignal, timeoutMs?: number }} [opts]
+ * @param {{ fetch?: typeof globalThis.fetch, signal?: AbortSignal, timeoutMs?: number, verifyRange?: boolean }} [opts]
  *   timeoutMs：每个探测请求从发出到拿到响应头的固定时限；0 或缺省 = 不设
  * @returns {Promise<ProbeResult>}
  */
-export async function probe(url, { fetch = globalThis.fetch, signal, timeoutMs = 0 } = {}) {
+export async function probe(url, { fetch = globalThis.fetch, signal, timeoutMs = 0, verifyRange = false } = {}) {
   let headTotal = null;
   let headEtag = null;
   const head = deadline(signal, timeoutMs);
@@ -50,7 +50,7 @@ export async function probe(url, { fetch = globalThis.fetch, signal, timeoutMs =
       headEtag = res.headers.get('etag');
       // 0 当作没给：对 HEAD 回 Content-Length: 0 的代理不少，真正的总长要 GET 探测才知道
       if (headTotal === 0) headTotal = null;
-      if (acceptsBytes(res.headers.get('accept-ranges')) && headTotal !== null) {
+      if (!verifyRange && acceptsBytes(res.headers.get('accept-ranges')) && headTotal !== null) {
         return { total: headTotal, rangeSupported: true, etag: headEtag };
       }
     }
@@ -87,7 +87,7 @@ export async function probe(url, { fetch = globalThis.fetch, signal, timeoutMs =
     if (res.status === 206) {
       const cr = parseContentRange(res.headers.get('content-range'));
       // 206 却没有合法的 Content-Range：不知道给的是哪一段，等于不支持
-      if (!cr) return { total: headTotal, rangeSupported: false, etag };
+      if (!cr || cr.start !== 0 || cr.end !== 0) return { total: headTotal, rangeSupported: false, etag };
       return { total: cr.total ?? headTotal, rangeSupported: true, etag };
     }
     if (res.status === 200) {

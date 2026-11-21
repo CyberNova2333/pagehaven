@@ -27,119 +27,93 @@ const searchConfig = {
 ---
 
 <Base title="搜索" url="/search/" crumbs={[{ text: '搜索' }]}>
-  <section class="meta-head card card-pad">
-    <p class="eyebrow">Titles</p>
-    <h1>搜索</h1>
+  <h1>搜索</h1>
+  <nav class="search-modes" aria-label="搜索类型" id="search-modes" hidden>
+    <a class="btn" id="lines" href="#lines" aria-controls="line-search" aria-current="true">搜台词</a>
+    <a class="btn" id="titles" href="#titles" aria-controls="title-search">找作品</a>
+  </nav>
+
+  <div id="line-search">
+    <section class="search-head card card-pad">
+      <h2>搜索台词</h2>
+      <form id="search-form" role="search" action="/search/" method="get">
+        <input id="search-input" name="q" type="search" aria-label="台词片段" placeholder="输入台词片段，例如「希望」" autocomplete="off" />
+        <select id="search-series" name="series" aria-label="限定作品">
+          <option value="">全部作品</option>
+          {gallery.series.map((series) => <option value={series.id}>{series.title}</option>)}
+        </select>
+        <button class="btn btn-primary" type="submit">搜索</button>
+      </form>
+      <p id="search-coverage" class="muted">台词稿覆盖 {coverage.withText} / {coverage.chapters} 话，共 {coverage.boxes} 个文本框。</p>
+      <p id="search-status" class="muted" aria-live="polite">{noContent ? '当前还没有作品，内容发布后即可检索。' : noText ? '当前尚未收录可检索的台词，作品和漫画仍可正常浏览。' : '输入至少 2 个字开始检索。'}</p>
+      <p class="muted note">
+        仅检索已经收录的台词稿；尚未录入文字的漫画不会出现在台词结果中。
+        至少输入 2 个字，可选择作品缩小范围。首次搜索需要加载数据。
+      </p>
+    </section>
+
+    <ol id="search-results"></ol>
+    <button id="search-more" class="btn" type="button" hidden>加载更多台词</button>
+  </div>
+
+  <section id="title-search" class="card card-pad" hidden>
+    <h2>查找作品</h2>
     <form id="meta-form" role="search">
-      <input id="meta-q" type="search" aria-label="作品名、作者或标签" placeholder="作品名 / 作者 / 标签" autocomplete="off" />
+      <input id="meta-q" type="search" aria-label="作品名、别名、作者或标签" placeholder="作品名 / 别名 / 作者 / 标签" autocomplete="off" />
       <button class="btn" type="submit">过滤</button>
     </form>
     <p id="meta-status" class="muted" aria-live="polite">{noContent ? '当前还没有作品，内容发布后即可检索。' : ''}</p>
     <ul id="meta-results" class="list"></ul>
+    <button id="meta-more" class="btn" type="button" hidden>加载更多作品</button>
   </section>
 
-  <section class="search-head card card-pad">
-    <p class="eyebrow">Lines</p>
-    <h2>搜索台词</h2>
-    <form id="search-form" role="search" action="/search/" method="get">
-      <input id="search-input" name="q" type="search" aria-label="台词片段" placeholder="输入台词片段，例如「希望」" autocomplete="off" />
-      <select id="search-series" name="series" aria-label="限定作品">
-        <option value="">全部作品</option>
-        {gallery.series.map((series) => <option value={series.id}>{series.title}</option>)}
-      </select>
-      <button class="btn btn-primary" type="submit">搜索</button>
-    </form>
-    <p id="search-coverage" class="muted">台词稿覆盖 {coverage.withText} / {coverage.chapters} 话，共 {coverage.boxes} 个文本框。</p>
-    <p id="search-status" class="muted" aria-live="polite">{noContent ? '当前还没有作品，内容发布后即可检索。' : noText ? '当前尚未收录可检索的台词，作品和漫画仍可正常浏览。' : '输入至少 2 个字开始检索。'}</p>
-    <p class="muted note">
-      仅检索已经收录的台词稿；尚未录入文字的漫画不会出现在台词结果中。
-      至少输入 2 个字，可选择作品缩小范围。首次搜索需要加载数据。
-    </p>
-  </section>
-
-  <ol id="search-results"></ol>
-  <button id="search-more" class="btn" type="button" hidden>加载更多台词</button>
   <noscript>
-    <p class="muted">检索在浏览器里完成，需要 JavaScript。作品与话页面不受影响。</p>
+    <p class="muted">检索在浏览器里完成，需要 JavaScript。可从<a href="/#series">首页作品目录</a>进入阅读。</p>
   </noscript>
 
   <script type="application/json" id="search-config" set:html={jsonForScript(searchConfig)} />
   <script>
-    import { mountSearch } from '@gallery/search';
+    import { mountSearch } from 'pagehaven:search-page';
+    import { mountTitleSearch } from '../../lib/title-search.js';
 
-    // 懒加载：进页面只接线，不下载检索库；第一次搜索才加载（30 MB 以内整份下载 + sha256 校验）。
-    mountSearch();
-  </script>
+    const modes = document.getElementById('search-modes')!;
+    const titles = document.getElementById('title-search')!;
+    const lines = document.getElementById('line-search')!;
+    const titlesLink = document.getElementById('titles')!;
+    const linesLink = document.getElementById('lines')!;
+    let titlesReady = false;
+    let lineSearch: ReturnType<typeof mountSearch>;
 
-  <script is:inline>
-    (function () {
-      var form = document.getElementById('meta-form');
-      var input = document.getElementById('meta-q');
-      var list = document.getElementById('meta-results');
-      var status = document.getElementById('meta-status');
-      if (!form || !input || !list || !status) return;
-      var cache = null;
-      var sequence = 0;
-      function load() {
-        if (!cache) {
-          cache = fetch('/index/series.json')
-            .then(function (r) {
-              if (!r.ok) throw new Error('作品目录请求失败');
-              return r.json();
-            })
-            .then(function (items) {
-              if (!Array.isArray(items)) throw new Error('作品目录格式无效');
-              return items;
-            })
-            .catch(function (error) {
-              cache = null;
-              throw error;
-            });
-        }
-        return cache;
+    function selectMode() {
+      const target = document.getElementById(location.hash.slice(1));
+      const showTitles = target === titlesLink || titles.contains(target);
+      titles.hidden = !showTitles;
+      lines.hidden = showTitles;
+      const activeLink = showTitles ? titlesLink : linesLink;
+      const otherLink = showTitles ? linesLink : titlesLink;
+      activeLink.setAttribute('aria-current', 'true');
+      otherLink.removeAttribute('aria-current');
+      if (showTitles && !titlesReady) {
+        titlesReady = true;
+        mountTitleSearch(document);
+      } else if (!showTitles) {
+        if (lineSearch) lineSearch.restoreFromUrl();
+        else lineSearch = mountSearch();
       }
-      function render(items, hasCatalog) {
-        list.textContent = '';
-        items.forEach(function (s) {
-          var li = document.createElement('li');
-          var a = document.createElement('a');
-          a.href = s.url;
-          a.textContent = s.title;
-          var small = document.createElement('small');
-          var who = (s.authors && s.authors.length ? s.authors.join(' / ') : '');
-          small.textContent = [who, s.chapters + ' 话'].filter(Boolean).join(' · ');
-          li.appendChild(a);
-          li.appendChild(small);
-          list.appendChild(li);
-        });
-        status.textContent = items.length ? '' : hasCatalog ? '没有匹配的作品' : '当前还没有作品，内容发布后即可检索。';
-      }
-      function filter(q) {
-        var request = ++sequence;
-        var kw = String(q || '').trim().toLowerCase();
-        status.textContent = '正在加载作品目录……';
-        load().then(function (items) {
-          if (request !== sequence) return;
-          if (!kw) return render(items, items.length > 0);
-          render(items.filter(function (s) {
-            var hay = [s.title, s.description].concat(s.authors || [], s.artists || [], s.tags || []).join(' ').toLowerCase();
-            return hay.indexOf(kw) !== -1;
-          }), items.length > 0);
-        }).catch(function () {
-          if (request !== sequence) return;
-          list.textContent = '';
-          status.textContent = '作品目录加载失败，请点击“过滤”重试。';
-        });
-      }
-      form.addEventListener('submit', function (e) { e.preventDefault(); filter(input.value); });
-      input.addEventListener('input', function () { filter(input.value); });
-      filter('');
-    })();
+    }
+
+    selectMode();
+    modes.hidden = false;
+    window.addEventListener('hashchange', selectMode);
+    window.addEventListener('popstate', selectMode);
   </script>
 </Base>
 
 <style>
-  .meta-head { margin-bottom: 16px; }
+  .search-modes { display: flex; gap: 8px; margin: 0 0 12px; }
+  .search-modes[hidden] { display: none; }
+  .search-modes a { scroll-margin-top: 8rem; }
+  .search-modes a[aria-current] { background: var(--accent-fg); color: var(--canvas-default); border-color: var(--accent-fg); }
   #meta-form, #search-form { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
   #meta-q, #search-input, #search-series {
     flex: 1;
@@ -157,8 +131,8 @@ const searchConfig = {
   #meta-q::placeholder, #search-input::placeholder { color: var(--fg-subtle); }
   #meta-q:focus, #search-input:focus, #search-series:focus-visible { border-color: var(--accent-fg); box-shadow: 0 0 0 3px var(--accent-subtle); background: var(--canvas-default); }
   #search-series { flex: 0 1 auto; min-width: 8rem; }
-  #search-more { margin-top: 16px; }
-  #search-more[hidden] { display: none; }
+  #search-more, #meta-more { margin-top: 16px; }
+  #search-more[hidden], #meta-more[hidden] { display: none; }
   #meta-status, #search-status { margin: 4px 0 12px; font-size: 13px; }
   .note { font-size: 13px; line-height: 1.5; margin: 0; }
   #search-results { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 0; border: 1px solid var(--border-default); border-radius: 6px; background: var(--canvas-default); overflow: hidden; }

@@ -7,8 +7,10 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import * as OpenCC from 'opencc-js';
 import { buildGalleryDb, openGalleryDb, tableCounts, TABLES } from '../src/db/build.js';
+import { openChunkedGalleryDb, consumeChunkedDbError } from '../src/db/vfs.js';
+import { ChunkFetchError } from '../src/chunkfetch/errors.js';
 import { issueKey } from '../src/model.js';
-import { computeChunkManifest, chunkCount, chunkRange, sha256Hex } from '../src/db/chunks.js';
+import { computeChunkManifest, chunkCount, chunkRange, sha256Hex, sha256HexSync } from '../src/db/chunks.js';
 import { buildGallery } from '../src/model.js';
 import { loadGallery } from '../../../scripts/lib/data.mjs';
 
@@ -249,4 +251,85 @@ test('chunkCount / chunkRange 的边界：0 字节 0 块、整除不多一块、
   assert.throws(() => chunkCount(-1, 10), RangeError);
   const empty = await computeChunkManifest(new Uint8Array(0), 65536);
   assert.deepEqual(empty, { version: 1, totalBytes: 0, chunkSize: 65536, sha256: await sha256Hex(new Uint8Array(0)), chunks: [] });
+});
+
+test('sha256HexSync 与 Web Crypto sha256Hex 及 node:crypto 在填充边界与跨块长度下逐字节一致', async () => {
+  const bytes = await buildGalleryDb(gallery, { pageSize: 4096 });
+  for (const len of [0, 1, 55, 56, 63, 64, 65, 119, 120, 128, 4096, 65535, bytes.length]) {
+    const slice = len <= bytes.length ? bytes.subarray(0, len) : new Uint8Array(len).map((_, i) => (i * 31) & 0xff);
+    const sync = sha256HexSync(slice);
+    assert.equal(sync, await sha256Hex(slice), `长度 ${len} 需与 Web Crypto 一致`);
+    assert.equal(sync, nodeSha256(slice), `长度 ${len} 需与 node:crypto 一致`);
+  }
+  const offsetSlice = bytes.subarray(13, 13 + 5000);
+  assert.equal(sha256HexSync(offsetSlice), nodeSha256(offsetSlice), '非零 byteOffset 的 subarray 视图');
+  const ab = bytes.buffer.slice(bytes.byteOffset + 7, bytes.byteOffset + 7 + 1234);
+  assert.equal(sha256HexSync(ab), nodeSha256(new Uint8Array(ab)), 'ArrayBuffer 输入');
+});
+
+test('openChunkedGalleryDb：通过只读 sqlite3_vfs 按区间读取并保留底层 ChunkFetchError', async () => {
+  const bytes = await buildGalleryDb(gallery, { pageSize: 4096 });
+  const reads = [];
+  const db1 = await openChunkedGalleryDb({
+    totalBytes: bytes.length,
+    sectorSize: 4096,
+    readSync(offset, length) {
+      reads.push([offset, length]);
+      return bytes.subarray(offset, offset + length);
+    },
+  });
+  const db2 = await openChunkedGalleryDb({
+    totalBytes: bytes.length,
+    sectorSize: 4096,
+    readSync(offset, length) {
+      return bytes.subarray(offset, offset + length);
+    },
+  });
+  try {
+    assert.equal(count(db1, `SELECT count(*) ${JOIN_SQL} WHERE lines_fts MATCH ?`, ['漫画作者']), 1);
+    assert.equal(count(db2, "SELECT count(*) FROM lines WHERE text_norm LIKE ? ESCAPE '\\'", ['%契约%']), 1);
+    const totalRead = reads.reduce((sum, [, len]) => sum + len, 0);
+    assert.ok(totalRead < bytes.length, `按需 Range 只读了 ${totalRead} / ${bytes.length} 字节`);
+  } finally {
+    db1.close();
+    db2.close();
+  }
+
+  let failLate = false;
+  const lateDb = await openChunkedGalleryDb({
+    totalBytes: bytes.length,
+    sectorSize: 4096,
+    readSync(offset, length) {
+      if (failLate) throw new ChunkFetchError('needs-whole', '所有源都不支持 Range');
+      return bytes.subarray(offset, offset + length);
+    },
+  });
+  try {
+    failLate = true;
+    assert.throws(() => lateDb.selectValues('SELECT text FROM lines'), /disk I\/O/i);
+    const err = consumeChunkedDbError(lateDb);
+    assert.equal(err?.code, 'needs-whole');
+    assert.equal(consumeChunkedDbError(lateDb), null, '错误只取一次即清空');
+  } finally {
+    lateDb.close();
+  }
+
+  await assert.rejects(
+    openChunkedGalleryDb({
+      totalBytes: bytes.length,
+      readSync() {
+        throw new ChunkFetchError('checksum', '头部块摘要不符');
+      },
+    }),
+    (e) => e instanceof ChunkFetchError && e.code === 'checksum',
+  );
+  await assert.rejects(
+    openChunkedGalleryDb({
+      totalBytes: bytes.length,
+      readSync: (_o, len) => new Uint8Array(Math.max(0, len - 1)),
+    }),
+    /返回 .* 字节/,
+  );
+  await assert.rejects(openChunkedGalleryDb({ totalBytes: 0, readSync: () => new Uint8Array(0) }), RangeError);
+  await assert.rejects(openChunkedGalleryDb({ totalBytes: 4096, sectorSize: 3000, readSync: () => new Uint8Array(0) }), RangeError);
 });

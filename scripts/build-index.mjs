@@ -34,6 +34,7 @@ const summary = gallery.series.map((s) => ({
   issues: s.issues.length,
   chapters: s.issues.reduce((n, iss) => n + iss.chapters.length, 0),
   // 元数据检索（标题 / 作者 / 标签）用；纯前端过滤，不用再取分片
+  altTitles: s.altTitles ?? [],
   authors: s.authors ?? [],
   artists: s.artists ?? [],
   status: s.status ?? null,

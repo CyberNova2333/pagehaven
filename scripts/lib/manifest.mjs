@@ -57,6 +57,7 @@ export function resolveVersion(env = process.env, now = new Date()) {
  * @property {string} sha256
  * @property {number} pageSize
  * @property {number} chunkSize
+ * @property {string} [chunksSha256]  分块清单原始字节的摘要；旧版本仅支持整库校验
  * @property {string} chunks     分块摘要文件的 key
  */
 /**

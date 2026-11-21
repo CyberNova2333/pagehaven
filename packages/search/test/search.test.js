@@ -365,13 +365,28 @@ test('mountSearch：空台词覆盖率和归一化后不足两字时都不下载
   assert.match(empty.elements.get('search-status').textContent, /尚未收录/);
   emptySearch.destroy();
   const active = searchDom(BASE_CONFIG);
-  const activeSearch = mountSearch({ ...active, fetchImpl });
-  for (const query of ['魔', '  ，。', '𠀀']) {
+  let workers = 0;
+  const activeSearch = mountSearch({ ...active, fetchImpl, workerFactory() { workers++; throw new Error(); } });
+  for (const query of ['魔', '  ，。', '𠀀', '好\ufe0f', 'e\u200b\u0301']) {
     await activeSearch.run(query);
     assert.match(active.elements.get('search-status').textContent, /至少输入 2 个字/);
   }
   activeSearch.destroy();
+  assert.equal(workers, 0);
   assert.equal(calls, 0);
+});
+
+test('mountSearch：兼容字和大小写折叠后达到两字也可启动检索', async () => {
+  const dom = searchDom({ ...BASE_CONFIG, db: { ...BASE_CONFIG.db, release: DB_META } });
+  const search = mountSearch({ ...dom, fetchImpl: serveDb(DB_META, DB_BYTES) });
+  try {
+    for (const query of ['㍿', 'İ']) {
+      await search.run(query);
+      assert.match(dom.elements.get('search-status').textContent, /没有匹配结果/);
+    }
+  } finally {
+    search.destroy();
+  }
 });
 
 test('mountSearch：50 条只是首批，加载更多后显示完整数量，换作品清除旧结果', async () => {
@@ -406,14 +421,17 @@ test('mountSearch：50 条只是首批，加载更多后显示完整数量，换
 test('mountSearch：加载中改词只显示最新结果，销毁会取消请求且不换源', async () => {
   const config = { ...BASE_CONFIG, db: { ...BASE_CONFIG.db, release: DB_META } };
   const dom = searchDom(config);
+  const started = Promise.withResolvers();
   let finish;
   let calls = 0;
   const search = mountSearch({ ...dom, fetchImpl: async () => {
     calls++;
+    started.resolve();
     return new Promise((resolve) => { finish = resolve; });
   } });
   const first = search.run('漫画作者');
   const second = search.run('再见');
+  await started.promise;
   finish(new Response(DB_BYTES));
   const [oldRows, latestRows] = await Promise.all([first, second]);
   assert.deepEqual(oldRows, []);
@@ -425,16 +443,46 @@ test('mountSearch：加载中改词只显示最新结果，销毁会取消请求
 
   const pendingDom = searchDom({ ...config, images: { hosts: ['first.example', 'second.example'] } });
   let signal;
+  const pendingStarted = Promise.withResolvers();
   let pendingCalls = 0;
   const pendingSearch = mountSearch({ ...pendingDom, fetchImpl: async (_url, init) => {
     pendingCalls++;
     signal = init.signal;
+    pendingStarted.resolve();
     return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
   } });
   const pending = pendingSearch.run('漫画作者');
+  await pendingStarted.promise;
   pendingSearch.destroy();
   assert.deepEqual(await pending, []);
   assert.equal(signal.aborted, true);
   assert.equal(pendingCalls, 1);
   assert.equal(pendingDom.elements.get('search-results').children.length, 0);
+});
+
+test('mountSearch：Worker 无法启动时，并发查询复用一次整库回退', async () => {
+  for (const asynchronous of [false, true]) {
+    const dom = searchDom({ ...BASE_CONFIG, db: { ...BASE_CONFIG.db, release: DB_META } });
+    let gets = 0;
+    const search = mountSearch({
+      ...dom,
+      fetchImpl: async () => { gets++; return new Response(DB_BYTES); },
+      workerFactory() {
+        if (!asynchronous) throw new Error('不允许创建 Worker');
+        return {
+          addEventListener(type, fn) {
+            if (type === 'error') queueMicrotask(() => fn({ message: '脚本加载失败' }));
+          },
+          postMessage() {},
+          terminate() {},
+        };
+      },
+    });
+    try {
+      const [old, current] = await Promise.all([search.run('再见'), search.run('漫画作者')]);
+      assert.deepEqual(old, []);
+      assert.equal(current[0].url, '/sample/vol01/c001/#p1b1');
+      assert.equal(gets, 1);
+    } finally { search.destroy(); }
+  }
 });

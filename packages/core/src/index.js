@@ -24,6 +24,9 @@ export { parseLabelPlus, labelPlusToChapterText, pageByNumberInName, pageBySeque
 export {
   buildGalleryDb,
   openGalleryDb,
+  openChunkedGalleryDb,
+  consumeChunkedDbError,
+  RANGE_VFS_NAME,
   initSqlite,
   tableCounts,
   TABLES,
@@ -32,6 +35,7 @@ export {
   chunkCount,
   chunkRange,
   sha256Hex,
+  sha256HexSync,
   CHUNK_MANIFEST_VERSION,
 } from './db/index.js';
 export * from './chunkfetch/index.js';

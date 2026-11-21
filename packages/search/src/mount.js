@@ -1,14 +1,100 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
-// 搜索页接线：输入与文本覆盖率先校验，再按需加载构建时固定的检索库。
-// 每批结果最多 50 条，用 hasMore 显示后续入口；失败不影响漫画浏览。
-import { loadGalleryDb } from './load.js';
-import { prepareQuery, queryLines } from './query.js';
+// 两种构建共用查询、分页与展示，只有启用分块的页面入口提供 Worker 工厂。
+import { foldText } from '@gallery/core/fold-text';
+
+function createWorkerClient({ config, workerFactory }) {
+  let worker = null;
+  let nextId = 0;
+  const pending = new Map();
+  let everResponded = false;
+
+  function failAll(err) {
+    for (const entry of pending.values()) entry.reject(err);
+    pending.clear();
+  }
+
+  function ensureWorker() {
+    if (worker) return worker;
+    let w;
+    try {
+      w = workerFactory();
+    } catch (cause) {
+      throw Object.assign(new Error('检索 Worker 启动失败', { cause }), { workerStartupFailure: true });
+    }
+    everResponded = false;
+    const onMessage = (event) => {
+      if (w !== worker) return;
+      const msg = event?.data;
+      const job = pending.get(msg?.id);
+      if (!job) return;
+      everResponded = true;
+      pending.delete(msg.id);
+      if (msg.ok) job.resolve(msg.result);
+      else {
+        const err = new Error(msg.error || 'Worker 查询失败');
+        if (msg.code) err.code = msg.code;
+        job.reject(err);
+      }
+    };
+    const onError = (event) => {
+      if (w !== worker) return;
+      const err = new Error(event?.message || '检索 Worker 启动或运行失败');
+      if (!everResponded) err.workerStartupFailure = true;
+      failAll(err);
+      terminate();
+    };
+    if (typeof w.addEventListener === 'function') {
+      w.addEventListener('message', onMessage);
+      w.addEventListener('error', onError);
+      w.addEventListener('messageerror', onError);
+    } else {
+      w.onmessage = onMessage;
+      w.onerror = onError;
+    }
+    worker = w;
+    return worker;
+  }
+
+  function terminate() {
+    const w = worker;
+    worker = null;
+    if (!w) return;
+    w.terminate?.();
+  }
+
+  return {
+    async query({ query, seriesId, offset }) {
+      const w = ensureWorker();
+      const id = ++nextId;
+      return new Promise((resolve, reject) => {
+        pending.set(id, { resolve, reject });
+        try {
+          w.postMessage({ id, type: 'query', config, query, seriesId, offset });
+        } catch (e) {
+          pending.delete(id);
+          reject(e);
+        }
+      });
+    },
+    destroy() {
+      failAll(new DOMException('检索已关闭', 'AbortError'));
+      terminate();
+    },
+  };
+}
 
 /**
- * @param {{document?: Document, location?: Location, history?: History, fetchImpl?: typeof fetch}} [deps]
+ * @param {{document?: Document, location?: Location, history?: History, fetchImpl?: typeof fetch,
+ *   workerFactory?: () => Worker}} [deps]
  */
-export function mountSearch({ document: doc = globalThis.document, location = globalThis.location, history = globalThis.history, fetchImpl = fetch } = {}) {
+export function mountSearch({
+  document: doc = globalThis.document,
+  location = globalThis.location,
+  history = globalThis.history,
+  fetchImpl,
+  workerFactory,
+} = {}) {
   const configEl = doc?.getElementById?.('search-config');
   const form = doc?.getElementById?.('search-form');
   const input = doc?.getElementById?.('search-input');
@@ -33,7 +119,10 @@ export function mountSearch({ document: doc = globalThis.document, location = gl
   };
 
   let dbPromise = null;
-  let db = null;
+  let loadedDb = null;
+  let workerClient = null;
+  let workerDisabled = false;
+  let hasReadyDb = false;
   let sequence = 0;
   let destroyed = false;
   let activeQuery = '';
@@ -41,12 +130,17 @@ export function mountSearch({ document: doc = globalThis.document, location = gl
   let shown = 0;
   const controller = new AbortController();
 
-  function getDb() {
+  function getInThreadDb() {
     if (!dbPromise) {
-      dbPromise = loadGalleryDb({ config, fetchImpl, signal: controller.signal })
-        .then(({ db: opened }) => {
-          db = opened;
-          return opened;
+      dbPromise = Promise.all([import('./whole.js'), import('./query.js')])
+        .then(async ([{ loadWholeDb }, { queryLines }]) => {
+          const { db } = await loadWholeDb({ config, fetchImpl: fetchImpl ?? fetch, signal: controller.signal });
+          if (controller.signal.aborted) {
+            db.close();
+            controller.signal.throwIfAborted();
+          }
+          loadedDb = db;
+          return { db, queryLines };
         })
         .catch((e) => {
           dbPromise = null;
@@ -54,6 +148,27 @@ export function mountSearch({ document: doc = globalThis.document, location = gl
         });
     }
     return dbPromise;
+  }
+
+  async function executeInThread({ query, seriesId, offset }) {
+    const { db, queryLines } = await getInThreadDb();
+    controller.signal.throwIfAborted();
+    return queryLines(db, query, { seriesId, offset });
+  }
+
+  function runQuery({ query, seriesId, offset }) {
+    if (workerFactory && !workerDisabled) {
+      if (!workerClient) workerClient = createWorkerClient({ config, workerFactory });
+      return workerClient.query({ query, seriesId, offset }).catch((e) => {
+        if (!e?.workerStartupFailure || destroyed) throw e;
+        // Worker 脚本无法创建/初始化时仅回退一次到同线程路径
+        workerDisabled = true;
+        workerClient?.destroy();
+        workerClient = null;
+        return executeInThread({ query, seriesId, offset });
+      });
+    }
+    return executeInThread({ query, seriesId, offset });
   }
 
   function render(rows) {
@@ -88,16 +203,18 @@ export function mountSearch({ document: doc = globalThis.document, location = gl
       setStatus(prompt);
       return [];
     }
-    if (prepareQuery(query).mode === 'too-short') {
+    // 当前 t → cn 词典逐条保持码位数，normalize.test.js 用实际词典验证这个前提。
+    if ([...foldText(query).toLowerCase()].length < 2) {
       setStatus('请至少输入 2 个字（空格和标点不计入）。');
       return [];
     }
     if (more) more.disabled = true;
-    setStatus(db ? '正在检索……' : '正在加载台词检索……');
+    setStatus(hasReadyDb ? '正在检索……' : '正在加载台词检索……');
     try {
-      const conn = await getDb();
+      const result = await runQuery({ query, seriesId, offset });
       if (seq !== sequence || destroyed) return [];
-      const { rows, hasMore } = queryLines(conn, query, { seriesId, offset });
+      hasReadyDb = true;
+      const { rows, hasMore } = result;
       render(rows);
       shown += rows.length;
       if (more) more.hidden = !hasMore;
@@ -118,6 +235,7 @@ export function mountSearch({ document: doc = globalThis.document, location = gl
     return searchPage(false);
   }
 
+  let lastSearch;
   function submit(event) {
     event?.preventDefault?.();
     const q = input.value;
@@ -128,6 +246,7 @@ export function mountSearch({ document: doc = globalThis.document, location = gl
       if (series?.value) url.searchParams.set('series', series.value);
       else url.searchParams.delete('series');
       history.replaceState(null, '', url);
+      lastSearch = url.search;
     } catch {
       // 没有 history / location 的环境忽略。
     }
@@ -142,16 +261,20 @@ export function mountSearch({ document: doc = globalThis.document, location = gl
   form.addEventListener('submit', submit);
   more?.addEventListener('click', loadMore);
   series?.addEventListener('change', submit);
-  const params = new URLSearchParams(location?.search ?? '');
-  const initial = params.get('q') ?? '';
-  input.value = initial;
-  if (series) series.value = params.get('series') ?? '';
-  if (more) more.hidden = true;
-  if (initial.trim()) run(initial);
-  else setStatus(noText ? emptyMessage : prompt);
+  function restoreFromUrl() {
+    const search = location?.search ?? '';
+    if (search === lastSearch) return;
+    lastSearch = search;
+    const params = new URLSearchParams(search);
+    input.value = params.get('q') ?? '';
+    if (series) series.value = params.get('series') ?? '';
+    return run(input.value);
+  }
+  restoreFromUrl();
 
   return {
     run,
+    restoreFromUrl,
     destroy() {
       destroyed = true;
       sequence += 1;
@@ -159,8 +282,10 @@ export function mountSearch({ document: doc = globalThis.document, location = gl
       form.removeEventListener('submit', submit);
       more?.removeEventListener('click', loadMore);
       series?.removeEventListener('change', submit);
-      if (db) db.close();
-      db = null;
+      workerClient?.destroy();
+      workerClient = null;
+      loadedDb?.close();
+      loadedDb = null;
       dbPromise = null;
     },
   };

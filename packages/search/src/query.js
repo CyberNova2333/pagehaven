@@ -12,7 +12,7 @@
 //
 // 纯函数：db 由调用方传入（浏览器里是 openGalleryDb 打开的内存库，测试里是同一份），这里不碰网络与 DOM。
 
-import { normalizeText } from '@gallery/core';
+import { normalizeText } from '@gallery/core/normalize';
 
 /** 每批结果最多多少行；多取一条判断是否有下一批，不把截断长度当成总数。 */
 export const RESULT_LIMIT = 50;
@@ -45,7 +45,7 @@ const SELECT_SQL = `
 
 const ORDER_SQL = ' ORDER BY s.sort, s.id, i.number, i.id, c.number, c.id, p.n, l.ord, l.id LIMIT ? OFFSET ?';
 
-/** 查询是否足够长与数据库无关，页面先判断，避免为单字或纯标点下载整库。 */
+/** 查询串与入库文本使用相同的归一化结果，按 Unicode 码位数选择 SQL。 */
 export function prepareQuery(rawQuery) {
   const normalized = normalizeText(String(rawQuery ?? ''));
   const length = [...normalized].length;
