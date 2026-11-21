@@ -38,7 +38,7 @@ features:
 
 ::: warning Explicit Non-Goals & Hard Boundaries
 - **No User Accounts, Comments, or Dynamic Backend**: Never includes authentication, server-side sessions, web-based media uploads, or persistent VPS processes; personal shelves stay browser-local.
-- **Bounded Search Size & Minimum Query Length**: Browser search enforces `db.whole_download_max_bytes` (`30 MiB` default) and rejects queries normalizing to `< 2` characters before fetching SQLite; `@gallery/core/chunkfetch` implements verified HTTP Range primitives, not yet wired into browser SQLite VFS.
+- **Search database size**. Enable `features.range_search` in `site.config.yaml` and rebuild to read verified SQLite blocks on demand in a dedicated worker. The default build uses a bounded whole-file download (30 MiB by default).
 - **Hard Hosting Budgets & Human-Reviewed Search Input**: ESA enforces `2,000` total files / `1,024,000,000 B`; raw `ingest:ocr` drafts never enter production search without `--accept-reviewed`; credentials never enter `site.config.yaml` or client bundles.
 :::
 

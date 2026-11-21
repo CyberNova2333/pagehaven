@@ -6,8 +6,8 @@
 **开发、维护或联合推出主体：** `CyberNova`  
 **上游仓库地址：** `https://github.com/CyberNova2333/pagehaven`  
 **所对应的仓库版本及发行物：** `main` 分支（基于提交 `77ccab6` 及本次 v1.6.7-r4 合规更新工作树）  
-**记录覆盖范围及尚未核实部分：** 已核实本仓库全部受 Git 跟踪源码（`packages/{core,platform,search,site}/`、`scripts/`）、`tools/` 守卫脚本（经查原始提交作者全部为 CyberNova，已由唯一著作权人统一重授权为 `AGPL-3.0-only` 并更新 `tools/NOTICE.md`）、`packages/site/public/` 字体与前端库声明、`docs/assets/` 标题横幅、`docs-site/` 自托管字体与脚本，以及 workspace 生产依赖（`@sqlite.org/sqlite-wasm`、`sql.js-httpvfs`、`@yui540/comimi`、`animejs`、`opencc-js`、`astro`、`zod`、`js-yaml`，全部为 MIT / Apache-2.0，零 copyleft 冲突）。未核实范围：用户自行导入的漫画图片与台词数据、部署托管平台及仅开发期使用的 `devDependencies`。  
-**清单最后更新日期：** `2026-11-19`  
+**记录覆盖范围及尚未核实部分：** 已核实本仓库全部受 Git 跟踪源码（`packages/{core,platform,search,site}/`、`scripts/`）、`tools/` 守卫脚本（经查原始提交作者全部为 CyberNova，已由唯一著作权人统一重授权为 `AGPL-3.0-only` 并更新 `tools/NOTICE.md`）、`packages/site/public/` 字体与前端库声明、`docs/assets/` 标题横幅、`docs-site/` 自托管字体与脚本，以及 workspace 生产依赖（`@sqlite.org/sqlite-wasm`、`@yui540/comimi`、`animejs`、`opencc-js`、`astro`、`zod`、`js-yaml`，全部为 MIT / Apache-2.0，零 copyleft 冲突）。未核实范围：用户自行导入的漫画图片与台词数据、部署托管平台及仅开发期使用的 `devDependencies`。  
+**清单最后更新日期：** `2026-11-21`  
 **配套附加条款：** [中文完整文本](./LICENSE-ADDITIONAL_TERMS-zh-CN.md)；[英文参考译文](./LICENSE-ADDITIONAL_TERMS-en.md)；[工程实施指南](./IMPLEMENTATION-GUIDE.zh-en.md)
 
 > **填写状态：本清单已依据本仓库实际文件、Git 提交历史与各上游/字体原始许可文本核实填写。** 四个分区的排列与配套附加条款 v1.6.7-r4 第 3.2、7.1 款一致；本清单如实记录已核实范围与未覆盖范围，不扩大或缩减任何上游有效许可证授予的权利，也不以列名方式向第三方材料追加限制。
@@ -76,7 +76,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `C-01`；`@yui540/comimi` 0.26.0 | 直接前端依赖（随静态阅读站构建打包，仓内随附许可原文） | `packages/site/package.json`、`packages/site/public/licenses/comimi.txt` | https://github.com/yui540/comimi（v0.26.0） | yui540（`Copyright (c) 2026 yui540`） | 已核实 `packages/site/public/licenses/comimi.txt` 为完整 MIT 许可原文 |
 | `C-02`；Anime.js 4.5.0 | 第三方内嵌脚本（静态复制） | `packages/site/public/licenses/animejs-MIT.txt`（对应打包前端动效库） 与 `docs-site/.vitepress/theme/vendor/animejs/` | https://github.com/juliangarnier/anime（v4.5.0） | Julian Garnier（`Copyright (c) 2025 Julian Garnier`） | 已核实仓内随附 MIT 许可原文与静态脚本文件；未修改上游逻辑 |
-| `C-03`；`@sqlite.org/sqlite-wasm` 3.53.0-build1 与 `sql.js-httpvfs` 0.8.12 | 直接生产依赖（npm 安装并随构建打包，不直接入库源码） | `packages/core/package.json`、`packages/search/package.json` | https://github.com/sqlite/sqlite-wasm（3.53.0-build1）；https://github.com/phiresky/sql.js-httpvfs（0.8.12） | SQLite Authors / phiresky & Contributors | 已核实二者 `package.json` 均为 `Apache-2.0`（其余生产依赖 `opencc-js`、`astro`、`zod`、`js-yaml` 为 MIT / Apache-2.0），与 `AGPL-3.0-only` 完全兼容 |
+| `C-03`；`@sqlite.org/sqlite-wasm` 3.53.0-build1 | 直接生产依赖（npm 安装并随构建打包，不直接入库源码） | `packages/core/package.json`、`packages/search/package.json` | https://github.com/sqlite/sqlite-wasm（3.53.0-build1） | SQLite Authors | 已核实该包 `package.json` 为 `Apache-2.0`（其余生产依赖 `opencc-js`、`astro`、`zod`、`js-yaml` 为 MIT / Apache-2.0），与 `AGPL-3.0-only` 完全兼容 |
 
 ### 3.2 原始许可、本地修改与组合边界
 
@@ -92,7 +92,7 @@
 | --- | --- | --- | --- | --- |
 | `C-01` | MIT 版权与许可全文 | `packages/site/public/licenses/comimi.txt` | 随静态站点产物保留 `/licenses/comimi.txt` 原文 | 置于站点 `public/licenses/` 随构建原样输出 |
 | `C-02` | MIT 版权与许可声明 | `packages/site/public/licenses/animejs-MIT.txt`、`docs-site/.vitepress/theme/vendor/animejs/LICENSE.md` | 随源代码及静态站点分发保留原版权声明与 MIT 许可全文 | 随仓提供完整 `LICENSE.md` / `animejs-MIT.txt` 文本文件 |
-| `C-03` | Apache-2.0 许可声明 | 各自 npm 包内 `LICENSE` 文件 | 分发打包产物时保留上游 Apache-2.0 许可声明 | 构建分发时遵循各包原许可要求 |
+| `C-03` | Apache-2.0 许可声明 | 对应 npm 包内 `LICENSE` 文件 | 分发打包产物时保留上游 Apache-2.0 许可声明 | 构建分发时遵循原许可要求 |
 
 ## 四、独立美术、字体与项目标识资产 (Independent Artwork, Fonts & Project Identifier Assets)
 
@@ -106,6 +106,7 @@
 | `A-02`；IBM Plex Sans（静态阅读站自托管字体） | `packages/site/public/fonts/ibm-plex-sans-latin-*.woff2`；来源：IBM Plex Sans | IBM Corp.（见 `packages/site/public/licenses/IBM-Plex-Sans-OFL.txt`） | SIL Open Font License 1.1（`packages/site/public/licenses/IBM-Plex-Sans-OFL.txt`） | 否（非项目标识）；随静态阅读站构建输出分发；可替换 | 按 SIL OFL 1.1 随页面排版渲染使用；未修改字形 |
 | `A-03`；IBM Plex Sans（文档站自托管字体） | `docs-site/.vitepress/theme/fonts/ibm-plex-sans-latin-*.woff2`；来源：IBM Plex Sans | IBM Corp.（见同目录 `IBM-Plex-Sans-LICENSE.txt`） | SIL Open Font License 1.1（`docs-site/.vitepress/theme/fonts/IBM-Plex-Sans-LICENSE.txt`） | 否（非项目标识）；随 `docs-site` 构建静态分发；可由下游自由替换 | 按 SIL OFL 1.1 随文档站构建与浏览分发；未修改字形 |
 | `A-04`；JetBrains Mono（文档站自托管字体） | `docs-site/.vitepress/theme/fonts/jetbrains-mono-latin-500-normal.woff2`；来源：JetBrains Mono | The JetBrains Mono Project Authors（见同目录 `LICENSE-jetbrains-mono.txt`） | SIL Open Font License 1.1（`docs-site/.vitepress/theme/fonts/LICENSE-jetbrains-mono.txt`） | 否（非项目标识）；随 `docs-site` 构建静态分发；可由下游自由替换 | 按 SIL OFL 1.1 随文档站代码块渲染使用；未修改字形 |
+| `A-05`；《潮汐手记》本地样张 | `scripts/demo/art/*.webp`；为样本站绘制的两幅几何插图与原创台词 | 本项目样例素材 | AGPL-3.0-only（`LICENSE`） | 供本地演示与浏览器回归使用 | 图片内容摘要与 `scripts/demo/data/meta/beacon.yaml` 对应 |
 
 ### 4.2 字体与其他资产的专门条件记录
 

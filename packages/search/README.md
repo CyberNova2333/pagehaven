@@ -17,7 +17,7 @@
   FTS5 trigram MATCH，恰好 2 字走 LIKE，不足 2 字拒绝。trigram 边界固定为 3，
   不受旧调用方传入的阈值影响。支持 `seriesId` 作品过滤、`offset` 分页、每批最多 50 条，
   返回 `hasMore`，结果链到 `/<series>/<issue>/<chapter>/#p<n>b<i>`。
-- `mountSearch`：首次有效查询才加载库。`coverage` 提供总话数、已有台词稿话数和文本框数；
+- `mountSearch`：首次有效查询才加载 SQLite 运行时、OpenCC 繁简词典和库数据。作品筛选独立读取目录。`coverage` 提供总话数、已有台词稿话数和文本框数；
   没有作品时提示目录为空，有作品但无台词时提示尚未收录，两种情况都不下载数据库。
   结果提供作品筛选和「加载更多」，
   只在没有后续结果时显示确切数量。加载失败允许再次尝试；销毁时取消请求并释放数据库。
@@ -27,6 +27,5 @@
 `#search-coverage`。`config.coverage` 的形状为
 `{ chapters: 总话数, withText: 有台词稿的话数, boxes: 文本框数 }`。
 
-只用 Web 标准 API。HTTP Range 取块层已经在 core 中存在，但 sqlite VFS 与 Worker 的
-接线、函数版检索仍未实现；当前实际路径是受限的整库下载。单字拒绝、两字 LIKE、
-固定版本、下载上限、备用源、覆盖率和翻页均由包内测试验证。
+默认搜索在主线程按预算下载整库。启用 `features.range_search` 时，首次有效查询才启动 Worker，
+由只读 SQLite VFS 按需读取并校验数据块。详见[检索与分块模块](../../repo-docs/modules/search-db-and-chunkfetch.md)。

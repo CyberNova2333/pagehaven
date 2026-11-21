@@ -70,8 +70,8 @@ This page covers build, validation, deployment-budget, and browser runtime failu
 ### 8. Dialogue search fails to load DB or exceeds `whole_download_max_bytes`
 
 - **Symptom**: Queries of `>=2` characters fail with host/CORS, SHA-256 mismatch, or size-limit errors.
-- **Root Cause**: Missing CDN CORS headers (`Access-Control-Allow-Origin`), CDN compression modifying `.sqlite` bytes, or DB growth beyond default `31,457,280 B` (30 MiB).
-- **Resolution**: Configure lossless pass-through and CORS on `images.hosts`, or raise `db.whole_download_max_bytes` thoughtfully in `site.config.yaml` and rebuild.
+- **Root Cause**: Missing CDN CORS headers (`Access-Control-Allow-Origin`), CDN compression modifying `.sqlite` bytes, or a whole-file fallback exceeding the default `31,457,280 B` (30 MiB).
+- **Resolution**. Verify CORS and uncompressed 206 responses with an exposed `Content-Range` header. For larger databases, rebuild with `features.range_search: true`.
 
 ### 9. Opt-in enhanced pagination pauses in long-strip or `#p<n>b<i>` mode
 

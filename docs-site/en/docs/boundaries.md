@@ -24,7 +24,7 @@ Pagehaven enforces seven foundational engineering laws verified automatically by
 ### Object Paths & Bounded Database Fetch
 
 - **Safe Object Paths (`packages/core/src/object-path.js`)**: `isSafeObjectPrefix` and `isSafeObjectKey` allow only unescaped ASCII relative paths, rejecting whitespace, `.` / `..`, empty segments, and control characters.
-- **Stream-Guarded Whole Download (`packages/search/src/load.js`)**: Before opening SQLite Wasm, `loadGalleryDb` validates embedded `gallery.searchDb` metadata (`key`, `size > 0`, 64-hex `sha256`, `size <= whole_download_max_bytes`), aborts any response stream exceeding declared or max byte caps, and verifies full-file SHA-256 before passing bytes to SQLite.
+- **Stream-Guarded Whole Download (`packages/search/src/whole.js`)**: Before opening SQLite Wasm, `loadGalleryDb` validates embedded `gallery.searchDb` metadata (`key`, `size > 0`, 64-hex `sha256`, `size <= whole_download_max_bytes`), aborts any response stream exceeding declared or max byte caps, and verifies full-file SHA-256 before passing bytes to SQLite.
 
 ### Local Shelf & JSON Backup Hardening
 
@@ -36,4 +36,4 @@ Pagehaven enforces seven foundational engineering laws verified automatically by
 
 - `/library/` and `preview` builds emit `<meta name="robots" content="noindex" />` without canonical tags.
 - Fonts (`IBM Plex Sans`) and licenses are bundled locally in `packages/site/public/` — zero third-party font beacons or analytics.
-- `@gallery/core/chunkfetch` implements multi-source HTTP Range probing and per-chunk SHA-256 verification under unit tests, but online search currently runs the bounded whole-download path pending SQLite VFS integration.
+- Enable `features.range_search` in `site.config.yaml` and rebuild to read verified SQLite blocks on demand in a dedicated worker. The default build uses a bounded whole-file download (30 MiB by default).

@@ -6,7 +6,7 @@
 
 | 任务 | 命令 |
 | --- | --- |
-| 安装 | `pnpm install --frozen-lockfile`；完整测试还需 `pnpm --dir docs-site install --frozen-lockfile` |
+| 安装 | `pnpm install --frozen-lockfile`；完整测试还需 `pnpm --dir docs-site install --frozen-lockfile` 和 `pnpm exec playwright install --with-deps --only-shell chromium` |
 | 必须通过的守卫 | `pnpm run check` |
 | 业务测试 | `pnpm test` |
 | 完整静态构建 | `pnpm run build`（会替换生成目录与 dist） |

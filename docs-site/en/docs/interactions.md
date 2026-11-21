@@ -14,10 +14,11 @@ Pagehaven prevents version drift across static pages, R2 objects, and browser SQ
 
 ### Lazy Pinned Search Loading
 
-On `/search/`, `mountSearch()` inspects embedded `coverage` before any network traffic:
+On `/search/`, title, author and tag filters use the catalog index. Dialogue search loads resources on demand.
+
 - If `chapters === 0` or `withText === 0 || boxes === 0`, renders an empty-state message with zero DB downloads;
-- If normalized input is shorter than 2 characters (`mode === 'too-short'`), rejects locally without downloading SQLite;
-- On the first valid `>=2`-char query, `loadGalleryDb()` fetches the exact `config.db.release` pinned during build (preventing older deployed HTML from querying newer schemas), enforces byte limits, and verifies SHA-256.
+- If folded, lowercased input has fewer than two Unicode code points, the form shows a local hint.
+- The first valid query loads the SQLite runtime and OpenCC dictionary, then searches the version pinned by `config.db.release`. Whole-file downloads verify the database digest. Range reads verify the chunk manifest and each block SQLite reads.
 
 ### Standard Reader vs Opt-In `@yui540/comimi` Enhancement
 
@@ -35,5 +36,5 @@ No. `scripts/check.mjs` strictly forbids `node:*` imports in `packages/core/`, `
 **How do I customize colors and headings safely?**
 Set `appearance.theme` (`paper`, `ocean`, `plum`), hex `accent`, and `font` (`sans` or `serif`) in `site.config.yaml` or via `pnpm run customize`. `site-appearance.js` auto-computes WCAG contrast (`>= 4.5`) for links and foreground button text.
 
-**Where do I hook up Range-based SQLite paging later?**
-`packages/core/src/chunkfetch/` already implements `SourceSet` EMA selection, Range probing (`probe`), per-chunk SHA-256 verification (`ChunkedFile`), and `needs-whole` fallback signaling. Attaching an SQLite synchronous/OPFS VFS sits cleanly atop `ChunkedFile.read(offset, length)` without changing `.chunks.json` or `queryLines`.
+**How do I enable Range-based SQLite paging?**
+Enable `features.range_search` in `site.config.yaml` and rebuild to read verified SQLite blocks on demand in a dedicated worker. The CDN must serve 206 responses and expose `Content-Range` to cross-origin clients.

@@ -20,7 +20,7 @@
 ## 核心能力与数据流
 
 - **每话单 HTML 渐进阅读**：基于 Astro 7.4 编译，每话仅生成一个纯静态页面（适配 2k–20k 托管预算），无 JavaScript 时完整保留图片与台词文本，启用脚本后支持单页/条漫/双页、RTL/LTR、`#p<n>b<i>` 台词高亮定位及可选 `@yui540/comimi` 分页。
-- **浏览器端 SQLite Wasm 台词检索**：构建期按与查询完全一致的 `normalizeText` 管线（NFKC → 去标点 → OpenCC 繁转简 → 小写）生成 `FTS5 trigram` 数据库；≥3 字走 `MATCH`，2 字退化 `LIKE`，整库在 `30 MiB` 预算内经 SHA-256 校验后本地查询。
+- **浏览器端 SQLite Wasm 台词检索**：构建期按与查询完全一致的 `normalizeText` 管线（NFKC → 去标点 → OpenCC 繁转简 → 小写）生成 `FTS5 trigram` 数据库；≥3 字走 `MATCH`，2 字退化 `LIKE`，默认校验整库后本地查询，可开启 HTTP Range 按块检索。
 - **本地书架与可迁移备份**：作品收藏、阅读历史与页码备注（最多 200 字）纯浏览器存储，支持 5 MiB / 20,000 条记录上限的 `pagehaven-reading-backup` JSON 校验导入导出。
 - **多端便携与不可变发布**：同一份 `dist/` 兼容 EdgeOne、ESA、GitHub Pages、Workers 与 legacy Cloudflare Pages；图片（WebP）与检索库经 R2 私有桶 + CDN 域名分离读取，生产指针在全目标随机证明核对后条件切换。
 
@@ -29,7 +29,7 @@
 | 维度 | 能做到什么程度（已实现能力） | 明确不能做什么（非目标与硬限制） |
 | --- | --- | --- |
 | 归档与阅读 | Astro 每话单 HTML 渐进增强阅读，无 JS 可读图文，支持单页/条漫/双页、`#p<n>b<i>` 跳转与可选 Comimi 分页 | **不做**账号登录、评论系统、SSR 服务器或在线传图管理后台 |
-| 台词检索与分块 | `normalizeText` + SQLite Wasm（≥3 字 `MATCH` / 2 字 `LIKE`）；`@gallery/core/chunkfetch` 已实现 HTTP Range 取块原语 | 归一化 `<2` 字拒绝查询；整库下载限 `30 MiB`；`chunkfetch` **尚未接入**浏览器端 SQLite VFS；未校对 OCR 不自动进索引 |
+| 台词检索与分块 | `normalizeText` + SQLite Wasm（≥3 字 `MATCH` / 2 字 `LIKE`）；Worker 可按需取块并校验 SHA-256 | 归一化 `<2` 字拒绝查询；整库下载限 `30 MiB`；`features.range_search` 默认关闭；未校对 OCR 不自动进索引 |
 | 书架与备份迁移 | `localStorage` 持久化进度/书签/200 字笔记；`pagehaven-reading-backup` JSON 白名单校验迁入迁出 | 单份备份硬限 `5 MiB` / `20,000` 条记录；**不做**云端跨设备账号同步 |
 | 托管预算与发布 | 四端同源构建；R2 上传 + 随机 HTTPS 证明核对 + `If-Match` 条件激活线上 `manifest.json` | ESA 硬上限 `2,000` 文件（业务 ≤ `1,999`）；`github`/`all` 拒收预览部署；`site.config.yaml` 禁止写凭据与示例域 |
 
@@ -49,12 +49,12 @@ flowchart LR
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm run build
-pnpm run check
-pnpm --filter @gallery/site run preview
+pnpm run demo
 ```
 
-构建后默认在 `http://localhost:4321` 启动静态预览（使用仓库内置最小夹具可设 `DATA_DIR=packages/core/test/fixtures/data`）。其他高频工作流与文档入口如下：
+打开 `http://localhost:4321` 阅读两页短篇《潮汐手记》。在搜索页点「找作品」，输入别名「归航灯」可找到这部作品；搜索台词「灯塔」会定位到第一页的气泡。翻到第二页后回首页，点击「继续阅读」即可回到第二页。图片与 SQLite 都由本地端口提供。Codespaces 中运行 `pnpm run demo --host 0.0.0.0`，打开转发端口 4321 即可。
+
+用自己的 `data/` 构建站点时，运行 `pnpm run build`、`pnpm run check`，再用 `pnpm --filter @gallery/site run preview` 预览。
 
 | 目标场景 | 核心命令 / 配置 | 详细文档 |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ R2 写入凭据仅存于 CI 密钥中用于发布，所有公开 WebP 图片与�
 为了能在免费静态托管预算内承载大规模作品（Workers guard 上限 `18,000` 文件、ESA 硬上限 `2,000` 文件含验证预留），每话只产出一份静态 HTML，页内完成翻页与按需目录分片加载（`/index/<series>.json`）。
 
 **站点超过单平台上限或台词检索库过大怎么办？**
-`pnpm run check` 与发布前预算检查会在上传前阻断超限产物（ESA ≤ 1,999 业务文件 / 1,024,000,000 B；`db.whole_download_max_bytes` 默认 30 MiB），多源 HTTP Range 探测基建已内置于 `@gallery/core/chunkfetch`，尚未接入检索 VFS。
+`pnpm run check` 与发布前预算检查会在上传前阻断超限产物（ESA ≤ 1,999 业务文件 / 1,024,000,000 B；`db.whole_download_max_bytes` 默认 30 MiB）。需要检索更大的库时，可开启 `features.range_search`，完整重建并验证 CDN 的 206 响应与跨域响应头。
 
 **OCR 草稿会自动进入正式检索库吗？**
 不会。`ingest:ocr` 默认只生成人工校对草稿与对照 HTML，必须经人工校对后使用 `--accept-reviewed` 显式导入 `data/text/` 才参与建库与站点构建。

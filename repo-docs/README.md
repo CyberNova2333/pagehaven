@@ -23,11 +23,12 @@
 
 ## 运行与验证入口
 
-以下命令在仓库根目录执行（注意 `pnpm run build` 与站点集成测试会更新 `packages/site/src/generated/`，运行前先保护未提交工作）：
+在仓库根目录执行以下命令。默认构建会更新 `packages/site/src/generated/`、`dist/` 和 `out/`。需要保留当前预览时，为构建和检查设置同一个独占 `BUILD_WORK_DIR`。站点集成测试和本地样站会自动创建临时目录。
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm --dir docs-site install --frozen-lockfile
+pnpm exec playwright install --with-deps --only-shell chromium
 pnpm run build
 pnpm run check
 pnpm test

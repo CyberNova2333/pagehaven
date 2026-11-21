@@ -22,7 +22,7 @@ Summary of breaking changes, migration steps, and durable Architecture Decision 
 ### 3. Search Fallback, Coverage Gate & OCR Review Gate
 
 - **Change**: `@gallery/search` serves live search via SHA-256-verified whole-DB downloads (`whole_download_max_bytes: 31457280`), skips network downloads when `coverage` shows zero text or queries are `< 2` chars, and requires explicit `--accept-reviewed` promotion for `ingest:ocr` drafts.
-- **Migration Reminder**: Keep `db.page_size` and `search.request_chunk_size` equal when customizing `site.config.yaml` so future VFS chunk streaming remains compatible.
+- **Migration Reminder**: Keep `db.page_size` and `search.request_chunk_size` equal when customizing `site.config.yaml` and rebuild after enabling `features.range_search` to pin the chunk manifest digest.
 
 ### 4. Template Reset, Feature Toggles & Enterprise Appearance
 

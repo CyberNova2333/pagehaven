@@ -38,7 +38,7 @@ features:
 
 ::: warning 明确不能做什么（非目标与硬限制）
 - **无用户系统与动态后台**：不提供账号注册登录、评论区、Web 后台在线传图或 SSR 常驻服务进程；个人书架与笔记仅保存在浏览器本地。
-- **检索库与托管规模硬约束**：浏览器端台词检索默认限 `db.whole_download_max_bytes`（`30 MiB`）以内，`normalizeText` 后不足 `2` 字直接拒绝下载与查询；`@gallery/core/chunkfetch` 已实现 HTTP Range 取块原语，尚未接入浏览器端 SQLite VFS。
+- **检索库大小**。在 `site.config.yaml` 中开启 `features.range_search` 并完整重建后，搜索页会在专用 Worker 中按 HTTP Range 读取并校验所需分块。默认关闭，整库下载上限为 30 MiB。
 - **平台预算与人工审核底线**：ESA 部署硬上限 `2,000` 文件 / `1,024,000,000 B`；未经过 `--accept-reviewed` 确认的 `ingest:ocr` 草稿绝不自动进入正式检索库；禁止将 R2 / Cloudflare / ESA 凭据写入配置或前端代码。
 :::
 

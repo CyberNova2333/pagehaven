@@ -24,7 +24,7 @@ Pagehaven 的所有设计与代码审查都绕不开 `AGENTS.md` 与 `docs/ARCHI
 ### 对象存储与浏览器下载校验
 
 - **安全对象路径契约（`packages/core/src/object-path.js`）**：`db.prefix`（`isSafeObjectPrefix`）与媒体对象 key（`isSafeObjectKey`）仅允许无需 URL 转义的安全 ASCII 相对路径（以 `/` 结尾、禁止空白、`..`、`.`、空段或控制字符），防止构建与前端拼接出路径穿越 URL。
-- **整库下载上限与流式截断（`packages/search/src/load.js`）**：下载 SQLite 检索库时：
+- **整库下载上限与流式截断（`packages/search/src/whole.js`）**：下载 SQLite 检索库时：
   1. 先校验前端内嵌 `gallery.searchDb` 元数据（或 manifest）中的 `key`、`size`（正整数）、`sha256`（64 位 hex）以及 `size <= whole_download_max_bytes`（默认 `31,457,280` B）；
   2. 流式读取 `ReadableStream` 时累计字节数并实时比对上限与 `meta.size`，超长立即 `controller.abort()`；
   3. 完整接收后通过 `crypto.subtle.digest('SHA-256', ...)` 核对整份 SHA-256，不符即丢弃，绝不将篡改或截断的字节交给 SQLite Wasm。
@@ -42,5 +42,5 @@ Pagehaven 的所有设计与代码审查都绕不开 `AGENTS.md` 与 `docs/ARCHI
 
 ### 非目标与已知限制
 
-- `@gallery/core/chunkfetch` 已完成多源 HTTP Range 探测与按块校验实现并具备单元测试，但**当前在线检索页仍使用有上限（默认 30 MiB）的整库下载降级路径**，尚未接入 SQLite 自定义同步 VFS。
+- 在 `site.config.yaml` 中开启 `features.range_search` 并完整重建后，搜索页会在专用 Worker 中按 HTTP Range 读取并校验所需分块。默认关闭，整库下载上限为 30 MiB。
 - 仓库不提供账号同步；跨设备迁移依赖用户在 `/library/` 手动导出与导入 JSON 备份。

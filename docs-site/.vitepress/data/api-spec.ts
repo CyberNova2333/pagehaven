@@ -394,7 +394,7 @@ if (plan.mode !== 'too-short') {
       group: 'core',
       kind: 'SDK',
       title: '版本锁定与校验检索库加载',
-      signature: 'loadGalleryDb({ config, fetchImpl, signal })',
+      signature: 'loadGalleryDb({ config, fetchImpl, signal, readRangeSync })',
       auth: 'CDN SigV4 公开可读产物',
       stability: '浏览器运行时',
       summary:
@@ -406,7 +406,7 @@ if (plan.mode !== 'too-short') {
         '支持多 images.hosts 依次故障转移，20 秒超时与 AbortSignal 取消联动清理读取流',
       ],
       limitations: [
-        '超出 db.whole_download_max_bytes（默认 30 MiB）时直接报错拒载，防止撑爆移动端内存',
+        '整库下载超出 db.whole_download_max_bytes（默认 30 MiB）时直接报错拒载，防止撑爆移动端内存',
         '若提供了显式 release 元数据但格式缺失/不匹配，不会静默回退到线上最新库',
       ],
       params: [
@@ -444,7 +444,8 @@ if (plan.mode !== 'too-short') {
           lang: 'javascript',
           code: `import { loadGalleryDb, queryLines } from '@gallery/search'
 
-const db = await loadGalleryDb({ config: window.__PAGEHAVEN_CONFIG__ })
+const config = JSON.parse(document.getElementById('search-config').textContent)
+const { db } = await loadGalleryDb({ config })
 try {
   const hits = queryLines(db, '奇迹')
   console.log(hits.rows.length)
@@ -461,9 +462,9 @@ try {
       title: '多源 HTTP Range 分块层 (@gallery/core/chunkfetch)',
       signature: 'ChunkedFile / probe(url) / SourceSet',
       auth: '实验性底层基建',
-      stability: '未接入浏览器 VFS',
+      stability: '可选浏览器 VFS',
       summary:
-        '独立实现的 64 KiB 块级探测、EMA 延迟选源与逐块 SHA-256 校验客户端；为未来超 30 MiB 检索库突破整库下载限制准备底层原语。',
+        '为浏览器提供多源探测、按需分块和逐块 SHA-256 校验，默认块大小 64 KiB。',
       relatedLink: '/docs/architecture',
       relatedLabel: '查看架构定位',
       capabilities: [
@@ -471,7 +472,7 @@ try {
         '对每个 65,536 字节分块验证 sha256Hex，防 CDN 返回篡改或截断分片',
       ],
       limitations: [
-        '当前版本尚未接入浏览器端 SQLite VFS（线上 /search/ 仍走 loadGalleryDb 整库上限路线）',
+        '按块检索需启用 features.range_search、完整重建并由 CDN 提供有效的 206 响应',
         '当源服务器忽略 Range 头返回 200 全量时，主动抛出 ChunkFetchError("needs-whole")',
       ],
       params: [
@@ -1072,7 +1073,7 @@ if (plan.mode !== 'too-short') {
       group: 'core',
       kind: 'SDK',
       title: 'Pinned & SHA-256 Verified DB Loader',
-      signature: 'loadGalleryDb({ config, fetchImpl, signal })',
+      signature: 'loadGalleryDb({ config, fetchImpl, signal, readRangeSync })',
       auth: 'Public CDN over Private R2',
       stability: 'Browser Runtime',
       summary:
@@ -1084,7 +1085,7 @@ if (plan.mode !== 'too-short') {
         'Supports multi-host fallback, 20s timeout, and hard stream truncation protection',
       ],
       limitations: [
-        'Refuses databases larger than db.whole_download_max_bytes (30 MiB default)',
+        'Whole-file downloads refuse databases larger than db.whole_download_max_bytes (30 MiB default)',
         'Pinned release errors fail explicitly without silently falling back to a drifting unpinned pointer',
       ],
       params: [
@@ -1115,7 +1116,8 @@ if (plan.mode !== 'too-short') {
           lang: 'javascript',
           code: `import { loadGalleryDb, queryLines } from '@gallery/search'
 
-const db = await loadGalleryDb({ config: window.__PAGEHAVEN_CONFIG__ })
+const config = JSON.parse(document.getElementById('search-config').textContent)
+const { db } = await loadGalleryDb({ config })
 try {
   console.log(queryLines(db, 'contract'))
 } finally {
@@ -1130,7 +1132,7 @@ try {
       kind: 'SDK',
       title: 'Multi-Source Range Module (@gallery/core/chunkfetch)',
       signature: 'ChunkedFile / probe(url) / SourceSet',
-      auth: 'Pre-VFS Foundation',
+      auth: 'Browser Range VFS',
       stability: 'Standalone Tested',
       summary:
         'Web-standard 64 KiB HTTP Range client featuring EMA latency host scoring, backoff retries, and per-chunk SHA-256 verification.',
@@ -1141,7 +1143,7 @@ try {
         'Routes around flaky CDN mirrors with EMA latency ranking and cached LRU blocks',
       ],
       limitations: [
-        'Not yet wired into browser SQLite VFS (live /search/ currently relies on bounded whole-file loadGalleryDb)',
+        'Requires features.range_search, a rebuilt search database and valid CDN range responses',
         'Throws ChunkFetchError("needs-whole") immediately if origins ignore Range headers',
       ],
       params: [

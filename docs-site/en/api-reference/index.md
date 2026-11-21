@@ -33,7 +33,7 @@ Downloads build-pinned `gallery-*.sqlite` files under `30 MiB` stream guards and
 
 ### Multi-Source Range Module (`@gallery/core/chunkfetch`) {#core-chunkfetch}
 
-Probes HTTP 206 Range compliance with `SourceSet` EMA host selection and 64 KiB block SHA-256 verification.
+Enable `features.range_search` in `site.config.yaml` and rebuild to read verified SQLite blocks on demand in a dedicated worker. The default build uses a bounded whole-file download (30 MiB by default).
 
 ### Reader Deep Links & Progressive Enhancement (`#p<n>b<i>`) {#reader-hash-and-modes}
 

@@ -18,12 +18,12 @@
 | 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
 | --- | --- | --- | --- |
 | [数据结构与模型](../packages/core/src/schema.js) | 校验 Series / Issue / Chapter / Page / ChapterText（0–1 坐标框） | `SeriesSchema / IssueSchema / parseChapterText` | 数据检查、台词导入、清单构建 |
-| [台词归一化](../packages/core/src/normalize.js) | 五步幂等归一化，剔除空白标点并透传 `Cn` | `normalizeText / STRIP_RE` | 检索建库与 `@gallery/search` |
+| [台词归一化](../packages/core/src/normalize.js) | 五步幂等归一化，剔除空白标点并透传 `Cn` | `normalizeText`、[共享折叠函数 `foldText`](../packages/core/src/fold-text.js) | 检索建库与 `@gallery/search` |
 | [LabelPlus 解析](../packages/core/src/labelplus.js) | 精确分隔符解析与 1 起行号可疑行告警 | `parseLabelPlus / labelPlusToChapterText` | LabelPlus 导入入口 |
 | [路径校验](../packages/core/src/object-path.js) | 约束纯 ASCII 相对前缀与对象 key | `isSafeObjectPrefix / isSafeObjectKey` | 平台配置、发布计划、浏览器加载器 |
 | [检索库构建](../packages/core/src/db/build.js) | 建表、事务插入、`lines_fts rebuild`、`journal_mode=DELETE` 与 `VACUUM` | `buildGalleryDb / openGalleryDb / SCHEMA_SQL` | 检索建库与搜索单测 |
 | [分块摘要](../packages/core/src/db/chunks.js) | 调用 `crypto.subtle` 计算整库与 64 KiB 分块 SHA-256 | `computeChunkManifest / sha256Hex` | 检索建库与取块校验 |
-| [Range 分块](../packages/core/src/chunkfetch/chunked-file.js) | Range 探测、并发去重、EMA 选源、块校验与 `needs-whole` 信号 | `ChunkedFile / DEFAULT_RETRY` | 独立单测（暂未接入在线 SQLite VFS） |
+| [Range 分块](../packages/core/src/chunkfetch/chunked-file.js) | Range 探测、并发去重、EMA 选源、块校验与 `needs-whole` 信号 | `ChunkedFile / DEFAULT_RETRY` | 与同步读取器共用探测、选源和重试逻辑 |
 
 验证入口：`packages/core/test/`（`schema`、`model`、`normalize`、`labelplus`、`db`、`chunkfetch`）与 `scripts/test/object-prefix.test.mjs`。
 
@@ -46,9 +46,10 @@
 
 | 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
 | --- | --- | --- | --- |
-| [检索库加载](../packages/search/src/load.js) | 读取 `db.release`、按字节上限中止流并核对 SHA-256 | `loadGalleryDb / FETCH_TIMEOUT_MS / DEFAULT_WHOLE_DOWNLOAD_MAX_BYTES` | 搜索挂载入口 |
+| [按块读取](../packages/core/src/db/vfs.js) | 将 SQLite 页读取映射到已验证的分块 | `openChunkedGalleryDb / SyncChunkedFile` | [查询 Worker](../packages/search/src/worker.js) |
+| [检索库加载](../packages/search/src/load.js) | 使用固定的分块清单或预算内整库下载 | `loadGalleryDb / FETCH_TIMEOUT_MS / DEFAULT_WHOLE_DOWNLOAD_MAX_BYTES` | 搜索挂载入口 |
 | [查询调度](../packages/search/src/query.js) | `<2` 拒绝、`===2` LIKE 降级、`>=3` FTS5 短语 `MATCH` 与 `#p<n>b<i>` 结果拼装 | `prepareQuery / queryLines / RESULT_LIMIT` | 搜索挂载入口 |
-| [页面挂载](../packages/search/src/mount.js) | 检查 `coverage` 与 DOM 节点，无文本时零网络请求 | `mountSearch` | 站点搜索页脚本 |
+| [页面挂载](../packages/search/src/mount.js) | 检查台词覆盖率与查询长度，首次有效查询加载检索代码 | `mountSearch` | 站点搜索页脚本 |
 
 验证入口：`packages/search/test/search.test.js`、`packages/search/test/empty-state.test.js`、`packages/site/test/search-page.test.js`。
 
@@ -62,6 +63,9 @@
 | [共享外壳布局](../packages/site/src/layouts/Base.astro) | 内联首屏配色、本地 `IBM Plex Sans` 字体、`noindex` 与动效接入 | `paletteCSS / colorSchemeScript` | 站内各页面 |
 | [外观与三态配色](../packages/site/src/lib/site-appearance.js) | 计算 `paper/ocean/plum` 变量与对比度；[color-scheme.js](../packages/site/src/lib/color-scheme.js) 同步三态切换 | `appearanceVariables / initializeColorScheme` | 共享布局与昼夜场景接线 |
 | [每话单 HTML 阅读器](../packages/site/src/pages/[series]/[issue]/[chapter]/index.astro) | 无 JS 静态流 + 内联核心切换阅读模式与 `#p<n>b<i>` 高亮；配合 [chapter-toc.js](../packages/site/src/lib/chapter-toc.js) 与 [enhanced-reader.js](../packages/site/src/lib/enhanced-reader.js) | `getStaticPaths / mountChapterToc / mountEnhancedReader` | 站点构建与检索直达跳转 |
+| [继续阅读入口](../packages/site/src/lib/continue-reading.js) | 从当前目录恢复最近阅读，并在跨标签更新和后退后同步链接 | `mountHomeReading / mountSeriesReading` | 首页与作品页 |
+| [作品搜索](../packages/site/src/lib/title-search.js) | 首次打开时取目录，匹配全量作品并分批展示 | `mountTitleSearch` | 搜索页「找作品」 |
+| [本地阅读进度](../packages/site/src/lib/reading-progress.js) | 解析旧记录并按当前目录匹配 URL、限制页码 | `parseProgressRecord / progressForChapter` | 首页、作品、书架、章节目录 |
 | [书架与备份迁移](../packages/site/src/lib/reading-backup.js) | `pagehaven-reading-backup` v1 导出与 5 MiB / 20k 条上限校验导入 | `parseReadingBackup / MAX_BACKUP_BYTES / MAX_BACKUP_RECORDS` | 书架页与阅读状态迁移 |
 
 验证入口：`packages/site/test/` 与 `scripts/test/site-build.test.mjs`。
@@ -75,6 +79,8 @@
 | [初始化与可视化改色](../scripts/init-site.mjs) | 命令行双语改配置；[customize.mjs](../scripts/customize.mjs) 启动令牌保护配置器 | `main / parseInitArgs` | 维护者本地初始化与调色 |
 | [台词导入入口](../scripts/ingest-labelplus.mjs) | 导入 LabelPlus 原稿；[ingest-ocr.mjs](../scripts/ingest-ocr.mjs) 输出 OCR 草稿与 `--accept-reviewed` 导入 | `ingestLabelPlus / ingestOcr` | 内容编辑与发布流水线 |
 | [清单、建库与站点构建](../scripts/build-manifest.mjs) | 清单（[build-manifest.mjs](../scripts/build-manifest.mjs)）→ 建库（[build-db.mjs](../scripts/build-db.mjs)）→ 站点（[build-site.mjs](../scripts/build-site.mjs)）→ 索引与 sitemap | `buildManifest / resolveVersion / galleryFingerprint` | `pnpm run build` 主流程 |
+| [本地样本站](../scripts/demo.mjs) | 同源提供原创样张、实际检索库与阅读站 | `startDemo` | `pnpm run demo` 与浏览器回归 |
+| [独立 Astro 构建](../scripts/lib/astro-build.mjs) | 在独立工作目录编译源码、读取本次生成数据并清理临时根目录 | `buildAstro / BUILD_WORK_DIR` | 站点构建与集成测试 |
 | [静态检查入口](../scripts/check.mjs) | 核对配置同步、Web 标准边界、无 `sharp`、README 锚点、CI 策略与四端预算 | `checkDocumentationPipelines / checkReadmeLinks` | 维护验证与 CI 检查 |
 | [部署、发布与证明](../scripts/deploy.mjs) | 隔离证明副本部署与签名 `gh-pages` 推送（[github-pages-publish.mjs](../scripts/lib/github-pages-publish.mjs)）；联合 [publish-r2.mjs](../scripts/publish-r2.mjs)、[release.mjs](../scripts/lib/release.mjs)、[deploy-budget.mjs](../scripts/lib/deploy-budget.mjs) 与 [deploy-ready.mjs](../scripts/lib/deploy-ready.mjs) 执行条件启用 | `recordDeployment / prepareRelease / activateRelease / pushGithubPages` | 手动发布流水线 |
 | [签名写回与 Git 钩子](../scripts/ci/git-signing.mjs) | 配合 [release-writeback.mjs](../scripts/ci/release-writeback.mjs) 执行临时 Ed25519 SSH 签名写回，配合 [commit_msg.py](../tools/githooks/commit_msg.py)、[pre_push.py](../tools/githooks/pre_push.py)、[_generated.py](../tools/githooks/_generated.py) 与 [repo_maintenance_guard.py](../tools/repo_maintenance_guard.py) 守卫提交及推送 | `withGithubSigning / writeReleaseChanges / validate_commit_message / check_staged_changes` | 发布作业与 Git 本地钩子 |

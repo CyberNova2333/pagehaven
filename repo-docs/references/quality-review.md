@@ -18,6 +18,6 @@
 
 - **结构分层**：[指南首页](../README.md) 专注导航，[主流程](../walkthroughs/one-real-run.md) 建立行为模型，[代码地图](../code-map.md) 提供按包索引，5 篇模块说明各自独立拥有领域细节，[术语表](../glossary.md) 统一关键术语，无跨页大段复制。
 - **反证检查（Falsifying check）**：若 `build:site` 允许未同步的 `manifest.sourceSha256` 写出产物，或关闭 `platform_config` 后核心浏览/搜索损坏，则文档核心结论即被推翻。
-- **未解决后续问题**：`chunkfetch` 多源 Range 层尚未对接 `sqlite-wasm` VFS，目前线上以 `whole_download_max_bytes` 整库降级运行；此外真实云端账户、CDN CORS 与 TLS staging 仍需维护者在带 secrets 环境中自行验收。
+- **未解决后续问题**：按块检索已接入可选 Worker，真实 CDN 的 Range、CORS 与平台预览仍待线上验收。
 
 证据状态：除特别标注外，本页基于当前源码已确认。

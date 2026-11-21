@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 归档与阅读 | 作品 / 期 / 话三级归档，无脚本保留全页与文字层；单页、长条二分定位、双页与可选 Comimi | 不做用户注册登录、评论区、服务端渲染（SSR）或 Web 在线图片后台上传 |
 | 台词检索 | `normalizeText` + SQLite Wasm（≥3 字 `MATCH` / 2 字 `LIKE`）跳转到 `#p<n>b<i>` | 归一化 `<2` 字直接拒绝；默认限 `30 MiB` 整库下载；未校对 OCR 不自动入正式索引 |
-| 分块与书架 | `pagehaven-reading-backup` 白名单迁移（≤ `5 MiB` / `20,000` 条）；`chunkfetch` 分块探测原语已就绪 | 不做跨端账号云同步；`@gallery/core/chunkfetch` 尚未接入浏览器端 SQLite VFS |
+| 分块与书架 | `pagehaven-reading-backup` 白名单迁移（≤ `5 MiB` / `20,000` 条）；`chunkfetch` 分块探测原语已就绪 | 不做跨端账号云同步；`features.range_search` 默认关闭 |
 | 四端部署发布 | 同一 `dist/` 兼容 EdgeOne、ESA（≤ `1,999` 业务文件）、GitHub Pages、Workers 与 R2 原子激活 | `github` 与 `all` 拒绝预览模式；生产发布禁止保留 `example.org` 与明文凭据 |
 
 > 需要按条目查阅配置 Schema、核心包函数签名与发布命令示例？可直接前往交互式 [API 与组件参考](/api-reference/)。
@@ -20,6 +20,8 @@
 - **文档站独立依赖**：`docs-site/` 使用独立的 `docs-site/package.json` 与锁文件，根目录安装不会装入 VitePress
 
 ## 第一次本地跑通
+
+安装根依赖后，运行 `pnpm run demo` 即可阅读《潮汐手记》。打开端口 4321，点「找作品」后输入「归航灯」，或在台词搜索中输入「灯塔」。后者直接定位到漫画气泡；翻页后可从首页续读。Codespaces 使用 `pnpm run demo --host 0.0.0.0`。
 
 ### 1. 安装依赖与初始化配置
 

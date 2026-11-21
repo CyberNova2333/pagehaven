@@ -10,8 +10,8 @@ Pagehaven 使用 `site.config.yaml` 作为唯一配置真相源（SSOT），通�
 | `appearance` | `theme`、`accent`、`font`、`show_search`、`show_library` | `theme`: `paper` \| `ocean` \| `plum`；`font`: `sans` \| `serif` | 派生 `--bg-*`/`--accent`/`--font-heading` 等有限语义变量，禁用任意 CSS |
 | `images` | `hosts`、`prefix` | 1–2 个有效 CDN 主机；`prefix` 默认 `img/`（安全 ASCII 前缀） | 阅读器图片与前端检索库读取域名与路径前缀 |
 | `db` | `page_size`、`chunk_size`、`prefix`、`whole_download_max_bytes` | `page_size`: `4096`；`chunk_size`: `65536`；`prefix`: `db/`；上限 `31457280` | 控制 SQLite 页对齐、分块清单粒度及浏览器端整库下载保护上限 |
-| `search` | `request_chunk_size`、`min_match_length`、`api_path` | 块大小 `4096`（须与 `db.page_size` 一致）；最短触发词 `2` 字 | 前端检索页配置；`api_path` 默认 `/api/search` 仅在 `search_function: true` 时启用 |
-| `features` | `search_function`、`platform_config`、`text_layer`、`comimi_reader` | 默认 `false`、`true`、`true`、`false` | 控制纯静态平台配置文件生成、阅读器台词文字层与 `@yui540/comimi` 可选分页 |
+| `search` | `request_chunk_size`、`min_match_length`、`api_path` | `4096`、`3`、`/api/search` | 页大小须与 `db.page_size` 一致。归一化后三字起走 FTS5，两字走 LIKE。函数路径为预留配置 |
+| `features` | `range_search`、`search_function`、`platform_config`、`text_layer`、`comimi_reader` | 默认 `false`、`false`、`true`、`true`、`false` | 分块检索、预留函数检索、平台文件、文字层和增强分页 |
 | `budgets` | `max_files`、`max_file_bytes` | 默认 `18000` 文件、`20971520` 字节（20 MiB） | 全站通用静态输出安全预算守卫 |
 | `headers` / `redirects` | HTTP 响应头映射与 301/302 跳转表 | 重定向源须为合法站内路径，目标严格限制在输出目录内 | 生成 `_headers`、`_redirects`、`edgeone.json` 与纯静态跳转 HTML |
 | `seo` | `indexnow_key` | `null` 或 `8–128` 位 `[A-Za-z0-9-]` | 非空时在 `dist/` 根目录写入 `<key>.txt` 并允许 `push:search` 推送新增 URL |

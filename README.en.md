@@ -29,7 +29,7 @@ Pagehaven is a **pure-static comic archive, multi-mode reader, and browser-side 
 | Area | What Pagehaven Delivers | Explicit Non-Goals & Hard Bounds |
 | --- | --- | --- |
 | Archive & Reader | One static HTML per chapter readable without JS, single/long-strip/double/Comimi layouts, `#p<n>b<i>` deep links | **No** user accounts, comments, SSR server runtimes, or online media upload portals |
-| Search & Chunking | Deterministic `normalizeText` + SQLite Wasm (`MATCH` >=3 / `LIKE` 2); standalone HTTP Range `chunkfetch` SDK | Rejects `<2`-char normalized queries; `30 MiB` whole-DB cap; `chunkfetch` **not yet wired** to browser VFS; raw OCR drafts excluded |
+| Search & Chunking | Deterministic `normalizeText` + SQLite Wasm (`MATCH` >=3 / `LIKE` 2); optional verified HTTP Range reads in a worker | Rejects `<2`-char normalized queries; `30 MiB` whole-DB cap; opt in with `features.range_search`; raw OCR drafts excluded |
 | Shelves & Backups | Browser-local progress, bookmarks, 200-char notes, and schema-checked `pagehaven-reading-backup` JSON migration | Enforces `5 MiB` / `20,000`-record backup ceiling; **no** cloud account sync |
 | Static Delivery | Portable single build; private R2 upload + randomized live HTTPS proofs + ETag `If-Match` `manifest.json` flip | ESA hard cap `2,000` files (`<=1,999` app files); rejects `preview` on `github`/`all`; refuses embedded secrets or placeholder domains |
 
@@ -49,12 +49,12 @@ Requires **Node.js `>=22.19.0`** and **pnpm `>=10.0.0`** (the template repositor
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm run build
-pnpm run check
-pnpm --filter @gallery/site run preview
+pnpm run demo
 ```
 
-This builds the static site and launches Astro preview on `http://localhost:4321` (set `DATA_DIR=packages/core/test/fixtures/data` to preview built-in sample data). Other entry workflows:
+Open `http://localhost:4321` to read the two-page sample *潮汐手记*. Select **找作品** to search the catalog for its alias `归航灯`, or search dialogue for `灯塔` to jump to a speech bubble. Turn the page, return home and use the resume link to reopen page two. The preview serves the artwork and SQLite database on the same port. In Codespaces, run `pnpm run demo --host 0.0.0.0` and open forwarded port 4321.
+
+To preview your own `data/`, run `pnpm run build`, `pnpm run check`, then `pnpm --filter @gallery/site run preview`.
 
 | Workflow | Command / Entry | Docs Reference |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ R2 credentials reside solely in CI secrets for immutable publishing. Readers fet
 Static host free tiers strictly cap file counts (Workers guard `18,000`, ESA hard cap `2,000` including proof reserve). One HTML per chapter keeps page count bounded while loading `/index/<series>.json` TOC chunks on demand.
 
 **What happens if file budgets or SQLite download size limits are exceeded?**
-`pnpm run check` and release preflight reject oversized outputs before upload (ESA `<=1,999` app files / `1,024,000,000 B`; `db.whole_download_max_bytes` defaults to `30 MiB`). Standalone HTTP Range probing exists in `@gallery/core/chunkfetch` and is not yet wired into SQLite VFS.
+`pnpm run check` and release preflight reject oversized outputs before upload (ESA `<=1,999` app files / `1,024,000,000 B`; `db.whole_download_max_bytes` defaults to `30 MiB`). For larger databases, enable `features.range_search`, rebuild and verify that the CDN serves cross-origin 206 responses.
 
 **Do OCR drafts automatically enter production search?**
 No. `ingest:ocr` generates draft JSON and review HTML only; manually reviewed files must be explicitly promoted into `data/text/` with `--accept-reviewed` before participating in search DB or site builds.

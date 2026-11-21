@@ -33,7 +33,7 @@ import { apiSpecZh } from '../.vitepress/data/api-spec'
 
 ### 多源 HTTP Range 分块层 (`@gallery/core/chunkfetch`) {#core-chunkfetch}
 
-支持 `HEAD`/`Range` 探测、`SourceSet` EMA 选源与 `64 KiB` 逐块 SHA-256 校验（当前未接入浏览器 VFS）。
+在 `site.config.yaml` 中开启 `features.range_search` 并完整重建后，搜索页会在专用 Worker 中按 HTTP Range 读取并校验所需分块。默认关闭，整库下载上限为 30 MiB。
 
 ### 阅读器深链与渐进增强 (`#p<n>b<i>` / `mountEnhancedReader`) {#reader-hash-and-modes}
 

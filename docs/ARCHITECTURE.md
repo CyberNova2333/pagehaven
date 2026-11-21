@@ -44,7 +44,7 @@ gallery.sqlite   FTS5 trigram 台词库；manifest.json；dist 归档
         └─ 图片/DB/归档 ──→ Cloudflare R2（私有桶，唯一持久数据源）
                                └─ 图片域名 img.<domain>：EdgeOne + ESA，CNAME 接入，
                                   以 S3 私有回源（SigV4）读 R2；所有读取都经这里
-浏览器端检索：sqlite-wasm 经 CDN 整库下载并校验 sha256，零服务端（Range VFS 尚未接入）
+浏览器端检索：sqlite-wasm 本地查询；默认限额整库下载，可选 Worker + Range VFS 按块读取
 ```
 
 **R2 是唯一的真实数据源，且永远私有。** 读取一律经 CDN 域名——CDN 持有回源
@@ -68,6 +68,8 @@ Edge Functions 的 CPU 配额小到放不下任何检索逻辑，所以函数版
 Cloudflare Workers 或 Makers Cloud Functions，且永远可选。
 
 ## 3. 平台矩阵
+
+本地并行构建可为每个任务设置独占的 `BUILD_WORK_DIR`。平台配置生成到该任务目录，Workers 与 ESA 模板的 `assets.directory` 相对此次模板定位该任务的静态产物。Makers 与 GitHub Pages 继续读取同一次构建的公开目录。
 
 ### 四平台扩展矩阵（2026-11-02，工作区实现，尚未部署验收）
 
@@ -320,10 +322,9 @@ flag，不开放尚未实现的函数检索选项。导航、favicon 与增强�
   2 字走 `LIKE`（全表扫描，可按作品过滤）；1 字拒绝。结果带 bbox，阅读器据此
   高亮气泡。对象存储上用带版本的 key `db/gallery-<version>.sqlite`（`version` 缺省是
   `<UTC 日期>.<运行序号>`，同一版本号只允许相同内容重试），`db/manifest.json` 指向已启用版本
-  （`db: { version, key, size, sha256, pageSize, chunkSize, chunks }`，形状见
+  （`db: { version, key, size, sha256, pageSize, chunkSize, chunks, chunksSha256 }`，形状见
   `scripts/lib/manifest.mjs` 的 typedef），切换零缓存问题；DB 不进 dist、不进 Blob，
-  所以没有 25 MB 托管上限。构建期对导出字节跑一次 `PRAGMA quick_check`，当前浏览器端校验整库
-  sha256，并在下载前和流读取中执行大小上限。每个站点在构建时绑定自己的 `db`，不随共享指针变化。
+  所以没有 25 MB 托管上限。构建期对导出字节跑一次 `PRAGMA quick_check`，浏览器整库路径在下载前和流读取中执行大小上限并校验整库摘要。分块路径先按页面固定的 `chunksSha256` 校验清单原始字节，再逐块校验。每个站点在构建时绑定自己的 `db`，不随共享指针变化。
   manifest 的 `sourceSha256` 覆盖元数据和完整台词内容；单独重建页面遇到陈旧库时要求重新完整构建。
 
 ## 5. 构建与发布
@@ -414,11 +415,10 @@ OCR 草稿通过工作流工件保留，可在浏览器下载校对；发布不�
   空目录和已有作品但无台词稿分别显示提示。
   三字及以上走 trigram，两字走 LIKE，按作品过滤；每批 50 条，可继续加载。
   没有构建绑定的独立调用方仍可读取 manifest，逐源验证清单并在坏源时切换。
-- **后续接入路径**：现有取块层尚未接到 SQLite VFS；函数加速也未接通。
-  接入后按 Range 分块读取，减少首次下载量。
-- **取块层的已有能力与后续接线约定。** 取块层照搬翻译组多源分块下载框架
+- 在 `site.config.yaml` 中开启 `features.range_search` 并完整重建后，搜索页会在专用 Worker 中按 HTTP Range 读取并校验所需分块。默认关闭，整库下载上限为 30 MiB。 旧发布缺少 `chunksSha256` 时沿用整库校验。Worker 无法启动或所有源忽略 Range 时，预算内可回退整库并完成同一查询。
+- **取块层与只读 SQLite VFS。** 取块层照搬翻译组多源分块下载框架
   （anabranch）的模型，因为它在 CDN 上踩过的坑就是我们要踩的：
-  - 探测：先 HEAD，`Accept-Ranges: bytes` + `Content-Length` 才算；否则
+  - 探测：Worker 使用 HEAD 和实际的单字节 GET 确认支持 Range。独立异步取块器先 HEAD，`Accept-Ranges: bytes` + `Content-Length` 才算；否则
     `GET Range: bytes=0-0`，**只有 206 + `Content-Range` 才算真支持**，200 就是
     服务端无视了 Range。总长从 `Content-Range` 的 `/total` 取。
   - 取块：请求 `bytes=a-b` 却收到 200 且 a>0 → 拒绝（照收就是把文件开头塞进
@@ -438,8 +438,7 @@ OCR 草稿通过工作流工件保留，可在浏览器下载校对；发布不�
     其余（超时、网络、4xx/5xx、短读）原地退避、连错三次才换，且换源也看该源的全局连败数；
     取块时才暴露「所有源都无视 Range」同样报 `needs-whole` 退化到整份下载；每块的重试
     次数上限按源数推导（≥ 源数 × 3），保证第三条源轮得到。
-  - 后续接线的退化方案：探测结论是不支持 Range，或总长 ≤ 30 MB 且用户网络快——整份
-    下载、验整份 sha256、载入内存。函数版检索仍是规划；当前整库下载失败时提示
+  - 所有源忽略 Range 时，仅在整库预算内显式下载并核对整份 SHA-256。Worker 的同步 XHR 在完成后才能检查响应头。若 CDN 在成功探测后改回 200，浏览器可能已接收这一次响应，应用会拒绝把它作为分块使用。整库下载失败时提示
     “检索暂不可用”，页面照常。
 - 取块层与 sqlite 无关，是 `packages/core` 里的纯 Web 标准模块（fetch + Web
   Crypto）。阅读器图片由内联错误处理切换备用域名，不使用取块层或 HEAD 探测。
@@ -517,7 +516,7 @@ OCR 草稿通过工作流工件保留，可在浏览器下载校对；发布不�
 3. `site`：Astro，作品 / 期 / 话页面 + 阅读器（绝对定位透明 span 文字层，
    `#p12` 深链），sitemap，索引分片。
 4. `build:db` + 浏览器端检索页：整份下载 + sha256 校验 + sqlite-wasm（FTS5 trigram）查询
-   已落地，取块层也已实现；SQLite VFS 接线与函数版加速仍待做，在 CDN 私有回源 + CORS 下
+   已落地，按块 VFS 可由 `features.range_search` 启用。函数版加速仍待做，在 CDN 私有回源 + CORS 下
    验证可用后把结果记入决策记录。
 5. `platform`：`build:config` 生成器、三套 deploy 脚本、Hono 函数壳（可选）。
 6. `publish:r2`、`check`、`STATUS.md` 自动更新；跑通 `target=all` 一次。
@@ -638,3 +637,13 @@ OCR 草稿通过工作流工件保留，可在浏览器下载校对；发布不�
   与发布写回（`release-writeback.mjs`）均使用临时 Ed25519 SSH 签名密钥且不强推、不使用 `[skip-hooks]`，写回前先保存工作流工件。
   本地 `tools/agent-guard.py` 改为只读核对 `core.hooksPath`，`tools/install_hooks.py` 拒绝覆盖既有钩子，
   `tools/githooks/pre_push.py` 改用 GitHub Actions `checks.yml` 状态判定红灯并通过 `_generated.py` 核验签名写回提交。
+- 2026-11-21 浏览器按块检索（`features.range_search`，默认关闭）、搜索页按需加载、并行构建隔离与本地样本站落地。
+  - **VFS 选型**：改用官方 `@sqlite.org/sqlite-wasm` 自定义只读 VFS（`pagehaven-range`，`packages/core/src/db/vfs.js`）
+    搭配专用 Web Worker（`packages/search/src/worker.js`）内的同步 `XMLHttpRequest` 与纯 JS 同步 `sha256HexSync`
+    按需拉取并校验 64 KiB 分块，避免引入 `SharedArrayBuffer` / `COOP` / `COEP` 响应头前提，守住 GitHub Pages 纯静态基线，
+    并同步移除未使用的 `sql.js-httpvfs` 依赖。分块清单原始字节由构建期写入页面配置的 `chunksSha256` 固定校验；
+    旧发布缺少 `chunksSha256`、Worker 无法启动或所有 CDN 源均忽略 Range 时，在 `whole_download_max_bytes` 预算内透明回退整库查询。
+  - **首屏与构建体验**：抽取共享 `@gallery/core/fold-text` 使搜索页首屏仅保留轻量页面脚本，首次有效台词查询再加载 SQLite Wasm 与 OpenCC，
+    首次打开「找作品」再按需拉取 `/index/series.json`；新增 `BUILD_WORK_DIR`（`scripts/lib/astro-build.mjs`）隔离站点生成目录、
+    Astro 缓存与平台模板以支持无污染并行构建；提供零 CDN 依赖的同源本地样本站 `pnpm run demo`（`scripts/demo.mjs`）。
+  - 真实 CDN（EdgeOne / ESA）私有回源 + CORS/206 Range 预览验收仍待具备云端凭据后执行并续记于此。

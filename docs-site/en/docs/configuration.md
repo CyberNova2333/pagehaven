@@ -10,8 +10,8 @@
 | `appearance` | `theme`, `accent`, `font`, `show_search`, `show_library` | `theme`: `paper` \| `ocean` \| `plum`; `font`: `sans` \| `serif` | Bounded semantic CSS variables without arbitrary CSS injection |
 | `images` | `hosts`, `prefix` | 1–2 CDN hostnames; safe ASCII `prefix` (`img/`) | WebP & DB CDN origins and path prefix |
 | `db` | `page_size`, `chunk_size`, `prefix`, `whole_download_max_bytes` | `4096`, `65536`, `db/`, `31457280` (30 MiB) | SQLite alignment, chunk manifest size, and download safety cap |
-| `search` | `request_chunk_size`, `min_match_length`, `api_path` | `4096`, `2`, `/api/search` | Search client bounds & optional edge function endpoint |
-| `features` | `search_function`, `platform_config`, `text_layer`, `comimi_reader` | `false`, `true`, `true`, `false` | Toggles generated host files, reader dialogue overlay, and `@yui540/comimi` |
+| `search` | `request_chunk_size`, `min_match_length`, `api_path` | `4096`, `3`, `/api/search` | FTS5 starts at three normalized characters. Two use LIKE. The function path is reserved. |
+| `features` | `range_search`, `search_function`, `platform_config`, `text_layer`, `comimi_reader` | `false`, `false`, `true`, `true`, `false` | Optional Range search, reserved function search, host files, dialogue overlay and enhanced pagination |
 | `budgets` | `max_files`, `max_file_bytes` | `18000` files, `20971520` B (20 MiB) | Static build file count and single-file guards |
 | `headers` / `redirects` | Header rules & redirect map | Sources validated within output root via `redirectOutputPaths` | Emits platform headers/redirects plus escaped `metaRefresh` HTML |
 | `seo` | `indexnow_key` | `null` or `8–128` `[A-Za-z0-9-]+` | Writes `dist/<key>.txt` and enables `push:search` |

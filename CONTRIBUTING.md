@@ -81,6 +81,8 @@ LGPL 的 `sharp` 条目，都会被拦下。
 > 别用 `pnpm install --frozen-lockfile --omit=optional` 代替这一步：`rolldown` 的原生 binding 也是可选依赖，
 > 一起砍掉之后构建直接挂在 `Cannot find native binding`（wasm 兜底包默认没装）。
 
+完整测试用 Playwright 启动 Chromium，验证本地样本站中的台词定位与续读。安装依赖后首次运行 `pnpm exec playwright install --with-deps --only-shell chromium`。Playwright 只在测试进程运行。
+
 新增依赖时按这条自查：
 
 - 进 `dependencies` 的，只收宽松许可证；非宽松一律不进；

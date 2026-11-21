@@ -27,7 +27,7 @@ flowchart TB
 
   subgraph Browser["4. 浏览器运行端"]
     Reader["渐进增强阅读器<br/>单页 / 长条(二分定位) / 双页 / Comimi"]
-    Search["@gallery/search<br/>SHA-256 校验整库 + FTS5/LIKE -> #p<n>b<i>"]
+    Search["@gallery/search<br/>按块或整库校验 + FTS5/LIKE -> #p<n>b<i>"]
     Vault["localStorage + JSON 备份<br/>书架 / 进度 / 书签 / 200字备注"]
   end
 
@@ -82,4 +82,4 @@ flowchart TB
 - **无脚本与渐进增强**：章节 HTML 默认以标准文档流输出所有页图片与文字层 DOM；页尾内联脚本同步将视图切换为阅读器模式，消除首屏闪烁。
 - **按需目录分页（`/index/<series>.json`）**：每话静态 HTML 侧栏仅内联常量规模邻近目录；首次打开完整目录时按需请求作品索引 JSON 并按每组 **100 话** 分片渲染，支持筛选、组号跳转与跨标签页进度缓存。
 - **对数级条漫页码追踪**：长条模式按页顶纵向位置执行**二分查找**实时定位当前阅读页，把 1,000 页章节的单帧位置读取从 900 次降至最多 10 次，同时规避图片懒加载高度变化导致的缓存失真。
-- **`chunkfetch` 多源 Range 基建**：`packages/core/src/chunkfetch/` 已完整实现按块 `HEAD`/`GET Range` 探测、`SourceSet` EMA 延迟优选、跨源指数退避重试与逐块 SHA-256 校验（所有源无视 Range 时回抛 `needs-whole`）。当前线上检索默认先走有上限整库下载，待后续接入 SQLite VFS 后可平滑开启按块拉取。
+- 在 `site.config.yaml` 中开启 `features.range_search` 并完整重建后，搜索页会在专用 Worker 中按 HTTP Range 读取并校验所需分块。默认关闭，整库下载上限为 30 MiB。

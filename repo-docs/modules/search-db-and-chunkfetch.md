@@ -13,8 +13,8 @@
 
 [检索加载器](../../packages/search/src/load.js)、[查询调度](../../packages/search/src/query.js) 与 [页面挂载](../../packages/search/src/mount.js) 在 `/search/` 页协同执行：
 
-1. **零浪费懒加载门控 (`mountSearch`)**：读取 `#search-config` 中的 `coverage`（`chapters`、`withText`、`boxes`）与 `db.release`。若站内无任何台词（`withText === 0 || boxes === 0`）或用户输入经 `prepareQuery` 归一化后不足 2 个字符，直接就地展示提示，**不发任何网络请求**。
-2. **固定版本整库下载与双层校验 (`loadGalleryDb`)**：优先读取页面编译时绑定的 `config.db.release`（存在时即使为 `null` 也不退回线上浮动指针），逐个尝试 `images.hosts`。先校验 `key`（`isSafeObjectKey` 且在 `db.prefix` 下以 `.sqlite` 结尾）、`size`、64 位 hex `sha256` 与 `size <= whole_download_max_bytes`（默认 30 MiB = `31,457,280` 字节）；流式读取 `ReadableStream` 时动态阻断超限响应，下载完成后以 `sha256Hex` 逐字节核对才交由 `openGalleryDb` 打开。
+1. **判断是否需要台词检索**。搜索页默认显示台词输入框。首次进入「找作品」（`/search/#titles`）才读取作品目录，按正题、别名、作者等过滤全部作品。结果每次追加 50 部。切回台词后仍可返回先前的作品筛选结果。台词表单先检查 `coverage`，再用 `foldText` 折叠输入、转小写并按 Unicode 码位计数。无台词或不足两字时就地提示。首次有效查询才加载 SQLite 运行时和 OpenCC 词典，带 `?q=` 的直达链接也走同一路径。
+2. **读取固定发布版本**。搜索页绑定 `config.db.release`。默认从 CDN 下载整库，读取响应流时执行 `db.whole_download_max_bytes` 上限，默认 30 MiB，整库 SHA-256 匹配后再打开。开启 `features.range_search` 后，首次有效查询创建 Worker。Worker 先验证页面固定的 `chunksSha256`，再用清单中的摘要逐块校验。旧数据库指针缺少清单摘要时沿用整库路径。
 3. **混合查询调度 (`queryLines`)**：
    - 归一化长度 **`>= 3`**：对引号转义为 FTS5 短语 `ftsPhrase(normalized)`，查询 `lines_fts MATCH ?`；
    - 归一化长度 **`=== 2`**：因 trigram 索引最小为 3 字符，转用 `likePattern(normalized)` 执行 `l.text_norm LIKE ? ESCAPE '\'` 扫表（可选拼入 `s.id = ?` 过滤）；
@@ -22,15 +22,15 @@
 
 | 查询或加载输入 | 预期行为与结果 |
 | --- | --- |
-| 查询 `"的"` 或纯标点 `"……！？"` | `prepareQuery` 返回 `mode: 'too-short'`，拒绝查询且不触发 SQLite 下载 |
+| 查询 `"的"` 或纯标点 `"……！？"` | 页面显示最少字数提示，无需加载台词检索代码或数据库 |
 | 查询 `"希望"`（归一化 2 字） | `mode: 'like'`，绕开 FTS5 trigram 执行带转义的 `LIKE` 查询 |
-| `.sqlite` 响应流比 manifest 声明多出 1 字节或超出 30 MiB 上限 | `loadGalleryDb` 中 `reader` 立即 `controller.abort()` 并抛错，拒绝交给 Wasm |
+| 整库下载时 `.sqlite` 响应流比 manifest 声明多出 1 字节或超出 30 MiB 上限 | `readBoundedResponse` 中 `reader` 立即 `controller.abort()` 并抛错，拒绝交给 Wasm |
 
-## 独立分块取块基建 (`@gallery/core/chunkfetch`)
+## 按需读取与多源切换 (`@gallery/core/chunkfetch`)
 
 [分块文件组装](../../packages/core/src/chunkfetch/chunked-file.js) 已实现并单测多源探测（`probe`）、并发去重（`SharedJob`）、LRU 块缓存、EMA 源选择（`SourceSet`）、逐块 `crypto.subtle` SHA-256 校验，以及所有源无视 HTTP Range 时向上抛出 `needs-whole`（避免被判为网络耗尽而无法触发整库降级）。
 
-**当前接线边界**：在线检索页目前仍走有体积上限的整库下载路径，`chunkfetch` 尚未接入 SQLite 自定义同步 VFS；两者接口已由 `db.page_size === search.request_chunk_size` 与 `.chunks.json` 保持兼容。
+Worker 把 SQLite 的同步读请求交给分块读取器。相同块可从缓存复用，坏块会尝试备用 CDN。所有源忽略 Range 时，预算内改用整库重试同一查询，超限则向读者显示错误。Worker 无法启动时，页面也可以走整库路径。两字 `LIKE` 可能扫过许多数据页，实际流量取决于查询。 [只读 VFS](../../packages/core/src/db/vfs.js) · [Worker 会话](../../packages/search/src/worker.js) · [回归测试](../../packages/search/test/range-vfs.test.js)
 
 ## 验证钩子
 

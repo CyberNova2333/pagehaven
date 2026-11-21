@@ -8,7 +8,7 @@ Pagehaven is a **pure-static comic library, multi-mode reader, and browser-side 
 | --- | --- | --- |
 | Archive & Reader | Series/issue/chapter catalogs, zero-JS fallback, single/long-strip/double/Comimi modes | No user accounts, login sessions, comments, SSR servers, or online media upload UI |
 | Dialogue Search | 5-step `normalizeText` + SQLite Wasm (`MATCH` >=3 / `LIKE` 2) jumping to `#p<n>b<i>` | Rejects `<2`-char normalized queries; `30 MiB` whole-DB cap; unreviewed OCR excluded |
-| Vault & Chunking | `pagehaven-reading-backup` JSON migration (<= `5 MiB` / `20,000` rows); verified `chunkfetch` SDK | No cloud account sync; `@gallery/core/chunkfetch` is not yet wired to browser SQLite VFS |
+| Vault & Chunking | `pagehaven-reading-backup` JSON migration (<= `5 MiB` / `20,000` rows); verified `chunkfetch` SDK | No cloud account sync; `features.range_search` defaults to false |
 | Static Delivery | Shared `dist/` for EdgeOne, ESA (<= `1,999` files), GitHub Pages, Workers + R2 ETag activation | Rejects `preview` on `github`/`all`; refuses placeholder hosts or embedded secrets |
 
 > Want interactive schemas, Web-standard SDK signatures, and release CLI examples in one view? Jump to the [API & Component Reference](/en/api-reference/).
@@ -20,6 +20,8 @@ Pagehaven is a **pure-static comic library, multi-mode reader, and browser-side 
 - **Standalone docs dependencies**: `docs-site/` uses its own `package.json` and lockfile, isolated from production audits
 
 ## First Local Build & Preview
+
+After installing root dependencies, run `pnpm run demo` and open port 4321. Select **找作品** and filter titles by the alias `归航灯`, or search dialogue for `灯塔` to jump to its speech bubble. Turn the page and return home to try the resume link. In Codespaces use `pnpm run demo --host 0.0.0.0`.
 
 ### 1. Install Dependencies & Initialize Configuration
 

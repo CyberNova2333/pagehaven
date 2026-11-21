@@ -83,13 +83,13 @@
 - **根因**：常见原因有三类：
   1. CDN 回源规则或 CORS 未放行 `https://<site.domain>` 跨域请求；
   2. `db/gallery-<version>.sqlite` 被 CDN 压缩篡改、缓存截断导致字节数或 SHA-256 与构建清单不一致；
-  3. 随着台词量增长，`gallery.sqlite` 体积超过了 `site.config.yaml` 中 `db.whole_download_max_bytes`（默认 30 MiB = `31,457,280` 字节）。
+  3. 整库模式或回退整库时，`gallery.sqlite` 体积超过了 `site.config.yaml` 中 `db.whole_download_max_bytes`（默认 30 MiB = `31,457,280` 字节）。
 - **排查命令**：
   ```sh
   ls -lh out/db/
   grep -n "whole_download_max_bytes" site.config.yaml
   ```
-- **解决方案**：检查 CDN `Access-Control-Allow-Origin` 与无损透传配置；若业务确需放宽整库下载上限，在评估读者移动端带宽后调高 `db.whole_download_max_bytes` 并重新构建；若仅图片源异常，确保多图源均完成同步。
+- **处理方法**。检查 CDN 的 CORS 规则、未压缩的 206 响应和暴露给浏览器的 `Content-Range` 头。对超过整库上限的库，开启 `features.range_search` 并完整重建。
 
 ### 9. 为什么启用“增强分页”后，条漫模式或点击台词搜索结果会自动切回标准阅读器？
 

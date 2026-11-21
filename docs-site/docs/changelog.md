@@ -22,7 +22,7 @@
 ### 3. 台词检索降级方案、覆盖率前置检查与人工校对门禁
 
 - **变化内容**：`packages/search` 现以带有流式长度截断（默认 `db.whole_download_max_bytes: 31457280`）与 SHA-256 校验的整库下载服务于线上检索；`mountSearch` 在下载前先核对嵌入的 `coverage`（`withText === 0 || boxes === 0` 时零网络请求）；`ingest:ocr` 收紧为只产草稿与对照 HTML，必须使用 `--accept-reviewed` 导入已校对稿。
-- **迁移提醒**：已有站点的 `site.config.yaml` 如需放宽整库体积上限，可显式调高 `db.whole_download_max_bytes`，同时维持 `db.page_size` 与 `search.request_chunk_size` 一致，以便后续无痛接入 `@gallery/core/chunkfetch` 按块 VFS。
+- **迁移提醒**：已有站点的 `site.config.yaml` 如需放宽整库体积上限，可显式调高 `db.whole_download_max_bytes`，同时维持 `db.page_size` 与 `search.request_chunk_size` 一致，开启 `features.range_search` 后完整重建，页面会绑定本版分块清单的摘要。
 
 ### 4. 默认模板化与功能开关收缩
 

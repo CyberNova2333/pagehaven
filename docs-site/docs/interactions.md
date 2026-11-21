@@ -16,10 +16,11 @@ Pagehaven 最核心的工程保障是**“防漂移交接”**——确保线上
 
 ### 检索页的延迟加载与版本绑定
 
-`@gallery/search` 的 `mountSearch()` 在页面打开时仅校验 DOM 与 `coverage`：
+作品名、作者和标签筛选使用独立的作品目录。台词表单按以下条件加载检索资源。
+
 - 若全站无话（`chapters === 0`）或尚无任何台词框（`withText === 0 || boxes === 0`），直接展示明确空态提示，**永远不发起任何数据库网络请求**；
-- 若用户输入的查询词归一化后不足 2 字（`prepareQuery(q).mode === 'too-short'`），仅在本地给出“请至少输入 2 个字”提示，同样**不下载检索库**；
-- 只有首次出现 `>= 2` 字符的合法查询时，才调用 `loadGalleryDb()` 读取页面编译时固定的 `config.db.release`（存在 `release` 字段时绝不回退读取线上浮动指针，确保旧部署页不读新版本格式库），经长度上限与 SHA-256 校验后在内存打开查询。
+- 查询串折叠并转小写后不足两个 Unicode 码位时，就地提示“请至少输入 2 个字”。
+- 首次有效台词查询才加载 SQLite 运行时、OpenCC 词典和页面绑定的 `config.db.release`。整库路径验证完整文件的 SHA-256，分块路径验证清单及 SQLite 实际读取的块。
 
 ### 标准阅读器与增强分页（Comimi）的协作边界
 
@@ -40,8 +41,8 @@ Pagehaven 最核心的工程保障是**“防漂移交接”**——确保线上
 **如何在不修改核心阅读器代码的条件下微调全站外观？**
 优先通过 `site.config.yaml` 的 `appearance`（`theme`: `paper`/`ocean`/`plum`，任意 6 位 `#rrggbb` `accent`，`font`: `sans`/`serif`）以及 `pnpm run customize` 工具调整。`site-appearance.js` 会自动保证链接对比度（≥ 4.5）与按钮前景色对比。
 
-**如果要启用独立分块加载（Range VFS）需要对接哪一层？**
-`@gallery/core/src/chunkfetch/` 已提供完整的多源探测（`probe`）、对齐区间拉取（`fetchRange`）、块级 SHA-256 校验（`ChunkedFile`）以及失败切源策略（`SourceSet`，全部源无视 Range 时抛出 `needs-whole`）。未来只需在该模块上层对接 `@sqlite.org/sqlite-wasm` 自定义同步/OPFS VFS，无需改动 `buildGalleryDb` 产出的 `.chunks.json` 格式或 `queryLines` SQL 逻辑。
+**如何启用按块检索？**
+在 `site.config.yaml` 中开启 `features.range_search` 并完整重建后，搜索页会在专用 Worker 中按 HTTP Range 读取并校验所需分块。CDN 需要返回 206，并允许浏览器跨域读取 `Content-Range`。
 
 **想给站内增加新的自定义静态跳转页怎么写最安全？**
 全部配置在 `site.config.yaml` 的 `redirects` 映射中，`build:site` 会通过 `scripts/lib/static-output.mjs` 的 `redirectOutputPaths` 与 `metaRefresh` 预检源路径合法性并转义目标 URL，同时产出平台重定向规则（支持规则的平台）与实体兜底 HTML。

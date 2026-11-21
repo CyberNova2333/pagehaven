@@ -82,4 +82,4 @@ Query dispatch in `packages/search/src/query.js`:
 - **Progressive Static Output**: All chapter images and text boxes render in plain HTML; an inline footer script switches directly into single/long/double-page mode without flash of unstyled content.
 - **On-Demand 100-Item TOC (`/index/<series>.json`)**: Chapter HTML embeds only constant-size neighbor links; opening the full TOC lazily fetches the series JSON and paginates at 100 entries per group.
 - **Logarithmic Long-Strip Tracking**: Binary-searches live page offsets rather than linearly scanning all elements per scroll frame, dropping 1,000-page read cost from 900 checks to at most 10.
-- **Standalone `chunkfetch` Range Prober**: `packages/core/src/chunkfetch/` supports multi-source probing, `SourceSet` EMA latency ranking, chunk SHA-256 verification, and `needs-whole` fallback signaling, ready for future SQLite VFS integration.
+- Enable `features.range_search` in `site.config.yaml` and rebuild to read verified SQLite blocks on demand in a dedicated worker. The default build uses a bounded whole-file download (30 MiB by default).
