@@ -71,38 +71,9 @@ const STATUSB = { ongoing: '连载中', completed: '已完结', hiatus: '休载'
   </ul>
 
   <script type="application/json" id="series-chapters" set:html={jsonForScript(chapters)} />
-  <script is:inline>
-    (function () {
-      var link = document.getElementById('start-reading');
-      if (!link) return;
-      var chapters = JSON.parse(document.getElementById('series-chapters').textContent || '[]');
-      var currentChapters = new Map(chapters.map(function (chapter) { return [chapter.url, chapter]; }));
-      var best = null;
-      try {
-        var storage = localStorage;
-        for (var i = 0; i < storage.length; i++) {
-          try {
-            var k = storage.key(i);
-            if (!k || k.indexOf('gallery:progress:') !== 0) continue;
-            var v = JSON.parse(storage.getItem(k));
-            if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
-            var chapter = currentChapters.get(v.url);
-            if (!chapter) continue;
-            var n = Number.isSafeInteger(v.n) ? Math.max(1, Math.min(chapter.pages, v.n)) : 1;
-            var ts = Number.isFinite(v.ts) && v.ts >= 0 ? v.ts : 0;
-            if (!best || ts > best.ts) best = { chapter: chapter, n: n, ts: ts };
-          } catch (e) {
-            /* 单条坏数据或读取失败不影响其他章节。 */
-          }
-        }
-      } catch (e) {
-        /* 浏览器禁止访问存储时保留默认的开始阅读链接。 */
-      }
-      if (best) {
-        link.href = best.chapter.url + '#p' + best.n;
-        link.textContent = '继续阅读：' + best.chapter.title + ' →';
-      }
-    })();
+  <script>
+    import { mountSeriesReading } from '../../lib/continue-reading.js';
+    mountSeriesReading(window);
   </script>
 </Base>
 

@@ -161,12 +161,49 @@ function readerFixture({
       frame.closest = (selector) => selector === '.frame' ? frame : null;
       reader.fire('click', { target: frame, clientX: side === 'left' ? 100 : 900 });
     },
-    swipe(dx) {
-      reader.fire('touchstart', { touches: [{ clientX: 500 }] });
-      reader.fire('touchend', { changedTouches: [{ clientX: 500 + dx }] });
+    swipe(dx, dy = 0, target = reader) {
+      document.fire('touchstart', { target, touches: [finger(500, 400)] });
+      reader.fire('touchend', { touches: [], changedTouches: [finger(500 + dx, 400 + dy)] });
     },
   };
 }
+
+function finger(clientX, clientY, identifier = 1) {
+  return { clientX, clientY, identifier };
+}
+
+test('双页翻面和跳页从新跨页开头读，同一跨页和已可见的画面保持位置', () => {
+  const r = readerFixture({ mode: 'double', total: 6 });
+  r.window.visualViewport = { offsetTop: 32, height: 420, scale: 1 };
+  for (const page of r.pages) {
+    // 并排的两页共享页首高度，换跨页后仍在同一位置。
+    page.getBoundingClientRect = () => ({ top: 160 - r.window.scrollY });
+    page.img.getBoundingClientRect = () => ({ top: 220 - r.window.scrollY });
+  }
+  r.scrollTo(500);
+  r.swipe(-100);
+  assert.deepEqual(r.visible(), ['p3', 'p4']);
+  assert.equal(r.window.scrollY, 128);
+  r.scrollTo(500);
+  const input = r.nodes.get('page-input');
+  input.value = '4';
+  input.fire('change');
+  assert.equal(r.window.scrollY, 500, '输入同一跨页的另一页时无需移动');
+  input.value = '6';
+  input.fire('change');
+  assert.deepEqual(r.visible(), ['p5', 'p6']);
+  assert.equal(r.progress().n, 5);
+  assert.equal(r.window.scrollY, 128);
+  r.scrollTo(110);
+  r.key('ArrowLeft');
+  assert.equal(r.current(), 3);
+  assert.equal(r.window.scrollY, 110, '新画面开头已可见');
+  r.scrollTo(0);
+  r.window.visualViewport.height = 160;
+  r.click('page-prev');
+  assert.equal(r.current(), 1);
+  assert.equal(r.window.scrollY, 128, '画面开头低于可见视口时也要带入');
+});
 
 test('损坏或遗留的非整数进度回到第一页，不生成空白页或继续保存非法值', () => {
   for (const mode of ['single', 'double', 'long']) {
@@ -260,6 +297,31 @@ for (const dir of ['ltr', 'rtl']) {
   });
 }
 
+test('1000 页章节翻页只访问进出当前视图的页，重复定位不触碰页标记', () => {
+  const r = readerFixture({ total: 1000 });
+  const touched = new Set();
+  for (const page of r.pages) {
+    const classes = page.classList;
+    Object.defineProperty(page, 'classList', { get() { touched.add(page.id); return classes; } });
+  }
+  function checkTurn(action, visible, changed) {
+    touched.clear();
+    action();
+    assert.equal(touched.size, changed.length, '触及的页数');
+    assert.deepEqual(touched, new Set(changed));
+    assert.deepEqual(r.visible(), visible);
+  }
+  const api = r.reader.galleryReader;
+  checkTurn(() => api.showPage(900), ['p900'], ['p1', 'p900']);
+  checkTurn(() => r.changeMode('double'), ['p899', 'p900'], ['p899']);
+  checkTurn(() => r.click('page-next'), ['p901', 'p902'], ['p899', 'p900', 'p901', 'p902']);
+  checkTurn(() => api.showPage(902), ['p901', 'p902'], []);
+  r.changeMode('long');
+  r.flush();
+  r.scrollToPage(999);
+  checkTurn(() => r.changeMode('single'), ['p999'], ['p901', 'p999']);
+});
+
 test('阅读器：按钮上的空格保留原生操作，不劫持成翻页', () => {
   const r = readerFixture();
   const event = r.key(' ', { tagName: 'BUTTON' });
@@ -280,12 +342,53 @@ test('阅读器：目录输入框按 Escape 关闭面板并返回目录按钮，
 
 test('阅读器：目录或重试控件上的触摸手势不翻页，下一次正常滑动仍可用', () => {
   const r = readerFixture();
-  const control = { closest: () => ({ tagName: 'BUTTON' }) };
-  r.reader.fire('touchstart', { target: control, touches: [{ clientX: 500 }] });
-  r.reader.fire('touchend', { changedTouches: [{ clientX: 350 }] });
+  const control = { closest: (selector) => selector === '#reader' ? r.reader : control };
+  r.swipe(-150, 0, control);
   assert.equal(r.current(), 1);
   r.swipe(-100);
   assert.equal(r.current(), 2);
+});
+
+test('单页和双页：纵向滚动、对角线和短距离拖动保留深链和进度，横划按阅读方向翻页', () => {
+  for (const mode of ['single', 'double']) {
+    for (const dir of ['ltr', 'rtl']) {
+      const r = readerFixture({ mode, dir, hash: '#p3b1' });
+      const writes = r.writes.length;
+      const sign = dir === 'ltr' ? -1 : 1;
+      for (const [dx, dy] of [[85, -215], [-90, 220], [75, -75], [49, 0]]) {
+        r.swipe(dx, dy);
+        assert.equal(r.current(), 3);
+        assert.equal(r.location.hash, '#p3b1');
+        assert.equal(r.writes.length, writes);
+      }
+      r.swipe(sign * 50, 12);
+      assert.equal(r.current(), mode === 'single' ? 4 : 5);
+    }
+  }
+});
+
+test('缩放、被系统取消或触点不匹配的手势不触发翻页，随后可重新横划', () => {
+  const r = readerFixture({ hash: '#p2' });
+  const start = () => r.document.fire('touchstart', { target: r.reader, touches: [finger(200, 200)] });
+  const end = (id = 1) => r.reader.fire('touchend', { touches: [], changedTouches: [finger(100, 200, id)] });
+  const writes = r.writes.length;
+  start();
+  r.document.fire('touchstart', { touches: [finger(200, 200), finger(30, 30, 2)] });
+  end();
+  start();
+  r.reader.fire('touchcancel');
+  end();
+  start();
+  end(2);
+  start();
+  r.window.visualViewport = { scale: 2 };
+  end();
+  r.swipe(-110);
+  assert.equal(r.writes.length, writes);
+  assert.equal(r.location.hash, '#p2');
+  r.window.visualViewport.scale = 1;
+  r.swipe(-110);
+  assert.equal(r.current(), 3);
 });
 
 test('阅读器：定位到目录链接后，空格与方向键不改漫画页码', () => {

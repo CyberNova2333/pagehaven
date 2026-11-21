@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { progressCases, url as caseUrl } from '../test-support/progress-cases.js';
 import assert from 'node:assert/strict';
 import { mountChapterToc, parseChapterIndex } from '../src/lib/chapter-toc.js';
 
@@ -1194,4 +1195,14 @@ test('目录关闭、同步恢复和销毁都取消排队快照，旧回调不�
   staleBeforeDestroy(); f.flushRefreshTimers();
   assert.equal(f.storage.reads.length, destroyedReads);
   assert.equal(f.window.listenerCount(), 0);
+});
+
+test('章节目录只给共享历史样例中的有效页码加定位链接', async () => {
+  for (const { raw, toc } of progressCases) {
+    const f = fixture({ hidden: false, records: { [progressKey('sample/v1/c1')]: raw } });
+    await settle();
+    assert.equal(f.links()[0].href, toc ? caseUrl + '#p' + toc : caseUrl, raw);
+    if (!toc) assert.equal(f.indicators()[0].textContent, '暂无进度');
+    f.api.destroy();
+  }
 });

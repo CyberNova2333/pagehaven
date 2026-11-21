@@ -121,59 +121,9 @@ const latest = gallery.series
   }
 
   <script type="application/json" id="random-pool" set:html={jsonForScript(allChapters)} />
-  <script is:inline>
-    (function () {
-      var chapters = JSON.parse(document.getElementById('random-pool').textContent || '[]');
-      var pool = chapters.map(function (c) { return c.url; });
-      var currentChapters = new Map(chapters.map(function (c) { return [c.url, c]; }));
-      var btn = document.getElementById('random-btn');
-      if (btn) {
-        btn.addEventListener('click', function () {
-          if (pool.length) location.href = pool[Math.floor(Math.random() * pool.length)];
-        });
-      }
-      // 继续阅读：阅读器把 {url,title,series,issue,n,ts} 写进 localStorage
-      var list = document.getElementById('continue-list');
-      var wrap = document.getElementById('continue');
-      if (!list || !wrap) return;
-      var records = new Map();
-      try {
-        var storage = localStorage;
-        for (var i = 0; i < storage.length; i++) {
-          try {
-            var k = storage.key(i);
-            if (!k || k.indexOf('gallery:progress:') !== 0) continue;
-            var v = JSON.parse(storage.getItem(k));
-            if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
-            var chapter = currentChapters.get(v.url);
-            if (!chapter) continue;
-            // URL、标题与页数以当前目录为准；旧页码只在现存页范围内恢复。
-            var n = Number.isSafeInteger(v.n) ? Math.max(1, Math.min(chapter.pages, v.n)) : 1;
-            var ts = Number.isFinite(v.ts) && v.ts >= 0 ? v.ts : 0;
-            var previous = records.get(chapter.url);
-            if (!previous || ts > previous.ts) records.set(chapter.url, { chapter: chapter, n: n, ts: ts });
-          } catch (e) {
-            /* 单条坏数据跳过 */
-          }
-        }
-      } catch (e) {
-        /* 浏览器禁止访问存储时，仅省略继续阅读。 */
-      }
-      var items = Array.from(records.values());
-      items.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
-      items.slice(0, 3).forEach(function (v) {
-        var li = document.createElement('li');
-        var a = document.createElement('a');
-        a.href = v.chapter.url + '#p' + v.n;
-        a.textContent = v.chapter.title;
-        var small = document.createElement('small');
-        small.textContent = [v.chapter.series, v.chapter.issue].filter(Boolean).join(' · ');
-        li.appendChild(a);
-        li.appendChild(small);
-        list.appendChild(li);
-      });
-      if (items.length) wrap.hidden = false;
-    })();
+  <script>
+    import { mountHomeReading } from '../lib/continue-reading.js';
+    mountHomeReading(window);
   </script>
 </Base>
 

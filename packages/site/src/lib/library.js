@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 // 个人书架只保存作品状态；现有阅读进度仍由阅读器独立维护。
+import { parseProgressRecord, progressForChapter, PROGRESS_PREFIX } from './reading-progress.js';
+
 export const LIBRARY_PREFIX = 'gallery:library:';
 export const READING_STATUSES = [
   { value: 'want', label: '想读' },
@@ -109,14 +111,12 @@ export function readReadingProgress(catalog, storage) {
           || (chapter.id !== undefined && chapter.id !== parts[2])
           || chapter.url !== `/${chapter.key}/` || !Number.isSafeInteger(pages) || pages < 1) continue;
         let raw;
-        try { raw = storage.getItem(`gallery:progress:${chapter.key}`); }
+        try { raw = storage.getItem(PROGRESS_PREFIX + chapter.key); }
         catch { limited = true; continue; }
-        let value;
-        try { value = JSON.parse(raw); }
-        catch { continue; }
-        if (!value || typeof value !== 'object' || Array.isArray(value) || value.url !== chapter.url) continue;
-        const n = Number.isSafeInteger(value.n) ? Math.max(1, Math.min(pages, value.n)) : 1;
-        const ts = Number.isFinite(value.ts) && value.ts >= 0 ? value.ts : 0;
+        const progress = progressForChapter(parseProgressRecord(raw), chapter);
+        if (!progress) continue;
+        const n = progress.n ?? 1;
+        const ts = progress.ts;
         rows.push({ series, issue, chapter, n, ts });
         const best = latest.get(series.id);
         if (!best || ts >= best.ts) latest.set(series.id, { chapter, n, ts });

@@ -156,6 +156,13 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
         );
       })
     }
+    <details class="long-jump" id="long-jump">
+      <summary>第 <span id="long-page-number">1</span> / {total} 页 · 跳页</summary>
+      <form>
+        <label>目标页码 <input type="number" min="1" max={total} step="1" required inputmode="numeric" enterkeyhint="go" /></label>
+        <button class="btn" type="submit">跳转</button>
+      </form>
+    </details>
   </div>
 
   <nav class="chapter-nav" aria-label="上一话 / 下一话">
@@ -177,11 +184,14 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
       var pages = Array.prototype.slice.call(reader.querySelectorAll('.page'));
       var total = pages.length;
       if (!total) return;
+      var topbar = document.querySelector('.topbar');
 
       var key = reader.dataset.key;
       var progressKey = 'gallery:progress:' + key;
       var settingsKey = 'gallery:reader:settings';
       var curEl = document.getElementById('page-input');
+      var longJump = document.getElementById('long-jump');
+      var longNumber = document.getElementById('long-page-number');
       var prevLink = document.getElementById('page-prev');
       var nextLink = document.getElementById('page-next');
       var fill = document.getElementById('progress-fill');
@@ -190,6 +200,8 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
       var settingsPanel = document.getElementById('settings');
       var brightness = document.getElementById('brightness');
       var cur = 1;
+      // 长条滚动会单独更新 cur。切换模式时按上次实际标记的页清理。
+      var markedPages = [];
       var requestedPage = 1;
       var hl = null;
       var scrollFrame = 0;
@@ -240,6 +252,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
       function applySettings() {
         reader.classList.remove('mode-single', 'mode-long', 'mode-double');
         reader.classList.add('mode-' + settings.mode);
+        if (settings.mode !== 'long' && longJump) longJump.open = false;
         reader.classList.toggle('rtl', settings.dir === 'rtl');
         reader.style.setProperty('--reader-brightness', String(settings.brightness / 100));
         if (brightness) brightness.value = String(settings.brightness);
@@ -281,7 +294,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
           if (box.bottom >= 0 && box.top <= window.innerHeight) return;
         }
         // 以视口上部的阅读位置判定当前页，留出顶部导航的空间。
-        var marker = Math.min(window.innerHeight / 3, 200);
+        var marker = Math.max(Math.min(window.innerHeight / 3, 200), (topbar?.getBoundingClientRect().bottom ?? 0) + 1);
         var n = 1;
         // 长条页按 DOM 顺序纵向排列；二分找最后一个顶部已到达标记的页，避免逐帧扫描整章。
         // 每次读取实时布局，不缓存坐标，图片加载或视口变化后仍按当前位置判页。
@@ -298,8 +311,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
         if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) n = total;
         requestedPage = n;
         if (n === cur) return;
-        cur = n;
-        if (curEl) curEl.value = String(n);
+        setCurrentPage(n);
         saveProgress(n);
         // 同一页内滚动保留检索气泡的深链，跨页后才更新 hash。
         var target = parseHash(location.hash);
@@ -343,18 +355,26 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
           /* 写不进去就算了 */
         }
       }
+      function setCurrentPage(n) {
+        cur = n;
+        if (curEl) curEl.value = String(n);
+        if (longNumber) longNumber.textContent = String(n);
+      }
       function show(n, opts) {
         opts = opts || {};
         n = clamp(n);
         // 增强阅读器可能在窄屏改成单页，接管时仍需知道跨页归并前的目标。
         requestedPage = n;
         if (!enhancement && settings.mode === 'double' && n % 2 === 0) n -= 1;
-        pages.forEach(function (p, i) {
-          p.classList.toggle('current', i === n - 1);
+        var nextPages = pages.slice(n - 1, settings.mode === 'double' ? n + 1 : n);
+        markedPages.forEach(function (page) {
+          if (!nextPages.includes(page)) page.classList.remove('current');
         });
-        if (settings.mode === 'double' && pages[n]) pages[n].classList.add('current');
-        cur = n;
-        if (curEl) curEl.value = String(n);
+        nextPages.forEach(function (page) {
+          if (!markedPages.includes(page)) page.classList.add('current');
+        });
+        markedPages = nextPages;
+        setCurrentPage(n);
         if (prevLink) {
           prevLink.hidden = n <= 1;
           prevLink.href = '#p' + Math.max(n - step(), 1);
@@ -368,8 +388,10 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
         updateProgress();
         if (settings.mode !== 'long') warm(n + 1);
         if (opts.scroll) {
-          if (settings.mode === 'long') pages[n - 1].scrollIntoView({ block: 'start' });
-          else reader.scrollIntoView();
+          if (settings.mode === 'long') {
+            if (topbar) reader.style.setProperty('--reader-header-height', topbar.getBoundingClientRect().height + 'px');
+            pages[n - 1].scrollIntoView({ block: 'start' });
+          } else reader.scrollIntoView();
         }
         notify();
       }
@@ -449,6 +471,22 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
           tip.textContent = '已恢复到第 ' + resumed + ' 页';
         }
       }
+      function turnToPage(n) {
+        var previous = cur;
+        show(n);
+        if (cur === previous || enhancement || settings.mode === 'long') return;
+        // 翻到高图时从开头读；画面顶部已经可见时保留读者的视线位置。
+        var page = pages[cur - 1];
+        var imageTop = page.querySelector('img').getBoundingClientRect().top;
+        var viewport = window.visualViewport;
+        var viewportTop = viewport?.offsetTop ?? 0;
+        var visibleTop = Math.max(viewportTop, topbar?.getBoundingClientRect().bottom ?? 0);
+        var visibleBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+        if (imageTop < visibleTop || imageTop >= visibleBottom) {
+          // 将页首（包括加载状态和重试按钮）放在吸顶导航下方。
+          window.scrollBy({ top: page.getBoundingClientRect().top - visibleTop, behavior: 'instant' });
+        }
+      }
       function go(delta) {
         if (enhancement) {
           enhancement.navigate(delta);
@@ -462,8 +500,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
         var n = cur + delta * step();
         if (n < 1 || n > total) return;
         highlight(n, null);
-        show(n);
-        if (settings.mode !== 'long') reader.scrollIntoView({ block: 'nearest' });
+        turnToPage(n);
       }
       function goPhysical(delta) {
         // 只有左右键、点击区域、滑动需要从物理方向映射到章节顺序。
@@ -485,7 +522,30 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
       if (curEl) {
         curEl.addEventListener('change', function () {
           var n = parseInt(curEl.value, 10);
-          if (!isNaN(n)) show(n);
+          if (!isNaN(n)) turnToPage(n);
+        });
+      }
+      if (longJump) {
+        var jumpForm = longJump.querySelector('form');
+        var jumpInput = jumpForm.querySelector('input');
+        var jumpSummary = longJump.querySelector('summary');
+        jumpForm.addEventListener('submit', function (e) {
+          e.preventDefault();
+          var n = jumpInput.valueAsNumber;
+          if (!Number.isSafeInteger(n) || n < 1 || n > total) return;
+          longJump.open = false;
+          jumpSummary.focus({ preventScroll: true });
+          history.replaceState(null, '', '#p' + n);
+          restoreLongPage(n, null, true);
+        });
+        longJump.addEventListener('toggle', function () {
+          if (!longJump.open) jumpForm.reset();
+        });
+        longJump.addEventListener('keydown', function (e) {
+          if (e.key !== 'Escape' || !longJump.open) return;
+          e.preventDefault();
+          longJump.open = false;
+          jumpSummary.focus({ preventScroll: true });
         });
       }
       if (prevLink) {
@@ -552,7 +612,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
           return;
         }
         var t = e.target;
-        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON' || t.tagName === 'SELECT' || t.tagName === 'A' || t.isContentEditable || t.closest?.('.toc, .settings'))) return;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON' || t.tagName === 'SELECT' || t.tagName === 'A' || t.isContentEditable || t.closest?.('.toc, .settings, .long-jump'))) return;
         if (e.key === 'ArrowLeft') goPhysical(-1);
         else if (e.key === 'ArrowRight') goPhysical(1);
         else if (e.key === ' ') go(1);
@@ -576,22 +636,30 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
         var r = frame.getBoundingClientRect();
         goPhysical(e.clientX - r.left < r.width / 2 ? -1 : 1);
       });
-      // 触摸滑动（单页/双页模式）
-      var touchX = null;
-      reader.addEventListener('touchstart', function (e) {
-        touchX = null;
-        if (enhancement || settings.mode === 'long' || e.touches.length !== 1) return;
+      var swipeStart = null;
+      function canSwipePage() {
+        return !enhancement && settings.mode !== 'long' && (window.visualViewport?.scale ?? 1) <= 1;
+      }
+      // 第二根手指可能落在阅读器外，整次缩放手势都应留给浏览器。
+      document.addEventListener('touchstart', function (e) {
+        swipeStart = null;
+        if (e.touches.length !== 1 || !canSwipePage() || e.target.closest?.('#reader') !== reader) return;
         if (e.target.closest('button, input, textarea, select, a, .toc, .settings, .box, .reader-bookmarks')) return;
-        touchX = e.touches[0].clientX;
-      }, { passive: true });
+        var touch = e.touches[0];
+        swipeStart = { id: touch.identifier, x: touch.clientX, y: touch.clientY };
+      }, { capture: true, passive: true });
+      reader.addEventListener('touchcancel', function () { swipeStart = null; }, { passive: true });
       reader.addEventListener('touchend', function (e) {
-        if (enhancement) { touchX = null; return; }
-        if (touchX === null) return;
-        var dx = e.changedTouches[0].clientX - touchX;
-        touchX = null;
-        if (Math.abs(dx) < 50) return;
+        var start = swipeStart;
+        swipeStart = null;
+        if (!start || !canSwipePage() || e.touches.length || e.changedTouches.length !== 1) return;
+        var touch = e.changedTouches[0];
+        if (touch.identifier !== start.id) return;
+        var dx = touch.clientX - start.x;
+        var dy = touch.clientY - start.y;
+        if (Math.abs(dx) < 50 || Math.abs(dx) <= Math.abs(dy)) return;
         goPhysical(dx < 0 ? 1 : -1);
-      });
+      }, { passive: true });
       if (toggle) {
         toggle.addEventListener('change', function () {
           reader.classList.toggle('show-text', toggle.checked);
@@ -662,7 +730,7 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
   .reader .settings-row label { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-default); cursor: pointer; }
   .reader .settings-note { color: var(--fg-muted); font-size: 12px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-muted); }
   .reader .page {
-    scroll-margin-top: 4rem;
+    scroll-margin-top: var(--reader-header-height, 4rem);
     margin: 0 0 16px;
     padding: 8px;
     background: var(--canvas-subtle);
@@ -720,7 +788,27 @@ const boxCount = text.pages.reduce((n, p) => n + p.boxes.length, 0);
   .reader.js .page-num { display: none; }
   .reader.js .frame { cursor: pointer; }
   .reader.js.mode-long .page { display: block; }
-  .reader.js.mode-long #page-prev, .reader.js.mode-long #page-next, .reader.js.mode-long #page-input { display: none; }
+  .reader.js.mode-long #page-prev, .reader.js.mode-long #page-next, .reader.js.mode-long .page-indicator { display: none; }
+  .reader .long-jump { display: none; }
+  .reader.js.mode-long .long-jump {
+    display: block; position: sticky; bottom: max(.5rem, env(safe-area-inset-bottom)); z-index: 6;
+    width: max-content; max-width: 100%; margin-inline-start: auto;
+    font-size: 14px; font-variant-numeric: tabular-nums;
+  }
+  .reader .long-jump summary, .reader .long-jump form {
+    background: var(--canvas-default); border: 1px solid var(--border-default); border-radius: 6px;
+    box-shadow: var(--btn-shadow);
+  }
+  .reader .long-jump summary { cursor: pointer; padding: .65rem .75rem; }
+  .reader .long-jump form {
+    position: absolute; right: 0; bottom: calc(100% + .25rem);
+    display: flex; gap: .5rem; align-items: center; padding: .5rem; white-space: nowrap;
+  }
+  .reader .long-jump input {
+    width: 4rem; min-height: 2.5rem; font: 16px var(--font-mono); text-align: center;
+    color: var(--fg-default); background: var(--canvas-default); border: 1px solid var(--border-default); border-radius: 6px;
+  }
+  .reader .long-jump button { min-height: 2.5rem; }
   .reader.js.mode-double .page.current { display: block; }
   .reader.js.mode-double {
     display: grid;

@@ -2,9 +2,9 @@
 // This file is part of Pagehaven · 页间 and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 // 完整目录只在打开时读取作品索引；HTML 保留静态目录链接，失败不妨碍继续阅读。
 import { createStorageRefresh } from './storage-refresh.js';
+import { parseProgressRecord, progressForChapter, PROGRESS_PREFIX } from './reading-progress.js';
 const ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const isId = (value) => typeof value === 'string' && ID.test(value);
-const PROGRESS_PREFIX = 'gallery:progress:';
 const PAGE_SIZE = 100;
 const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
 
@@ -111,12 +111,9 @@ export function mountChapterToc(toc, { fetcher, timeoutMs = 15000, getStorage } 
   }
   function readProgress(row, storage) {
     try {
-      const raw = storage.getItem(PROGRESS_PREFIX + row.key);
-      if (raw === null) return { state: 'new' };
-      let value;
-      try { value = JSON.parse(raw); } catch { return { state: 'new' }; }
-      if (!value || typeof value !== 'object' || Array.isArray(value) || value.url !== row.url || !positiveInteger(value.n)) return { state: 'new' };
-      return { state: 'started', page: Math.min(row.pages, value.n) };
+      const record = parseProgressRecord(storage.getItem(PROGRESS_PREFIX + row.key));
+      const progress = progressForChapter(record, row);
+      return progress?.n ? { state: 'started', page: progress.n } : { state: 'new' };
     } catch { return { state: 'unavailable' }; }
   }
   function refreshProgress(selectCurrent = false) {

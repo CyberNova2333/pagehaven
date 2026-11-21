@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { progressCases, url as caseUrl } from '../test-support/progress-cases.js';
 import assert from 'node:assert/strict';
 import { LIBRARY_PREFIX, READING_STATUSES, createLibraryStore, latestSeriesProgress, readReadingProgress } from '../src/lib/library.js';
 
@@ -356,4 +357,13 @@ test('进度快照：沿用旧页码和时间容错，同时间最近章节与�
   assert.deepEqual(timed.rows.map((row) => row.ts), [1e300, 1.5, 0], '保留旧模型接受的非负有限时间，展示层须处理日期范围');
   assert.deepEqual(timed.latest.get('sample'), latestSeriesProgress(current, f.storage));
   assert.ok(f.operations.every(([type]) => type === 'get'));
+});
+
+test('书架对共享历史样例只从登记键恢复', () => {
+  const c = { key: 'sample/v1/c1', url: caseUrl, pages: 5 };
+  const catalog = [{ id: 'sample', issues: [{ chapters: [c] }] }];
+  for (const { raw, resume } of progressCases) {
+    const f = storageFixture([[progressKey(c), raw]]);
+    assert.equal(readReadingProgress(catalog, f.storage).rows[0]?.n ?? null, resume, raw);
+  }
 });

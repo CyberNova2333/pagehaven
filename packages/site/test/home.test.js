@@ -1,16 +1,21 @@
-// 执行首页真实内联脚本，验证当前目录与浏览器旧阅读记录之间的边界。
+// 验证首页目录与浏览器阅读记录之间的边界。
 import { test } from 'node:test';
+import { progressCases, url as caseUrl } from '../test-support/progress-cases.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { mountHomeReading } from '../src/lib/continue-reading.js';
 
 const source = readFileSync(new URL('../src/pages/index.astro', import.meta.url), 'utf8');
-const script = /<script is:inline>\s*([\s\S]*?)<\/script>/.exec(source)[1];
 
 function home({ urls = [], chapters = urls.map((url, i) => ({ url, title: `第 ${i + 1} 话`, series: '示例作品', issue: '第一卷', pages: 4 })), records = [], denied = '' } = {}) {
   const node = () => ({
     children: [], hidden: true, textContent: '', listeners: new Map(),
-    appendChild(child) { this.children.push(child); },
+    get firstElementChild() { return this.children[0]; },
+    getAttribute(key) { return this[key]; },
+    append(...children) { this.children.push(...children); },
+    replaceChildren(...children) { this.children = children; },
+    contains(item) { return this === item || this.children.some((child) => child.contains(item)); },
     addEventListener(name, listener) { this.listeners.set(name, listener); },
   });
   const nodes = new Map(['random-pool', 'random-btn', 'continue', 'continue-list'].map((id) => [id, node()]));
@@ -18,10 +23,10 @@ function home({ urls = [], chapters = urls.map((url, i) => ({ url, title: `第 $
   const stored = new Map(records.map((value, index) => [`gallery:progress:sample/v/c${index}`, typeof value === 'string' ? value : JSON.stringify(value)]));
   stored.set('unrelated-preference', JSON.stringify({ url: urls[0], title: '不是阅读进度' }));
   const before = [...stored];
-  const context = {
-    document: { getElementById: (id) => nodes.get(id), createElement: node },
-    location: { href: '/' },
-  };
+  const context = Object.assign(new EventTarget(), {
+    document: Object.assign(new EventTarget(), { getElementById: (id) => nodes.get(id), createElement: node }),
+    location: { href: '/' }, setTimeout, clearTimeout,
+  });
   Object.defineProperty(context, 'localStorage', {
     get() {
       if (denied === 'getter') throw new Error('Storage denied');
@@ -41,8 +46,8 @@ function home({ urls = [], chapters = urls.map((url, i) => ({ url, title: `第 $
       };
     },
   });
-  runInNewContext(script, context);
-  return { nodes, location: context.location, stored, before };
+  mountHomeReading(context);
+  return { nodes, location: context.location, stored, before, win: context };
 }
 
 test('首页：空目录不再显示已移除作品的旧阅读记录', () => {
@@ -50,6 +55,47 @@ test('首页：空目录不再显示已移除作品的旧阅读记录', () => {
   assert.equal(h.nodes.get('continue').hidden, true);
   assert.equal(h.nodes.get('continue-list').children.length, 0);
   assert.deepEqual([...h.stored], h.before, '只过滤显示，不清空浏览器存储');
+});
+
+test('首页跟随跨标签进度，同一话保留链接节点，清空后收起继续阅读', () => {
+  const url = '/sample/v/c1/';
+  const { win, stored, nodes } = home({ urls: [url] });
+  const list = nodes.get('continue-list');
+  const section = nodes.get('continue');
+  const key = 'gallery:progress:sample/v/c1';
+  const notify = (key) => win.dispatchEvent(Object.assign(new Event('storage'), { key }));
+  let pending;
+  win.setTimeout = (fn) => { assert.equal(pending, undefined); pending = fn; return 1; };
+  win.clearTimeout = () => { pending = undefined; };
+  function flush() { const fn = pending; pending = undefined; fn(); }
+
+  notify('gallery:reader:settings');
+  assert.equal(pending, undefined);
+  stored.set(key, JSON.stringify({ url, n: 1 }));
+  notify(key);
+  stored.set(key, JSON.stringify({ url, n: 2 }));
+  notify(key);
+  flush();
+  assert.equal(section.hidden, false);
+  const link = list.firstElementChild.firstElementChild;
+  assert.equal(link.href, url + '#p2');
+
+  win.document.hidden = true;
+  stored.set(key, JSON.stringify({ url, n: 3 }));
+  notify(key);
+  assert.equal(pending, undefined);
+  win.document.hidden = false;
+  win.document.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(list.firstElementChild.firstElementChild, link);
+  assert.equal(link.href, url + '#p3');
+
+  stored.clear();
+  notify(null);
+  list.listeners.get('click')();
+  assert.equal(pending, undefined);
+  assert.equal(link.href, url, '刚移除的记录也不能带旧页码打开阅读器');
+  assert.equal(section.hidden, true);
+  assert.equal(list.children.length, 0);
 });
 
 test('首页：只保留当前章节，坏记录跳过，正常记录仍按时间取最近三项', () => {
@@ -118,4 +164,12 @@ test('首页：按作品取目录最后一话，末尾空期不隐藏已有章�
   });
   assert.deepEqual(Array.from(latest, (item) => [item.series.title, item.issue.title, item.chapter.title]), [['甲', '一期', '甲二'], ['乙', '二期', '乙二']]);
   assert.match(source, /<h2>各作品最新一话<\/h2>/);
+});
+
+test('首页按记录 URL 识别旧键，恢复共享样例的页码', () => {
+  for (const { raw, resume } of progressCases) {
+    const h = home({ chapters: [{ url: caseUrl, pages: 5, title: '初遇' }], records: [raw] });
+    const link = h.nodes.get('continue-list').children[0]?.firstElementChild;
+    assert.equal(link?.href ?? null, resume && caseUrl + '#p' + resume, raw);
+  }
 });

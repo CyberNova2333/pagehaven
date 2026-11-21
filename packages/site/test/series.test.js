@@ -1,23 +1,22 @@
-// 执行作品页真实内联脚本，目录决定可恢复的章节和显示标题。
+// 目录决定作品页可恢复的章节和显示标题。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+import { mountSeriesReading } from '../src/lib/continue-reading.js';
 
-const source = readFileSync(new URL('../src/pages/[series]/index.astro', import.meta.url), 'utf8');
-const script = /<script is:inline>\s*([\s\S]*?)<\/script>/.exec(source)[1];
-
-function seriesPage({ chapters = [
+function seriesFixture({ chapters = [
   { url: '/sample/v/c1/', title: '目录第一话', pages: 4 },
   { url: '/sample/v/c2/', title: '目录第二话', pages: 2 },
 ], records = [], denied = '' } = {}) {
-  const link = chapters.length ? { href: chapters[0].url, textContent: '开始阅读 →' } : null;
+  const link = chapters.length ? Object.assign(new EventTarget(), {
+    href: chapters[0].url, textContent: '开始阅读 →', getAttribute(key) { return this[key]; },
+  }) : null;
   const stored = new Map(records.map((value, index) => [`gallery:progress:sample/v/c${index}`, typeof value === 'string' ? value : JSON.stringify(value)]));
   stored.set('gallery:reader:settings', JSON.stringify({ url: chapters[0]?.url, ts: 10000 }));
   const before = [...stored];
-  const context = {
-    document: { getElementById: (id) => id === 'start-reading' ? link : id === 'series-chapters' ? { textContent: JSON.stringify(chapters) } : null },
-  };
+  const context = Object.assign(new EventTarget(), {
+    setTimeout, clearTimeout,
+    document: Object.assign(new EventTarget(), { getElementById: (id) => id === 'start-reading' ? link : id === 'series-chapters' ? { textContent: JSON.stringify(chapters) } : null }),
+  });
   Object.defineProperty(context, 'localStorage', {
     get() {
       if (denied === 'getter') throw new Error('Storage denied');
@@ -37,10 +36,31 @@ function seriesPage({ chapters = [
       };
     },
   });
-  runInNewContext(script, context);
+  mountSeriesReading(context);
   assert.deepEqual([...stored], before, '只读取进度，不删除或改写旧记录');
-  return link;
+  return { win: context, link, stored };
 }
+
+function seriesPage(options) {
+  return seriesFixture(options).link;
+}
+
+test('作品页从后退缓存恢复时重选最新话，激活旧入口前重新核对页码', () => {
+  const { win, link, stored } = seriesFixture({ records: [{ url: '/sample/v/c1/', n: 1, ts: 10 }] });
+  const url = '/sample/v/c2/';
+  const key = 'gallery:progress:sample/v/c2';
+  stored.set(key, JSON.stringify({ url, n: 1, ts: 20 }));
+  win.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+  assert.equal(link.href, url + '#p1');
+  assert.equal(link.textContent, '继续阅读：目录第二话 →');
+  stored.set(key, JSON.stringify({ url, n: 2, ts: 21 }));
+  link.dispatchEvent(new Event('click'));
+  assert.equal(link.href, url + '#p2');
+  stored.clear();
+  win.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+  assert.equal(link.href, '/sample/v/c1/');
+  assert.equal(link.textContent, '开始阅读 →');
+});
 
 test('作品页：只接受当前目录完整 URL，已删除章节和同前缀伪路径不覆盖有效进度', () => {
   const link = seriesPage({ records: [
